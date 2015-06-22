@@ -1,0 +1,69 @@
+package ike
+
+type IkeEvent int
+
+const (
+	ACQUIRE IkeEvent = iota + 1
+	CONNECT
+	REAUTH
+
+	COOKIE
+	INVALID_KE
+	IKE_SA_INIT_RESPONSE
+
+	IKE_AUTH_RESPONSE
+)
+
+// ike sa
+type IkeSaState int
+
+const (
+	SMI_INIT IkeSaState = iota + 1
+	SMI_AUTH
+	SMI_AUTH_WAIT
+	SMI_INSTALLCSA_DL
+
+	SMR_INIT
+	SMR_AUTH
+	SMR_AUTH_FINALIZE
+	SMR_AUTH_RESPONSE_ID
+	SMR_AUTH_RESPONSE
+	SMR_EAP_INITATOR_REQUEST
+	SMR_EAP_AAA_REQUEST
+	SMR_AUTH_DL_PEER
+	SMR_CFG_WAIT
+
+	SM_MATURE
+	SM_REKEY
+	SM_CRL_UPDATE
+	SM_REAUTH
+
+	SM_TERMINATE
+	SM_DYING
+	SM_DEAD
+)
+
+type ChildSaState int
+
+const (
+	SA_INIT ChildSaState = iota + 1
+	SA_CREATE
+	SA_CREATE_WAIT
+	SA_MATURE
+	SA_REKEY
+	SA_REKEY_WAIT
+	SA_REMOVE
+	SA_DEAD
+)
+
+type DhcpState int
+
+const (
+	INIT DhcpState = iota + 1
+	SELECTING
+	REQUESTING
+	BOUND
+	RENEWING
+	FINISHED
+	ERROR
+)
