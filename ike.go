@@ -1,6 +1,8 @@
 package ike
 
 import (
+	"net"
+
 	"msgbox.io/log"
 	"msgbox.io/packets"
 )
@@ -12,14 +14,18 @@ const (
 
 // mimimal impl
 
-// IKE_SA_INIT and IKE_AUTH
+// IKE_SA_INIT
+// generate SKEYSEED, IKE sa is encrypted
+
+// IKE_AUTH
 // to create IKE SA and the first child SA.
+// authenticate peer & create child SA
 
 // understand CREATE_CHILD_SA request so it can
 // reply with CREATE_CHILD_SA error response saying NO_ADDITIONAL_SAS
 
-// understand INFORMATIONAL request so much, it can reply
-// with empty INFORMATIONAL response
+// understand INFORMATIONAL request
+// so it can reply with empty INFORMATIONAL response
 
 // dont keep message ids, only 1 & 2
 // dont need to protect against replay attacks
@@ -51,16 +57,17 @@ const (
 	PayloadTypeCERT    PayloadType = 37 // Certificate
 	PayloadTypeCERTREQ PayloadType = 38 // Certificate Request
 	PayloadTypeAUTH    PayloadType = 39 // Authentication
-	PayloadTypeNi      PayloadType = 40 // Nonce
-	PayloadTypeNr      PayloadType = 40 // Nonce
-	PayloadTypeN       PayloadType = 41 // Notify
-	PayloadTypeD       PayloadType = 42 // Delete
-	PayloadTypeV       PayloadType = 43 // Vendor ID
-	PayloadTypeTSi     PayloadType = 44 // Traffic Selector - Initiator
-	PayloadTypeTSr     PayloadType = 45 // Traffic Selector - Responder
-	PayloadTypeSK      PayloadType = 46 // Encrypted and Authenticated
-	PayloadTypeCP      PayloadType = 47 // Configuration
-	PayloadTypeEAP     PayloadType = 48 // Extensible Authentication
+	// PayloadTypeNi      PayloadType = 40 // Nonce
+	// PayloadTypeNr      PayloadType = 40 // Nonce
+	PayloadTypeNonce PayloadType = 40 // Nonce
+	PayloadTypeN     PayloadType = 41 // Notify
+	PayloadTypeD     PayloadType = 42 // Delete
+	PayloadTypeV     PayloadType = 43 // Vendor ID
+	PayloadTypeTSi   PayloadType = 44 // Traffic Selector - Initiator
+	PayloadTypeTSr   PayloadType = 45 // Traffic Selector - Responder
+	PayloadTypeSK    PayloadType = 46 // Encrypted and Authenticated
+	PayloadTypeCP    PayloadType = 47 // Configuration
+	PayloadTypeEAP   PayloadType = 48 // Extensible Authentication
 )
 
 type IkeExchangeType uint16
@@ -96,9 +103,10 @@ func (f IkeFlags) IsInitiator() bool {
 type ProtocolId uint8
 
 const (
-	IKE ProtocolId = 1
-	AH  ProtocolId = 2
-	ESP ProtocolId = 3
+	NoProtocol ProtocolId = 1
+	IKE        ProtocolId = 1
+	AH         ProtocolId = 2
+	ESP        ProtocolId = 3
 )
 
 type TransformType uint8
@@ -169,7 +177,6 @@ const (
 )
 
 /*
-                        1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    |                       IKE SA Initiator's SPI                  |
@@ -202,7 +209,7 @@ type IkeHeader struct {
 func (h *IkeHeader) Decode(b []byte) (err error) {
 	if len(b) < IKE_HEADER_LEN {
 		log.V(LOG_CODEC).Infof("Packet Too short : %d", len(b))
-		return INVALID_SYNTAX
+		return ERR_INVALID_SYNTAX
 	}
 	copy(h.SpiI[:], b)
 	copy(h.SpiR[:], b[8:])
@@ -217,12 +224,17 @@ func (h *IkeHeader) Decode(b []byte) (err error) {
 	h.Flags = IkeFlags(flags)
 	h.Id, _ = packets.ReadB32(b, 16+4)
 	h.MsgLength, _ = packets.ReadB32(b, 16+8)
+	if h.MsgLength < IKE_HEADER_LEN {
+		log.V(LOG_CODEC).Infof("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+
 	return
 
 }
 
 /*
-                        1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    | Next Payload  |C|  RESERVED   |         Payload Length        |
@@ -237,7 +249,7 @@ type PayloadHeader struct {
 func (h *PayloadHeader) Decode(b []byte) (err error) {
 	if len(b) < 4 {
 		log.V(LOG_CODEC).Infof("Packet Too short : %d", len(b))
-		return INVALID_SYNTAX
+		return ERR_INVALID_SYNTAX
 	}
 	pt, _ := packets.ReadB8(b, 0)
 	h.NextPayload = PayloadType(pt)
@@ -251,13 +263,20 @@ func (h *PayloadHeader) Decode(b []byte) (err error) {
 type Payload interface {
 	Type() PayloadType
 	Decode([]byte) error
-	Encode() []byte
+	// Encode() []byte
 }
 
-//
+// payloads
+
+// start sa payload
+
+type AttributeType uint16
+
+const (
+	ATTRIBUTE_TYPE_KEY_LENGTH AttributeType = 14
+)
 
 /*
-                        1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    |A|       Attribute Type        |    AF=0  Attribute Length     |
@@ -267,11 +286,35 @@ type Payload interface {
    |                   AF=1  Not Transmitted                       |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
-type TransformAttributes struct {
+type TransformAttribute struct {
+	Type  AttributeType
+	Value uint16 // fixed 2 octet length for now
+}
+
+const (
+	MIN_LEN_ATTRIBUTE = 4
+)
+
+func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
+	if len(b) < MIN_LEN_ATTRIBUTE {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	if at, _ := packets.ReadB16(b, 0); AttributeType(at|0x7f) != ATTRIBUTE_TYPE_KEY_LENGTH {
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	alen, _ := packets.ReadB16(b, 2)
+	attr = &TransformAttribute{
+		Type:  ATTRIBUTE_TYPE_KEY_LENGTH,
+		Value: alen,
+	}
+	used = 4
+	return
 }
 
 /*
-                       1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    | Last Substruc |   RESERVED    |        Transform Length       |
@@ -288,14 +331,42 @@ type Transform struct {
 	Length      uint16
 	Type        TransformType
 	TransformId uint16
+	Attributes  []*TransformAttribute
 }
 
+const (
+	MIN_LEN_TRANSFORM = 8
+)
+
 func decodeTransform(b []byte) (trans *Transform, used int, err error) {
+	if len(b) < MIN_LEN_TRANSFORM {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	tr := &Transform{}
+	if last, _ := packets.ReadB8(b, 0); last == 0 {
+		tr.IsLast = true
+	}
+	tr.Length, _ = packets.ReadB16(b, 2)
+	trType, _ := packets.ReadB8(b, 4)
+	tr.Type = TransformType(trType)
+	tr.TransformId, _ = packets.ReadB16(b, 6)
+	used = 8
+	b = b[used:]
+	for len(b) > 0 {
+		attr, attrUsed, attrErr := decodeAttribute(b)
+		if attrErr != nil {
+			err = attrErr
+			return
+		}
+		b = b[attrUsed:]
+		tr.Attributes = append(tr.Attributes, attr)
+	}
 	return
 }
 
 /*
-                        1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    | Last Substruc |   RESERVED    |         Proposal Length       |
@@ -325,7 +396,7 @@ const (
 func decodeProposal(b []byte) (prop *Proposal, used int, err error) {
 	if len(b) < MIN_LEN_PROPOSAL {
 		log.V(LOG_CODEC).Info("")
-		err = INVALID_SYNTAX
+		err = ERR_INVALID_SYNTAX
 		return
 	}
 	prop = &Proposal{}
@@ -342,7 +413,7 @@ func decodeProposal(b []byte) (prop *Proposal, used int, err error) {
 	used = 8
 	if len(b) < 8+int(spiSize) {
 		log.V(LOG_CODEC).Info("")
-		err = INVALID_SYNTAX
+		err = ERR_INVALID_SYNTAX
 		return
 	}
 	used = 8 + int(spiSize)
@@ -359,7 +430,7 @@ func decodeProposal(b []byte) (prop *Proposal, used int, err error) {
 	}
 	if len(prop.Transforms) != int(numTransforms) {
 		log.V(LOG_CODEC).Info("")
-		err = INVALID_SYNTAX
+		err = ERR_INVALID_SYNTAX
 		return
 	}
 	return
@@ -372,7 +443,7 @@ type SaPayload struct {
 
 func (s *SaPayload) Type() PayloadType { return PayloadTypeSA }
 func (s *SaPayload) Decode(b []byte) (err error) {
-	// header has already been decoded
+	// Header has already been decoded
 	for len(b) > 0 {
 		prop, used, err := decodeProposal(b)
 		if err != nil {
@@ -384,7 +455,489 @@ func (s *SaPayload) Decode(b []byte) (err error) {
 	return
 }
 
-// 2.1.2 IKE_SA_INIT
+// end sa payload
+
+// start ke payload
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |   Diffie-Hellman Group Num    |           RESERVED            |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                       Key Exchange Data                       ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type KePayload struct {
+	Header     PayloadHeader
+	DhGroupNum DhTransformId
+	KeyData    []byte
+}
+
+func (s *KePayload) Type() PayloadType { return PayloadTypeKE }
+func (s *KePayload) Decode(b []byte) (err error) {
+	// Header has already been decoded
+	gn, _ := packets.ReadB16(b, 0)
+	s.DhGroupNum = DhTransformId(gn)
+	s.KeyData = append([]byte{}, b[4:]...)
+	return
+}
+
+type IdType uint8
+
+const (
+	ID_IPV4_ADDR   IdType = 1
+	ID_FQDN        IdType = 2
+	ID_RFC822_ADDR IdType = 3
+	ID_IPV6_ADDR   IdType = 5
+	ID_DER_ASN1_DN IdType = 9
+	ID_DER_ASN1_GN IdType = 10
+	ID_KEY_ID      IdType = 11
+)
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |   ID Type     |                 RESERVED                      |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                   Identification Data                         ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type IdPayload struct {
+	Header        PayloadHeader
+	IdPayloadType PayloadType
+	IdType        IdType
+	Data          []byte
+}
+
+func (s *IdPayload) Type() PayloadType { return s.IdPayloadType }
+func (s *IdPayload) Decode(b []byte) (err error) {
+	// Header has already been decoded
+	Idt, _ := packets.ReadB8(b, 0)
+	s.IdType = IdType(Idt)
+	s.Data = append([]byte{}, b[4:]...)
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Cert Encoding |                                               |
+   +-+-+-+-+-+-+-+-+                                               |
+   ~                       Certificate Data                        ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type CertPayload struct {
+	Header PayloadHeader
+}
+
+func (s *CertPayload) Type() PayloadType { return PayloadTypeCERT }
+func (s *CertPayload) Decode(b []byte) (err error) {
+	// Header has already been decoded
+	// TODO
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Cert Encoding |                                               |
+   +-+-+-+-+-+-+-+-+                                               |
+   ~                    Certification Authority                    ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type CertRequestPayload struct {
+	Header PayloadHeader
+}
+
+func (s *CertRequestPayload) Type() PayloadType { return PayloadTypeCERTREQ }
+func (s *CertRequestPayload) Decode(b []byte) (err error) {
+	// Header has already been decoded
+	// TODO
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Auth Method   |                RESERVED                       |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                      Authentication Data                      ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type AuthMethod uint8
+
+const (
+	RSA_DIGITAL_SIGNATURE             AuthMethod = 1
+	SHARED_KEY_MESSAGE_INTEGRITY_CODE AuthMethod = 2
+	DSS_DIGITAL_SIGNATURE             AuthMethod = 3
+)
+
+type AuthPayload struct {
+	Header PayloadHeader
+	Method AuthMethod
+	Data   []byte
+}
+
+func (s *AuthPayload) Type() PayloadType { return PayloadTypeAUTH }
+func (s *AuthPayload) Decode(b []byte) (err error) {
+	// Header has already been decoded
+	authMethod, _ := packets.ReadB8(b, 0)
+	s.Method = AuthMethod(authMethod)
+	s.Data = append([]byte{}, b[4:]...)
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                            Nonce Data                         ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type NoncePayload struct {
+	Header PayloadHeader
+	// NoncePayloadType PayloadType
+	Data []byte
+}
+
+func (s *NoncePayload) Type() PayloadType {
+	return PayloadTypeNonce
+}
+func (s *NoncePayload) Decode(b []byte) (err error) {
+	// Header has already been decoded
+	// between 16 and 256 octets
+	s.Data = append([]byte{}, b[4:]...)
+	if len(s.Data) < 16 || len(s.Data) > 256 {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	return
+}
+
+type NotificationType uint16
+
+const (
+	// Error types
+	UNSUPPORTED_CRITICAL_PAYLOAD NotificationType = 1
+	INVALID_IKE_SPI              NotificationType = 4
+	INVALID_MAJOR_VERSION        NotificationType = 5
+	INVALID_SYNTAX               NotificationType = 7
+	INVALID_MESSAGE_ID           NotificationType = 9
+	INVALID_SPI                  NotificationType = 11
+	NO_PROPOSAL_CHOSEN           NotificationType = 14
+	INVALID_KE_PAYLOAD           NotificationType = 17
+	AUTHENTICATION_FAILED        NotificationType = 24
+	SINGLE_PAIR_REQUIRED         NotificationType = 34
+	NO_ADDITIONAL_SAS            NotificationType = 35
+	INTERNAL_ADDRESS_FAILURE     NotificationType = 36
+	FAILED_CP_REQUIRED           NotificationType = 37
+	TS_UNACCEPTABLE              NotificationType = 38
+	INVALID_SELECTORS            NotificationType = 39
+	TEMPORARY_FAILURE            NotificationType = 43
+	CHILD_SA_NOT_FOUND           NotificationType = 44
+	// Status Types
+	INITIAL_CONTACT               NotificationType = 16384
+	SET_WINDOW_SIZE               NotificationType = 16385
+	ADDITIONAL_TS_POSSIBLE        NotificationType = 16386
+	IPCOMP_SUPPORTED              NotificationType = 16387
+	NAT_DETECTION_SOURCE_IP       NotificationType = 16388
+	NAT_DETECTION_DESTINATION_IP  NotificationType = 16389
+	COOKIE                        NotificationType = 16390
+	USE_TRANSPORT_MODE            NotificationType = 16391
+	HTTP_CERT_LOOKUP_SUPPORTED    NotificationType = 16392
+	REKEY_SA                      NotificationType = 16393
+	ESP_TFC_PADDING_NOT_SUPPORTED NotificationType = 16394
+	NON_FIRST_FRAGMENTS_ALSO      NotificationType = 16395
+)
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |  Protocol ID  |   SPI Size    |      Notify Message Type      |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                Security Parameter Index (SPI)                 ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                       Notification Data                       ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type NotifyPayload struct {
+	Header           PayloadHeader
+	ProtocolId       ProtocolId
+	NotificationType NotificationType
+	Spi              []byte
+	Data             []byte
+}
+
+func (s *NotifyPayload) Type() PayloadType {
+	return PayloadTypeN
+}
+func (s *NotifyPayload) Decode(b []byte) (err error) {
+	pId, _ := packets.ReadB8(b, 0)
+	s.ProtocolId = ProtocolId(pId)
+	spiLen, _ := packets.ReadB8(b, 1)
+	if len(b) < 4+int(spiLen) {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	nType, _ := packets.ReadB16(b, 2)
+	s.NotificationType = NotificationType(nType)
+	s.Spi = append([]byte{}, b[4:spiLen+4]...)
+	s.Data = append([]byte{}, b[spiLen+4:]...)
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Protocol ID   |   SPI Size    |          Num of SPIs          |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~               Security Parameter Index(es) (SPI)              ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type DeletePayload struct {
+	Header PayloadHeader
+}
+
+func (s *DeletePayload) Type() PayloadType {
+	return PayloadTypeD
+}
+func (s *DeletePayload) Decode(b []byte) (err error) {
+	// TODO
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                        Vendor ID (VID)                        ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type VendorIdPayload struct {
+	Header PayloadHeader
+}
+
+func (s *VendorIdPayload) Type() PayloadType {
+	return PayloadTypeV
+}
+func (s *VendorIdPayload) Decode(b []byte) (err error) {
+	// TODO
+	return
+}
+
+// start of traffic selector
+type SelectorType uint8
+
+const (
+	TS_IPV4_ADDR_RANGE SelectorType = 7
+	TS_IPV6_ADDR_RANGE SelectorType = 8
+)
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |   TS Type     |IP Protocol ID*|       Selector Length         |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |           Start Port*         |           End Port*           |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                         Starting Address*                     ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                         Ending Address*                       ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+const (
+	MIN_LEN_SELECTOR = 8
+)
+
+type Selector struct {
+	Type                     SelectorType
+	IpProtocolId             uint8
+	StartPort, Endport       uint16
+	StartAddress, EndAddress net.IP
+}
+
+func decodeSelector(b []byte) (sel *Selector, used int, err error) {
+	if len(b) < MIN_LEN_SELECTOR {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	stype, _ := packets.ReadB8(b, 0)
+	id, _ := packets.ReadB8(b, 1)
+	slen, _ := packets.ReadB16(b, 2)
+	if len(b) < int(slen) {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	sport, _ := packets.ReadB16(b, 8)
+	eport, _ := packets.ReadB16(b, 10)
+	iplen := net.IPv4len
+	if SelectorType(stype) == TS_IPV6_ADDR_RANGE {
+		iplen = net.IPv6len
+	}
+	if len(b) < 8+2*iplen {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	sel = &Selector{
+		Type:         SelectorType(stype),
+		IpProtocolId: id,
+		StartPort:    sport,
+		Endport:      eport,
+		StartAddress: append([]byte{}, b[8:8+iplen]...),
+		EndAddress:   append([]byte{}, b[8+iplen:8+2*iplen]...),
+	}
+	used = 8 + 2*iplen
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Number of TSs |                 RESERVED                      |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                       <Traffic Selectors>                     ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type TrafficSelectorPayload struct {
+	Header                     PayloadHeader
+	TrafficSelectorPayloadType PayloadType
+	Selectors                  []*Selector
+}
+
+func (s *TrafficSelectorPayload) Type() PayloadType { return s.TrafficSelectorPayloadType }
+func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
+	for len(b) > 0 {
+		sel, used, serr := decodeSelector(b)
+		if serr != nil {
+			err = serr
+			log.V(LOG_CODEC).Info("")
+			return
+		}
+		s.Selectors = append(s.Selectors, sel)
+		b = b[used:]
+	}
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                     Initialization Vector                     |
+   |         (length is block size for encryption algorithm)       |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   ~                    Encrypted IKE Payloads                     ~
+   +               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |               |             Padding (0-255 octets)            |
+   +-+-+-+-+-+-+-+-+                               +-+-+-+-+-+-+-+-+
+   |                                               |  Pad Length   |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   ~                    Integrity Checksum Data                    ~
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type EncryptedPayload struct {
+	Header   PayloadHeader
+	IV       []byte
+	Data     []byte
+	Checksum []byte
+}
+
+func (s *EncryptedPayload) Type() PayloadType { return PayloadTypeSK }
+func (s *EncryptedPayload) Decode(b []byte) (err error) {
+	// TODO
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C| RESERVED    |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |   CFG Type    |                    RESERVED                   |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                   Configuration Attributes                    ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type ConfigurationPayload struct {
+	Header PayloadHeader
+}
+
+func (s *ConfigurationPayload) Type() PayloadType { return PayloadTypeCP }
+func (s *ConfigurationPayload) Decode(b []byte) (err error) {
+	// TODO
+	return
+}
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | Next Payload  |C|  RESERVED   |         Payload Length        |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                       EAP Message                             ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type EapPayload struct {
+	Header PayloadHeader
+}
+
+func (s *EapPayload) Type() PayloadType { return PayloadTypeEAP }
+func (s *EapPayload) Decode(b []byte) (err error) {
+	// TODO
+	return
+}
+
+// IKE_SA_INIT
 // a->b
 //	HDR(SPIi=xxx, SPIr=0, IKE_SA_INIT, Flags: Initiator, Message ID=0),
 //	SAi1, KEi, Ni
@@ -392,18 +945,91 @@ func (s *SaPayload) Decode(b []byte) (err error) {
 //	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
 // 	SAr1, KEr, Nr, [CERTREQ]
 
-type SaInit struct {
-	IkeHeader
+// IKE_AUTH
+// a->b
+//  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Initiator, Message ID=1)
+//  SK {IDi, [CERT,] [CERTREQ,] [IDr,] AUTH, SAi2, TSi, TSr,  N(INITIAL_CONTACT)}
+// b->a
+//  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
+//  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
+
+// INFORMATIONAL
+// b<-a
+//  HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: none, Message ID=m),
+//  SK {...}
+// a<-b
+// 	HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: Initiator | Response, Message ID=m),
+//  SK {}
+
+// CREATE_CHILD_SA
+// b<-a
+//  HDR(SPIi=xxx, SPIy=yyy, CREATE_CHILD_SA, Flags: none, Message ID=m),
+//  SK {...}
+// a<-b
+//  HDR(SPIi=xxx, SPIr=yyy, CREATE_CHILD_SA, Flags: Initiator | Response, Message ID=m),
+//  SK {N(NO_ADDITIONAL_SAS)}
+
+type Message struct {
+	Header   *IkeHeader
+	Payloads []Payload
 }
 
-func (s *SaInit) Decode(b []byte) (err error) {
-	if len(b) < 4 {
-		log.V(LOG_CODEC).Info("")
-		return INVALID_SYNTAX
+func (s *Message) Decode(b []byte) (err error) {
+	s.Header = &IkeHeader{}
+	if err = s.Header.Decode(b[:IKE_HEADER_LEN]); err != nil {
+		return
+	}
+	if len(b) < int(s.Header.MsgLength) {
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	nextPayload := s.Header.NextPayload
+	b = b[IKE_HEADER_LEN:s.Header.MsgLength]
+	for nextPayload != PayloadTypeNone {
+		pHeader := &PayloadHeader{}
+		if err = pHeader.Decode(b); err != nil {
+			return
+		}
+		var payload Payload
+		switch nextPayload {
+		case PayloadTypeSA:
+			payload = &SaPayload{}
+		case PayloadTypeKE:
+			payload = &KePayload{}
+		case PayloadTypeIDi:
+			payload = &IdPayload{IdPayloadType: PayloadTypeIDi}
+		case PayloadTypeIDr:
+			payload = &IdPayload{IdPayloadType: PayloadTypeIDr}
+		case PayloadTypeCERT:
+			payload = &CertPayload{}
+		case PayloadTypeCERTREQ:
+			payload = &CertRequestPayload{}
+		case PayloadTypeAUTH:
+			payload = &AuthPayload{}
+		case PayloadTypeNonce:
+			payload = &NoncePayload{}
+		case PayloadTypeN:
+			payload = &NotifyPayload{}
+		case PayloadTypeD:
+			payload = &DeletePayload{}
+		case PayloadTypeV:
+			payload = &VendorIdPayload{}
+		case PayloadTypeTSi:
+			payload = &TrafficSelectorPayload{TrafficSelectorPayloadType: PayloadTypeTSi}
+		case PayloadTypeTSr:
+			payload = &TrafficSelectorPayload{TrafficSelectorPayloadType: PayloadTypeTSr}
+		case PayloadTypeSK:
+			payload = &EncryptedPayload{}
+		case PayloadTypeCP:
+			payload = &ConfigurationPayload{}
+		case PayloadTypeEAP:
+			payload = &EapPayload{}
+		}
+		pbuf := b[8:pHeader.PayloadLength]
+		if err = payload.Decode(pbuf); err != nil {
+			return
+		}
+		nextPayload = pHeader.NextPayload
 	}
 	return
 }
-
-// 2.1.3 IKE_AUTH
-// a->b HDR, SK {IDi, [CERT,] [CERTREQ,] [IDr,] AUTH, SAi2, TSi, TSr}
-// b->a HDR, SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
