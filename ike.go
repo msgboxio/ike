@@ -3,6 +3,8 @@ package ike
 import (
 	"net"
 
+	"math/big"
+
 	"msgbox.io/log"
 	"msgbox.io/packets"
 )
@@ -169,11 +171,11 @@ const (
 	MODP_8192 DhTransformId = 18 // [ADDGROUP]
 )
 
-type EsnTranformid uint16
+type EsnTransformid uint16
 
 const (
-	ESN_NONE EsnTranformid = 0
-	ESN      EsnTranformid = 1
+	ESN_NONE EsnTransformid = 0
+	ESN      EsnTransformid = 1
 )
 
 /*
@@ -202,7 +204,7 @@ type IkeHeader struct {
 	MajorVersion, MinorVersion uint8 // 4 bits
 	ExchangeType               IkeExchangeType
 	Flags                      IkeFlags
-	Id                         uint32
+	MsgId                      uint32
 	MsgLength                  uint32
 }
 
@@ -217,21 +219,31 @@ func (h *IkeHeader) Decode(b []byte) (err error) {
 	h.NextPayload = PayloadType(pt)
 	ver, _ := packets.ReadB8(b, 16+1)
 	h.MajorVersion = ver >> 4
-	h.MinorVersion = ver | 0x0f
+	h.MinorVersion = ver & 0x0f
 	et, _ := packets.ReadB8(b, 16+2)
 	h.ExchangeType = IkeExchangeType(et)
 	flags, _ := packets.ReadB8(b, 16+3)
 	h.Flags = IkeFlags(flags)
-	h.Id, _ = packets.ReadB32(b, 16+4)
+	h.MsgId, _ = packets.ReadB32(b, 16+4)
 	h.MsgLength, _ = packets.ReadB32(b, 16+8)
 	if h.MsgLength < IKE_HEADER_LEN {
 		log.V(LOG_CODEC).Infof("")
-		err = ERR_INVALID_SYNTAX
-		return
+		return ERR_INVALID_SYNTAX
 	}
-
 	return
+}
 
+func (h *IkeHeader) Encode() (b []byte) {
+	b = make([]byte, IKE_HEADER_LEN)
+	copy(b, h.SpiI[:])
+	copy(b[8:], h.SpiR[:])
+	packets.WriteB8(b, 16, uint8(h.NextPayload))
+	packets.WriteB8(b, 17, h.MajorVersion<<4|h.MinorVersion)
+	packets.WriteB8(b, 18, uint8(h.ExchangeType))
+	packets.WriteB8(b, 19, uint8(h.Flags))
+	packets.WriteB32(b, 20, h.MsgId)
+	packets.WriteB32(b, 24, h.MsgLength)
+	return
 }
 
 /*
@@ -240,19 +252,33 @@ func (h *IkeHeader) Decode(b []byte) (err error) {
    | Next Payload  |C|  RESERVED   |         Payload Length        |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
+const (
+	PAYLOAD_HEADER_LENGTH = 4
+)
+
 type PayloadHeader struct {
-	NextPayload   PayloadType
+	nextPayload   PayloadType
 	IsCritical    bool
 	PayloadLength uint16
 }
 
+func (h *PayloadHeader) NextPayload() PayloadType {
+	return h.nextPayload
+}
+
+func encodePayloadHeader(pt PayloadType, plen uint16) (b []byte) {
+	b = make([]byte, PAYLOAD_HEADER_LENGTH)
+	packets.WriteB8(b, 0, uint8(pt))
+	packets.WriteB16(b, 2, plen+PAYLOAD_HEADER_LENGTH)
+	return
+}
 func (h *PayloadHeader) Decode(b []byte) (err error) {
 	if len(b) < 4 {
 		log.V(LOG_CODEC).Infof("Packet Too short : %d", len(b))
 		return ERR_INVALID_SYNTAX
 	}
 	pt, _ := packets.ReadB8(b, 0)
-	h.NextPayload = PayloadType(pt)
+	h.nextPayload = PayloadType(pt)
 	if c, _ := packets.ReadB8(b, 1); c&0x80 == 1 {
 		h.IsCritical = true
 	}
@@ -263,7 +289,8 @@ func (h *PayloadHeader) Decode(b []byte) (err error) {
 type Payload interface {
 	Type() PayloadType
 	Decode([]byte) error
-	// Encode() []byte
+	Encode() []byte
+	NextPayload() PayloadType
 }
 
 // payloads
@@ -301,7 +328,8 @@ func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	if at, _ := packets.ReadB16(b, 0); AttributeType(at|0x7f) != ATTRIBUTE_TYPE_KEY_LENGTH {
+	if at, _ := packets.ReadB16(b, 0); AttributeType(at&0x7fff) != ATTRIBUTE_TYPE_KEY_LENGTH {
+		log.V(LOG_CODEC).Infof("wrong attribute type, 0x%x", at)
 		err = ERR_INVALID_SYNTAX
 		return
 	}
@@ -328,7 +356,6 @@ func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
 */
 type Transform struct {
 	IsLast      bool
-	Length      uint16
 	Type        TransformType
 	TransformId uint16
 	Attributes  []*TransformAttribute
@@ -344,16 +371,26 @@ func decodeTransform(b []byte) (trans *Transform, used int, err error) {
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	tr := &Transform{}
+	trans = &Transform{}
 	if last, _ := packets.ReadB8(b, 0); last == 0 {
-		tr.IsLast = true
+		trans.IsLast = true
 	}
-	tr.Length, _ = packets.ReadB16(b, 2)
+	trLength, _ := packets.ReadB16(b, 2)
+	if len(b) < int(trLength) {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	if int(trLength) < MIN_LEN_TRANSFORM {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
 	trType, _ := packets.ReadB8(b, 4)
-	tr.Type = TransformType(trType)
-	tr.TransformId, _ = packets.ReadB16(b, 6)
-	used = 8
-	b = b[used:]
+	trans.Type = TransformType(trType)
+	trans.TransformId, _ = packets.ReadB16(b, 6)
+	// variable parts
+	b = b[MIN_LEN_TRANSFORM:int(trLength)]
 	for len(b) > 0 {
 		attr, attrUsed, attrErr := decodeAttribute(b)
 		if attrErr != nil {
@@ -361,8 +398,26 @@ func decodeTransform(b []byte) (trans *Transform, used int, err error) {
 			return
 		}
 		b = b[attrUsed:]
-		tr.Attributes = append(tr.Attributes, attr)
+		trans.Attributes = append(trans.Attributes, attr)
 	}
+	used = int(trLength)
+	return
+}
+func encodeTransform(trans *Transform, isLast bool) (b []byte) {
+	b = make([]byte, MIN_LEN_TRANSFORM)
+	if !isLast {
+		packets.WriteB8(b, 0, 3)
+	}
+	packets.WriteB8(b, 4, uint8(trans.Type))
+	packets.WriteB16(b, 6, trans.TransformId)
+	if len(trans.Attributes) != 0 {
+		// TODO - taken a shortcut for attribute
+		attr := make([]byte, 4)
+		packets.WriteB16(attr, 0, 0x8000|14) // key length in bits
+		packets.WriteB16(attr, 2, trans.Attributes[0].Value)
+		b = append(b, attr...)
+	}
+	packets.WriteB16(b, 2, uint16(len(b)))
 	return
 }
 
@@ -382,7 +437,6 @@ func decodeTransform(b []byte) (trans *Transform, used int, err error) {
 */
 type Proposal struct {
 	IsLast     bool
-	Length     uint16
 	Number     uint8
 	ProtocolId ProtocolId
 	Spi        []byte
@@ -403,22 +457,31 @@ func decodeProposal(b []byte) (prop *Proposal, used int, err error) {
 	if last, _ := packets.ReadB8(b, 0); last == 0 {
 		prop.IsLast = true
 	}
-	prop.Length, _ = packets.ReadB16(b, 2)
+	propLength, _ := packets.ReadB16(b, 2)
+	if len(b) < int(propLength) {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	if int(propLength) < MIN_LEN_PROPOSAL {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
+		return
+	}
 	prop.Number, _ = packets.ReadB8(b, 4)
 	pId, _ := packets.ReadB8(b, 5)
 	prop.ProtocolId = ProtocolId(pId)
 	spiSize, _ := packets.ReadB8(b, 6)
 	numTransforms, _ := packets.ReadB8(b, 7)
 	// variable parts
-	used = 8
-	if len(b) < 8+int(spiSize) {
+	if len(b) < MIN_LEN_PROPOSAL+int(spiSize) {
 		log.V(LOG_CODEC).Info("")
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	used = 8 + int(spiSize)
+	used = MIN_LEN_PROPOSAL + int(spiSize)
 	prop.Spi = append([]byte{}, b[8:used]...)
-	b = b[used:]
+	b = b[used:int(propLength)]
 	for len(b) > 0 {
 		trans, usedT, errT := decodeTransform(b)
 		if errT != nil {
@@ -427,30 +490,77 @@ func decodeProposal(b []byte) (prop *Proposal, used int, err error) {
 		}
 		prop.Transforms = append(prop.Transforms, trans)
 		b = b[usedT:]
+		if trans.IsLast {
+			if len(b) > 0 {
+				log.V(LOG_CODEC).Info("")
+				err = ERR_INVALID_SYNTAX
+				return
+			}
+			break
+		}
 	}
 	if len(prop.Transforms) != int(numTransforms) {
 		log.V(LOG_CODEC).Info("")
 		err = ERR_INVALID_SYNTAX
 		return
 	}
+	used = int(propLength)
+	return
+}
+func encodeProposal(prop *Proposal, number int, isLast bool) (b []byte) {
+	b = make([]byte, MIN_LEN_PROPOSAL)
+	if !isLast {
+		packets.WriteB8(b, 0, 2)
+	}
+	packets.WriteB8(b, 4, prop.Number)
+	packets.WriteB8(b, 5, uint8(prop.ProtocolId))
+	packets.WriteB8(b, 6, uint8(len(prop.Spi)))
+	packets.WriteB8(b, 7, uint8(len(prop.Transforms)))
+	b = append(b, prop.Spi...)
+	for idx, tr := range prop.Transforms {
+		var isLast bool
+		if idx == len(prop.Transforms)-1 {
+			isLast = true
+		}
+		b = append(b, encodeTransform(tr, isLast)...)
+	}
+	packets.WriteB16(b, 2, uint16(len(b)))
 	return
 }
 
 type SaPayload struct {
-	Header    PayloadHeader
+	*PayloadHeader
 	Proposals []*Proposal
 }
 
 func (s *SaPayload) Type() PayloadType { return PayloadTypeSA }
+func (s *SaPayload) Encode() (b []byte) {
+	for idx, prop := range s.Proposals {
+		var isLast bool
+		if idx == len(s.Proposals)-1 {
+			isLast = true
+		}
+		b = append(b, encodeProposal(prop, idx+1, isLast)...)
+	}
+	return
+}
 func (s *SaPayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	for len(b) > 0 {
-		prop, used, err := decodeProposal(b)
-		if err != nil {
-			return err
+		prop, used, errP := decodeProposal(b)
+		if errP != nil {
+			return errP
 		}
 		s.Proposals = append(s.Proposals, prop)
 		b = b[used:]
+		if prop.IsLast {
+			if len(b) > 0 {
+				log.V(LOG_CODEC).Info("")
+				err = ERR_INVALID_SYNTAX
+				return
+			}
+			break
+		}
 	}
 	return
 }
@@ -471,17 +581,22 @@ func (s *SaPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type KePayload struct {
-	Header     PayloadHeader
-	DhGroupNum DhTransformId
-	KeyData    []byte
+	*PayloadHeader
+	DhTransformId DhTransformId
+	KeyData       *big.Int
 }
 
 func (s *KePayload) Type() PayloadType { return PayloadTypeKE }
+func (s *KePayload) Encode() (b []byte) {
+	b = make([]byte, 4)
+	packets.WriteB16(b, 0, uint16(s.DhTransformId))
+	return append(b, s.KeyData.Bytes()...)
+}
 func (s *KePayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	gn, _ := packets.ReadB16(b, 0)
-	s.DhGroupNum = DhTransformId(gn)
-	s.KeyData = append([]byte{}, b[4:]...)
+	s.DhTransformId = DhTransformId(gn)
+	s.KeyData = new(big.Int).SetBytes(b[4:])
 	return
 }
 
@@ -510,13 +625,14 @@ const (
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type IdPayload struct {
-	Header        PayloadHeader
+	*PayloadHeader
 	IdPayloadType PayloadType
 	IdType        IdType
 	Data          []byte
 }
 
-func (s *IdPayload) Type() PayloadType { return s.IdPayloadType }
+func (s *IdPayload) Type() PayloadType  { return s.IdPayloadType }
+func (s *IdPayload) Encode() (b []byte) { return }
 func (s *IdPayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	Idt, _ := packets.ReadB8(b, 0)
@@ -537,10 +653,11 @@ func (s *IdPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type CertPayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 }
 
-func (s *CertPayload) Type() PayloadType { return PayloadTypeCERT }
+func (s *CertPayload) Type() PayloadType  { return PayloadTypeCERT }
+func (s *CertPayload) Encode() (b []byte) { return }
 func (s *CertPayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	// TODO
@@ -559,10 +676,11 @@ func (s *CertPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type CertRequestPayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 }
 
-func (s *CertRequestPayload) Type() PayloadType { return PayloadTypeCERTREQ }
+func (s *CertRequestPayload) Type() PayloadType  { return PayloadTypeCERTREQ }
+func (s *CertRequestPayload) Encode() (b []byte) { return }
 func (s *CertRequestPayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	// TODO
@@ -590,12 +708,13 @@ const (
 )
 
 type AuthPayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 	Method AuthMethod
 	Data   []byte
 }
 
-func (s *AuthPayload) Type() PayloadType { return PayloadTypeAUTH }
+func (s *AuthPayload) Type() PayloadType  { return PayloadTypeAUTH }
+func (s *AuthPayload) Encode() (b []byte) { return }
 func (s *AuthPayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	authMethod, _ := packets.ReadB8(b, 0)
@@ -615,23 +734,23 @@ func (s *AuthPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type NoncePayload struct {
-	Header PayloadHeader
-	// NoncePayloadType PayloadType
-	Data []byte
+	*PayloadHeader
+	Nonce *big.Int
 }
 
 func (s *NoncePayload) Type() PayloadType {
 	return PayloadTypeNonce
 }
+func (s *NoncePayload) Encode() (b []byte) { return s.Nonce.Bytes() }
 func (s *NoncePayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	// between 16 and 256 octets
-	s.Data = append([]byte{}, b[4:]...)
-	if len(s.Data) < 16 || len(s.Data) > 256 {
+	if len(b) < 16 || len(b) > 256 {
 		log.V(LOG_CODEC).Info("")
 		err = ERR_INVALID_SYNTAX
 		return
 	}
+	s.Nonce = new(big.Int).SetBytes(b)
 	return
 }
 
@@ -688,7 +807,7 @@ const (
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type NotifyPayload struct {
-	Header           PayloadHeader
+	*PayloadHeader
 	ProtocolId       ProtocolId
 	NotificationType NotificationType
 	Spi              []byte
@@ -698,6 +817,7 @@ type NotifyPayload struct {
 func (s *NotifyPayload) Type() PayloadType {
 	return PayloadTypeN
 }
+func (s *NotifyPayload) Encode() (b []byte) { return }
 func (s *NotifyPayload) Decode(b []byte) (err error) {
 	pId, _ := packets.ReadB8(b, 0)
 	s.ProtocolId = ProtocolId(pId)
@@ -727,12 +847,13 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type DeletePayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 }
 
 func (s *DeletePayload) Type() PayloadType {
 	return PayloadTypeD
 }
+func (s *DeletePayload) Encode() (b []byte) { return }
 func (s *DeletePayload) Decode(b []byte) (err error) {
 	// TODO
 	return
@@ -749,12 +870,13 @@ func (s *DeletePayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type VendorIdPayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 }
 
 func (s *VendorIdPayload) Type() PayloadType {
 	return PayloadTypeV
 }
+func (s *VendorIdPayload) Encode() (b []byte) { return }
 func (s *VendorIdPayload) Decode(b []byte) (err error) {
 	// TODO
 	return
@@ -845,12 +967,13 @@ func decodeSelector(b []byte) (sel *Selector, used int, err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type TrafficSelectorPayload struct {
-	Header                     PayloadHeader
+	*PayloadHeader
 	TrafficSelectorPayloadType PayloadType
 	Selectors                  []*Selector
 }
 
-func (s *TrafficSelectorPayload) Type() PayloadType { return s.TrafficSelectorPayloadType }
+func (s *TrafficSelectorPayload) Type() PayloadType  { return s.TrafficSelectorPayloadType }
+func (s *TrafficSelectorPayload) Encode() (b []byte) { return }
 func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
 	for len(b) > 0 {
 		sel, used, serr := decodeSelector(b)
@@ -883,13 +1006,14 @@ func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type EncryptedPayload struct {
-	Header   PayloadHeader
+	*PayloadHeader
 	IV       []byte
 	Data     []byte
 	Checksum []byte
 }
 
-func (s *EncryptedPayload) Type() PayloadType { return PayloadTypeSK }
+func (s *EncryptedPayload) Type() PayloadType  { return PayloadTypeSK }
+func (s *EncryptedPayload) Encode() (b []byte) { return }
 func (s *EncryptedPayload) Decode(b []byte) (err error) {
 	// TODO
 	return
@@ -908,10 +1032,11 @@ func (s *EncryptedPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type ConfigurationPayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 }
 
-func (s *ConfigurationPayload) Type() PayloadType { return PayloadTypeCP }
+func (s *ConfigurationPayload) Type() PayloadType  { return PayloadTypeCP }
+func (s *ConfigurationPayload) Encode() (b []byte) { return }
 func (s *ConfigurationPayload) Decode(b []byte) (err error) {
 	// TODO
 	return
@@ -928,10 +1053,11 @@ func (s *ConfigurationPayload) Decode(b []byte) (err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type EapPayload struct {
-	Header PayloadHeader
+	*PayloadHeader
 }
 
-func (s *EapPayload) Type() PayloadType { return PayloadTypeEAP }
+func (s *EapPayload) Type() PayloadType  { return PayloadTypeEAP }
+func (s *EapPayload) Encode() (b []byte) { return }
 func (s *EapPayload) Decode(b []byte) (err error) {
 	// TODO
 	return
@@ -969,22 +1095,25 @@ func (s *EapPayload) Decode(b []byte) (err error) {
 //  HDR(SPIi=xxx, SPIr=yyy, CREATE_CHILD_SA, Flags: Initiator | Response, Message ID=m),
 //  SK {N(NO_ADDITIONAL_SAS)}
 
+type Payloads map[PayloadType]Payload
 type Message struct {
-	Header   *IkeHeader
-	Payloads []Payload
+	IkeHeader *IkeHeader
+	Payloads  Payloads
 }
 
 func (s *Message) Decode(b []byte) (err error) {
-	s.Header = &IkeHeader{}
-	if err = s.Header.Decode(b[:IKE_HEADER_LEN]); err != nil {
+	s.Payloads = make(Payloads)
+	s.IkeHeader = &IkeHeader{}
+	if err = s.IkeHeader.Decode(b[:IKE_HEADER_LEN]); err != nil {
 		return
 	}
-	if len(b) < int(s.Header.MsgLength) {
+	if len(b) < int(s.IkeHeader.MsgLength) {
+		log.V(LOG_CODEC).Info("")
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	nextPayload := s.Header.NextPayload
-	b = b[IKE_HEADER_LEN:s.Header.MsgLength]
+	nextPayload := s.IkeHeader.NextPayload
+	b = b[IKE_HEADER_LEN:s.IkeHeader.MsgLength]
 	for nextPayload != PayloadTypeNone {
 		pHeader := &PayloadHeader{}
 		if err = pHeader.Decode(b); err != nil {
@@ -993,43 +1122,60 @@ func (s *Message) Decode(b []byte) (err error) {
 		var payload Payload
 		switch nextPayload {
 		case PayloadTypeSA:
-			payload = &SaPayload{}
+			payload = &SaPayload{PayloadHeader: pHeader}
 		case PayloadTypeKE:
-			payload = &KePayload{}
+			payload = &KePayload{PayloadHeader: pHeader}
 		case PayloadTypeIDi:
-			payload = &IdPayload{IdPayloadType: PayloadTypeIDi}
+			payload = &IdPayload{PayloadHeader: pHeader, IdPayloadType: PayloadTypeIDi}
 		case PayloadTypeIDr:
-			payload = &IdPayload{IdPayloadType: PayloadTypeIDr}
+			payload = &IdPayload{PayloadHeader: pHeader, IdPayloadType: PayloadTypeIDr}
 		case PayloadTypeCERT:
-			payload = &CertPayload{}
+			payload = &CertPayload{PayloadHeader: pHeader}
 		case PayloadTypeCERTREQ:
-			payload = &CertRequestPayload{}
+			payload = &CertRequestPayload{PayloadHeader: pHeader}
 		case PayloadTypeAUTH:
-			payload = &AuthPayload{}
+			payload = &AuthPayload{PayloadHeader: pHeader}
 		case PayloadTypeNonce:
-			payload = &NoncePayload{}
+			payload = &NoncePayload{PayloadHeader: pHeader}
 		case PayloadTypeN:
-			payload = &NotifyPayload{}
+			payload = &NotifyPayload{PayloadHeader: pHeader}
 		case PayloadTypeD:
-			payload = &DeletePayload{}
+			payload = &DeletePayload{PayloadHeader: pHeader}
 		case PayloadTypeV:
-			payload = &VendorIdPayload{}
+			payload = &VendorIdPayload{PayloadHeader: pHeader}
 		case PayloadTypeTSi:
-			payload = &TrafficSelectorPayload{TrafficSelectorPayloadType: PayloadTypeTSi}
+			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, TrafficSelectorPayloadType: PayloadTypeTSi}
 		case PayloadTypeTSr:
-			payload = &TrafficSelectorPayload{TrafficSelectorPayloadType: PayloadTypeTSr}
+			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, TrafficSelectorPayloadType: PayloadTypeTSr}
 		case PayloadTypeSK:
-			payload = &EncryptedPayload{}
+			payload = &EncryptedPayload{PayloadHeader: pHeader}
 		case PayloadTypeCP:
-			payload = &ConfigurationPayload{}
+			payload = &ConfigurationPayload{PayloadHeader: pHeader}
 		case PayloadTypeEAP:
-			payload = &EapPayload{}
+			payload = &EapPayload{PayloadHeader: pHeader}
 		}
-		pbuf := b[8:pHeader.PayloadLength]
+		pbuf := b[PAYLOAD_HEADER_LENGTH:pHeader.PayloadLength]
 		if err = payload.Decode(pbuf); err != nil {
 			return
 		}
-		nextPayload = pHeader.NextPayload
+		nextPayload = pHeader.nextPayload
+		b = b[pHeader.PayloadLength:]
+		s.Payloads[payload.Type()] = payload
 	}
+	return
+}
+
+func (s *Message) Encode() (b []byte) {
+	ty := s.IkeHeader.NextPayload
+	for ty != PayloadTypeNone {
+		pl := s.Payloads[ty]
+		body := pl.Encode()
+		ty = pl.NextPayload()
+		hdr := encodePayloadHeader(ty, uint16(len(body)))
+		b = append(b, hdr...)
+		b = append(b, body...)
+	}
+	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN)
+	b = append(s.IkeHeader.Encode(), b...)
 	return
 }

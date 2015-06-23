@@ -1,5 +1,11 @@
 package ike
 
+import (
+	"crypto/rand"
+	"fmt"
+	"math/big"
+)
+
 // ike-seperation.pdf
 
 // 2.1.2 IKE_SA_INIT
@@ -12,20 +18,49 @@ package ike
 // tkm creates SK, AUTH
 
 // 2.1.4 CREATE_CHILD_SA
-// a->b HDR, SK {SA, Ni, [KEi], TSi, TSr}
-// b->a HDR, SK {SA, Nr, [KEr], TSi, TSr}
 // tkm creates SK, Ni, [KEi]
+
+func InitTkm(dhTransform DhTransformId, nonceLength int) (tkm *Tkm, err error) {
+	nonce, err := rand.Prime(rand.Reader, nonceLength)
+	if err != nil {
+		return nil, err
+	}
+	dhGroup, ok := kexAlgoMap[dhTransform]
+	if !ok {
+		return nil, fmt.Errorf("Missing dh transfom %s", dhTransform)
+	}
+	dhPrivate, err := dhGroup.private(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	return &Tkm{
+		Nonce:     nonce,
+		dhGroup:   dhGroup,
+		dhPrivate: dhPrivate,
+	}, nil
+}
+
+type Tkm struct {
+	// nonce length must be at least half of chosen prf
+	Nonce, NonceO *big.Int
+
+	*dhGroup
+	dhPrivate *big.Int
+	dhShared  *big.Int
+}
 
 // 4.1.2 creation of ike sa
 
 // The client gets the nonce & dh public value
-func nc_create(nc_id []byte) (ni []byte) { return }
-
+func nc_create(nc_id []byte) (ni []byte)            { return }
 func dh_create(dh_id, hd_group []byte) (kei []byte) { return }
 
 // upon receipt of peers resp, a dh shared secret can be calculated
 // client creates & stores the dh key
-func dh_generate_key(hd_id, ker []byte) {}
+func (t *Tkm) DhGenerateKey(theirPublic *big.Int) (err error) {
+	t.dhShared, err = t.dhGroup.diffieHellman(theirPublic, t.dhPrivate)
+	return
+}
 
 // create ike sa
 func isa_create(isa_id, ae_id, ia_id, dh_id, nc_id, nr, init, spi_loc, spi_rem []byte) (sk_ai, sk_ar, sk_ei, sk_er []byte) {
