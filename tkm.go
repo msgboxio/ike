@@ -1,8 +1,12 @@
 package ike
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"errors"
 	"fmt"
+	"hash"
 	"math/big"
 )
 
@@ -20,50 +24,140 @@ import (
 // 2.1.4 CREATE_CHILD_SA
 // tkm creates SK, Ni, [KEi]
 
-func InitTkm(dhTransform DhTransformId, nonceLength int) (tkm *Tkm, err error) {
-	nonce, err := rand.Prime(rand.Reader, nonceLength)
-	if err != nil {
+func InitTkmResponder(dhTransform DhTransformId, theirPublic, no *big.Int) (tkm *Tkm, err error) {
+	tkm = &Tkm{
+		isInitiator: false,
+		Ni:          no,
+	}
+	// at least 128 bits & at least half the key size of the negotiated prf
+	if err := tkm.NcCreate(no.BitLen()); err != nil {
 		return nil, err
 	}
-	dhGroup, ok := kexAlgoMap[dhTransform]
-	if !ok {
-		return nil, fmt.Errorf("Missing dh transfom %s", dhTransform)
-	}
-	dhPrivate, err := dhGroup.private(rand.Reader)
-	if err != nil {
+	if _, err := tkm.DhCreate(dhTransform); err != nil {
 		return nil, err
 	}
-	return &Tkm{
-		Nonce:     nonce,
-		dhGroup:   dhGroup,
-		dhPrivate: dhPrivate,
-	}, nil
+	if err := tkm.DhGenerateKey(theirPublic); err != nil {
+		return nil, err
+	}
+	return tkm, nil
 }
 
 type Tkm struct {
-	// nonce length must be at least half of chosen prf
-	Nonce, NonceO *big.Int
+	isInitiator bool
 
-	*dhGroup
-	dhPrivate *big.Int
-	dhShared  *big.Int
+	Nr, Ni *big.Int
+
+	DhGroup             *dhGroup
+	DhPrivate, DhPublic *big.Int
+	DhShared            *big.Int
+
+	SKEYSEED, KEYMAT                        []byte
+	skD, skAi, skAr, skEi, skEr, skPi, skPr []byte
 }
 
 // 4.1.2 creation of ike sa
 
-// The client gets the nonce & dh public value
-func nc_create(nc_id []byte) (ni []byte)            { return }
-func dh_create(dh_id, hd_group []byte) (kei []byte) { return }
+// The client gets the Nr
+func (t *Tkm) NcCreate(bits int) (err error) {
+	no, err := rand.Prime(rand.Reader, bits)
+	if t.isInitiator {
+		t.Ni = no
+	} else {
+		t.Nr = no
+	}
+	return
+}
+
+// the client get the dh public value
+func (t *Tkm) DhCreate(dhTransform DhTransformId) (n *big.Int, err error) {
+	t.DhGroup, _ = kexAlgoMap[dhTransform]
+	if t.DhGroup == nil {
+		return nil, fmt.Errorf("Missing dh transfom %s", dhTransform)
+	}
+	t.DhPrivate, err = t.DhGroup.private(rand.Reader)
+	if err != nil {
+		return nil, err
+	}
+	t.DhPublic = t.DhGroup.public(t.DhPrivate)
+	return t.DhPublic, nil
+}
 
 // upon receipt of peers resp, a dh shared secret can be calculated
 // client creates & stores the dh key
 func (t *Tkm) DhGenerateKey(theirPublic *big.Int) (err error) {
-	t.dhShared, err = t.dhGroup.diffieHellman(theirPublic, t.dhPrivate)
+	t.DhShared, err = t.DhGroup.diffieHellman(theirPublic, t.DhPrivate)
 	return
 }
 
+func prf(key, data []byte, h func() hash.Hash) []byte {
+	mac := hmac.New(h, key)
+	mac.Write(data)
+	return mac.Sum(nil)
+}
+
+func prfplus(key, data []byte, bits int, h func() hash.Hash) []byte {
+	var ret, prev []byte
+	var round int = 1
+	for len(ret) < bits {
+		prev = prf(key, append(append(prev, data...), byte(round)), h)
+		ret = append(ret, prev...)
+		round += 1
+	}
+	return ret[:bits]
+}
+
 // create ike sa
-func isa_create(isa_id, ae_id, ia_id, dh_id, nc_id, nr, init, spi_loc, spi_rem []byte) (sk_ai, sk_ar, sk_ei, sk_er []byte) {
+func (t *Tkm) IsaCreate(spiI, spiR []byte) []byte {
+	// SKEYSEED = prf(Ni | Nr, g^ir)
+	t.SKEYSEED = prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes(), sha256.New)
+	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
+	keymat := prfplus(t.SKEYSEED,
+		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
+		32*7, sha256.New)
+	t.skD = keymat[0:7]
+	t.skAi = keymat[8:15]
+	t.skAr = keymat[16:23]
+	t.skEi = keymat[24:31]
+	t.skEr = keymat[32:39]
+	t.skPi = keymat[40:47]
+	t.skPr = keymat[48:55]
+	return keymat
+}
+
+const MACLEN = 16
+
+// CheckMAC returns true if messageMAC is a valid HMAC tag for message.
+func CheckMAC(message, messageMAC, key []byte) bool {
+	mac := hmac.New(sha256.New, key)
+	mac.Write(message)
+	expectedMAC := mac.Sum(nil)
+	return hmac.Equal(messageMAC, expectedMAC)
+}
+
+// need the entire message here
+func (t *Tkm) VerifyMac(b []byte) (err error) {
+	l := len(b)
+	mac := b[l-MACLEN:]
+	msg := b[:l-(MACLEN+1)]
+	key := t.skAi
+	if t.isInitiator {
+		key = t.skAr
+	}
+	if !CheckMAC(msg, mac, key) {
+		return errors.New("HMAC verify failed: ")
+	}
+	return
+}
+
+func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
+	// iv_len := 16
+	// iv := b[0:iv_len]
+	// ciphertext := b[iv_len:]
+	// key := t.skEi
+	// if t.isInitiator {
+	// 	key = t.skEr
+	// }
+	err = errors.New("not yet")
 	return
 }
 
