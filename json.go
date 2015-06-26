@@ -1,6 +1,9 @@
 package ike
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 func (p PayloadType) String() string {
 	switch p {
@@ -48,4 +51,11 @@ func (p Payloads) MarshalJSON() ([]byte, error) {
 		jmap[k.String()] = j
 	}
 	return json.Marshal(jmap)
+}
+
+func (t Transform) MarshalJSON() ([]byte, error) {
+	if str, ok := transforms[t]; ok {
+		return []byte(fmt.Sprintf("\"%s\"", str)), nil
+	}
+	return json.Marshal(t)
 }
