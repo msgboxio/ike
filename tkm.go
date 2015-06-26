@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -8,6 +9,8 @@ import (
 	"fmt"
 	"hash"
 	"math/big"
+
+	"github.com/dgryski/go-camellia"
 )
 
 // ike-seperation.pdf
@@ -54,6 +57,13 @@ type Tkm struct {
 	SKEYSEED, KEYMAT                        []byte
 	skD, skAi, skAr, skEi, skEr, skPi, skPr []byte
 }
+
+var (
+	MACLEN = 16
+	HASH   = sha256.New
+
+	IV_LEN_CAMELLIA = 16
+)
 
 // 4.1.2 creation of ike sa
 
@@ -107,57 +117,93 @@ func prfplus(key, data []byte, bits int, h func() hash.Hash) []byte {
 }
 
 // create ike sa
-func (t *Tkm) IsaCreate(spiI, spiR []byte) []byte {
+func (t *Tkm) IsaCreate(spiI, spiR []byte) {
 	// SKEYSEED = prf(Ni | Nr, g^ir)
-	t.SKEYSEED = prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes(), sha256.New)
+	t.SKEYSEED = prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes(), HASH)
 	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
-	keymat := prfplus(t.SKEYSEED,
+	t.KEYMAT = prfplus(t.SKEYSEED,
 		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
-		32*7, sha256.New)
-	t.skD = keymat[0:7]
-	t.skAi = keymat[8:15]
-	t.skAr = keymat[16:23]
-	t.skEi = keymat[24:31]
-	t.skEr = keymat[32:39]
-	t.skPi = keymat[40:47]
-	t.skPr = keymat[48:55]
-	return keymat
+		32*7, HASH)
+	t.skD, t.skAi, t.skAr, t.skEi, t.skEr, t.skPi, t.skPr = t.KEYMAT[0:32], t.KEYMAT[32:32*2], t.KEYMAT[32*2:32*3], t.KEYMAT[32*3:32*4], t.KEYMAT[32*4:32*5], t.KEYMAT[32*5:32*6], t.KEYMAT[32*6:32*7]
+
+	// fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
+	// 	hex.Dump(t.skD),
+	// 	hex.Dump(t.skAi),
+	// 	hex.Dump(t.skAr),
+	// 	hex.Dump(t.skEi),
+	// 	hex.Dump(t.skEr),
+	// 	hex.Dump(t.skPi),
+	// 	hex.Dump(t.skPr))
 }
 
-const MACLEN = 16
-
-// CheckMAC returns true if messageMAC is a valid HMAC tag for message.
-func CheckMAC(message, messageMAC, key []byte) bool {
-	mac := hmac.New(sha256.New, key)
+// checkMAC returns true if messageMAC is a valid HMAC tag for message.
+func checkMAC(message, messageMAC, key []byte) bool {
+	mac := hmac.New(HASH, key)
 	mac.Write(message)
-	expectedMAC := mac.Sum(nil)
+	expectedMAC := mac.Sum(nil)[:MACLEN]
 	return hmac.Equal(messageMAC, expectedMAC)
 }
 
-// need the entire message here
+// verify message appended with mac
 func (t *Tkm) VerifyMac(b []byte) (err error) {
 	l := len(b)
 	mac := b[l-MACLEN:]
-	msg := b[:l-(MACLEN+1)]
+	msg := b[:l-MACLEN]
 	key := t.skAi
 	if t.isInitiator {
 		key = t.skAr
 	}
-	if !CheckMAC(msg, mac, key) {
+	if !checkMAC(msg, mac, key) {
 		return errors.New("HMAC verify failed: ")
 	}
 	return
 }
 
 func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
-	// iv_len := 16
-	// iv := b[0:iv_len]
-	// ciphertext := b[iv_len:]
-	// key := t.skEi
-	// if t.isInitiator {
-	// 	key = t.skEr
-	// }
-	err = errors.New("not yet")
+	iv := b[0:IV_LEN_CAMELLIA]
+	ciphertext := b[IV_LEN_CAMELLIA:]
+	key := t.skEi
+	if t.isInitiator {
+		key = t.skEr
+	}
+	// CBC mode always works in whole blocks.
+	if len(ciphertext)%camellia.BlockSize != 0 {
+		err = errors.New("ciphertext is not a multiple of the block size")
+		return
+	}
+	block, err := camellia.New(key)
+	if err != nil {
+		return
+	}
+	mode := cipher.NewCBCDecrypter(block, iv)
+	mode.CryptBlocks(ciphertext, ciphertext)
+	padlen := ciphertext[len(ciphertext)-1]
+	dec = ciphertext[:len(ciphertext)-1-int(padlen)]
+	return
+}
+
+func (tkm *Tkm) VerifyDecrypt(ike []byte) (nextPayload PayloadType, dec []byte, err error) {
+	b := ike[IKE_HEADER_LEN:]
+	pHeader := &PayloadHeader{}
+	if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
+		return
+	}
+	nextPayload = pHeader.NextPayload
+	if err = tkm.VerifyMac(ike); err != nil {
+		return
+	}
+	dec, err = tkm.Decrypt(b[PAYLOAD_HEADER_LENGTH:])
+	return
+}
+
+func (*Tkm) HashLength() int {
+	return MACLEN
+}
+
+func (tkm *Tkm) Mac([]byte) (b []byte) {
+	return
+}
+func (tkm *Tkm) Encrypt([]byte) (b []byte) {
 	return
 }
 

@@ -701,12 +701,14 @@ const (
 */
 type IdPayload struct {
 	*PayloadHeader
-	IdPayloadType PayloadType
+	idPayloadType PayloadType
 	IdType        IdType
 	Data          []byte
 }
 
-func (s *IdPayload) Type() PayloadType { return s.IdPayloadType }
+func (s *IdPayload) Type() PayloadType {
+	return s.idPayloadType
+}
 func (s *IdPayload) Encode() (b []byte) {
 	b = []byte{uint8(s.IdType), 0, 0, 0}
 	return append(b, s.Data...)
@@ -1079,12 +1081,12 @@ const (
 
 type TrafficSelectorPayload struct {
 	*PayloadHeader
-	TrafficSelectorPayloadType PayloadType
+	trafficSelectorPayloadType PayloadType
 	Selectors                  []*Selector
 }
 
 func (s *TrafficSelectorPayload) Type() PayloadType {
-	return s.TrafficSelectorPayloadType
+	return s.trafficSelectorPayloadType
 }
 func (s *TrafficSelectorPayload) Encode() (b []byte) {
 	b = []byte{uint8(len(s.Selectors)), 0, 0, 0}
@@ -1110,7 +1112,7 @@ func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
 		}
 		s.Selectors = append(s.Selectors, sel)
 		b = b[used:]
-		if len(s.Selectors) >= int(numSel) {
+		if len(s.Selectors) != int(numSel) {
 			err = ERR_INVALID_SYNTAX
 			log.V(LOG_CODEC).Info("")
 			return
@@ -1136,16 +1138,6 @@ func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
    ~                    Integrity Checksum Data                    ~
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
-
-func VerifyDecrypt(tkm *Tkm, ike []byte, b []byte) (dec []byte, err error) {
-	if tkm == nil {
-		return nil, errors.New("cant decrypt, no tkm found")
-	}
-	if err = tkm.VerifyMac(ike); err != nil {
-		return nil, err
-	}
-	return tkm.Decrypt(b)
-}
 
 /*
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -1226,10 +1218,35 @@ func (s *EapPayload) Decode(b []byte) (err error) {
 //  SK {SA, Nr, KEr} - ike sa
 //  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
 
-type Payloads map[PayloadType]Payload
+type Payloads struct {
+	Map   map[PayloadType]int
+	Array []Payload
+}
+
+func makePayloads() *Payloads {
+	return &Payloads{
+		Map: make(map[PayloadType]int),
+	}
+}
+
+func (p *Payloads) Get(t PayloadType) Payload {
+	if idx, ok := p.Map[t]; ok {
+		return p.Array[idx]
+	}
+	return nil
+}
+func (p *Payloads) Add(t Payload) {
+	if idx, ok := p.Map[t.Type()]; ok {
+		p.Array[idx] = t
+		return
+	}
+	p.Array = append(p.Array, t)
+	p.Map[t.Type()] = len(p.Array) - 1
+}
+
 type Message struct {
 	IkeHeader *IkeHeader
-	Payloads  Payloads
+	Payloads  *Payloads
 }
 
 func (s *Message) DecodeHeader(b []byte) (err error) {
@@ -1238,7 +1255,7 @@ func (s *Message) DecodeHeader(b []byte) (err error) {
 }
 
 func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
-	s.Payloads = make(Payloads)
+	s.Payloads = makePayloads()
 	if len(ib) < int(s.IkeHeader.MsgLength) {
 		log.V(LOG_CODEC).Info("")
 		err = ERR_INVALID_SYNTAX
@@ -1247,12 +1264,11 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 	nextPayload := s.IkeHeader.NextPayload
 	b := ib[IKE_HEADER_LEN:s.IkeHeader.MsgLength]
 	if nextPayload == PayloadTypeSK {
-		pHeader := &PayloadHeader{}
-		if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
+		if tkm == nil {
+			err = errors.New("cant decrypt, no tkm found")
 			return
 		}
-		nextPayload = pHeader.NextPayload
-		if b, err = VerifyDecrypt(tkm, ib, b[PAYLOAD_HEADER_LENGTH:pHeader.PayloadLength]); err != nil {
+		if nextPayload, b, err = tkm.VerifyDecrypt(ib); err != nil {
 			return
 		}
 	}
@@ -1268,9 +1284,9 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		case PayloadTypeKE:
 			payload = &KePayload{PayloadHeader: pHeader}
 		case PayloadTypeIDi:
-			payload = &IdPayload{PayloadHeader: pHeader, IdPayloadType: PayloadTypeIDi}
+			payload = &IdPayload{PayloadHeader: pHeader, idPayloadType: PayloadTypeIDi}
 		case PayloadTypeIDr:
-			payload = &IdPayload{PayloadHeader: pHeader, IdPayloadType: PayloadTypeIDr}
+			payload = &IdPayload{PayloadHeader: pHeader, idPayloadType: PayloadTypeIDr}
 		case PayloadTypeCERT:
 			payload = &CertPayload{PayloadHeader: pHeader}
 		case PayloadTypeCERTREQ:
@@ -1286,9 +1302,9 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		case PayloadTypeV:
 			payload = &VendorIdPayload{PayloadHeader: pHeader}
 		case PayloadTypeTSi:
-			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, TrafficSelectorPayloadType: PayloadTypeTSi}
+			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, trafficSelectorPayloadType: PayloadTypeTSi}
 		case PayloadTypeTSr:
-			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, TrafficSelectorPayloadType: PayloadTypeTSr}
+			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, trafficSelectorPayloadType: PayloadTypeTSr}
 		case PayloadTypeCP:
 			payload = &ConfigurationPayload{PayloadHeader: pHeader}
 		case PayloadTypeEAP:
@@ -1300,22 +1316,39 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		}
 		nextPayload = pHeader.NextPayload
 		b = b[pHeader.PayloadLength:]
-		s.Payloads[payload.Type()] = payload
+		s.Payloads.Add(payload)
 	}
 	return
 }
 
-func (s *Message) Encode() (b []byte) {
-	ty := s.IkeHeader.NextPayload
-	for ty != PayloadTypeNone {
-		pl := s.Payloads[ty]
+func encodePayloads(payloads *Payloads) (b []byte) {
+	// fmt.Printf("%s\n", *payloads)
+	for _, pl := range payloads.Array {
 		body := pl.Encode()
-		ty = pl.NextPayloadType()
-		hdr := encodePayloadHeader(ty, uint16(len(body)))
+		hdr := encodePayloadHeader(pl.NextPayloadType(), uint16(len(body)))
 		b = append(b, hdr...)
 		b = append(b, body...)
 	}
-	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN)
-	b = append(s.IkeHeader.Encode(), b...)
+	return
+}
+
+func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
+	nextPayload := s.IkeHeader.NextPayload
+	if nextPayload == PayloadTypeSK {
+		if tkm == nil {
+			err = errors.New("cant decrypt, no tkm found")
+			return
+		}
+		// nextPayload = s.Payloads.Get(PayloadTypeSK).NextPayloadType()
+		encr := tkm.Encrypt(encodePayloads(s.Payloads))
+		b = append(encodePayloadHeader(PayloadTypeSK, uint16(len(encr))), encr...)
+		s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + tkm.HashLength())
+		b = append(s.IkeHeader.Encode(), b...)
+		b = append(b, tkm.Mac(b)...)
+	} else {
+		b = encodePayloads(s.Payloads)
+		s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN)
+		b = append(s.IkeHeader.Encode(), b...)
+	}
 	return
 }

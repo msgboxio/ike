@@ -8,6 +8,8 @@ import (
 	"net"
 	"testing"
 
+	"math/big"
+
 	"msgbox.io/packets"
 
 	"code.google.com/p/gopacket/bytediff"
@@ -86,35 +88,52 @@ func testDecode(dec []byte, t *testing.T) *Message {
 	}
 	t.Logf("\n%s", string(js))
 
-	enc := msg.Encode()
+	enc, err := msg.Encode(tkm)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Equal(enc, dec) {
 		t.Errorf("comapre failed\n%s", bytediff.BashOutput.String(bytediff.Diff(dec, enc)))
 	}
 	return msg
 }
 
-func testDecodeInit(dec []byte, t *testing.T) *Message {
-	msg := testDecode(dec, t)
-	ke := msg.Payloads[PayloadTypeKE].(*KePayload)
-	no := msg.Payloads[PayloadTypeNonce].(*NoncePayload)
-	tkm, err := InitTkmResponder(ke.DhTransformId, ke.KeyData, no.Nonce)
-	if err != nil {
-		t.Fatal(err)
-	}
-	env[msg.IkeHeader.SpiI] = tkm
-	return msg
-
-}
 func TestDecode(t *testing.T) {
 	env = make(map[Spi]*Tkm)
 	dec := packets.Hexit(sa_init).Bytes()
-	testDecodeInit(dec, t)
-	// for _, v := range env {
-	// 	js, _ := json.Marshal(v)
-	// 	t.Logf("Tkm: %s", js)
-	// }
+
+	msg := testDecode(dec, t)
+
+	shared := `327adb6c8f7185d4897b652861f5474f8e7be3882853093029d15747645cae97be69b476e0a11a12d03ea6d6ebabc51aedc7c66399b6c7d6a2e3da2b087834762e0ca23ede6a9a0a6948e8291a13969c9be0961eff40c06700c279cb99983e1f22ddba4ead1c2cd180832b534e0bfe5a2a3d4210d721efb1868b555e1912e98133c0b690abfd16e0e5d01c99c73934c380aa7c2363179069d2c8abfc061a1107e9cfa40ce3735258fcf81456bff7edc2bd63b99e2c32ff6ec33f2552b80ce870f3d268d47c72ef61c8c9e8ebe975e7012f8b79a75b2ddf914048c69b169c2f67a816c276fb1dff11fcc63e883a51505baecfb581ab375534b52d43e441996089`
+	dhShared, ok := new(big.Int).SetString(shared, 16)
+	if !ok {
+		t.Fatal(3)
+	}
+
+	no := msg.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
+	tkm := &Tkm{
+		isInitiator: false,
+		Ni:          no.Nonce,
+		Nr:          no.Nonce,
+		DhGroup:     kexAlgoMap[MODP_2048],
+		DhShared:    dhShared,
+	}
+	spiI, _ := hex.DecodeString("928f3f581f05a563")
+	tkm.IsaCreate(spiI, []byte{})
+
+	env[msg.IkeHeader.SpiI] = tkm
+
 	dec = packets.Hexit(auth_psk).Bytes()
 	testDecode(dec, t)
+}
+
+func testDecodeInit(dec []byte, t *testing.T) *Message {
+	// ke := msg.Payloads[PayloadTypeKE].(*KePayload)
+	// tkm, err := InitTkmResponder(ke.DhTransformId, ke.KeyData, no.Nonce)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	return nil
 }
 
 func TestRxTx(t *testing.T) {

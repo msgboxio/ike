@@ -45,10 +45,16 @@ func (p PayloadType) String() string {
 		return "Unknown"
 	}
 }
+
+type ts struct {
+	Type string
+	Payload
+}
+
 func (p Payloads) MarshalJSON() ([]byte, error) {
-	jmap := make(map[string]Payload, len(p))
-	for k, j := range p {
-		jmap[k.String()] = j
+	var jmap []ts
+	for _, j := range p.Array {
+		jmap = append(jmap, ts{j.Type().String(), j})
 	}
 	return json.Marshal(jmap)
 }

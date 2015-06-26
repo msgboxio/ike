@@ -34,17 +34,24 @@ func TestTkm(t *testing.T) {
 		DhShared:    DhShared,
 	}
 
-	keym := tkm.IsaCreate(packets.Hexit("928f3f581f05a563").Bytes(), []byte{})
+	spiI, _ := hex.DecodeString("928f3f581f05a563")
+	tkm.IsaCreate(spiI, []byte{})
 
 	_sk := `ff7972ddae0b6d10ea4fd33418a489a4c92e8b053e25b4c9166b4b7a2aa29776`
-	sk := packets.Hexit(_sk).Bytes()
+	sk, _ := hex.DecodeString(_sk)
 	if !bytes.Equal(tkm.SKEYSEED, sk) {
 		t.Fatalf("\n%s\nvs\n%s", hex.Dump(tkm.SKEYSEED), hex.Dump(sk))
 	}
 
 	_km := `dda4d24404d5e03911079e67e56b12e47523972bf0cc75df8e13e79ed23607d3dc28758b9ea4a67c9bcd6260cc83cc1baa77d4ff2fee910e36826c66b6af9d091c54dc63e8318df0fde5e6acd7d175cf354d6b169217b662041f9b401751c7ce94c01e11830e9bbeb3b7c24ae58f79260b2220dfe4220dc64a79bb215a778734c9bbce70166a82422715e7b11620d92af5fdbbee31bebc90be909b08a5e810ad979a16584cd32c61682ccfb0d30822a60ccf1909994472f90a3b925c7bb4c1664abe17463a429fbb94bade006b05855011425e6155c87907b21560b99e962455`
-	km := packets.Hexit(_km).Bytes()
-	if !bytes.Equal(keym, km) {
-		t.Fatalf("\n%s\nvs\n%s", hex.Dump(keym), hex.Dump(km))
+	km, _ := hex.DecodeString(_km)
+	if !bytes.Equal(tkm.KEYMAT, km) {
+		t.Fatalf("\n%s\nvs\n%s", hex.Dump(tkm.KEYMAT), hex.Dump(km))
+	}
+
+	_signed_encr := `928f3f58 1f05a563 00000000 00000000 2e202308 00000001 000000e0 230000c4 fcbb4a7a 26d6a66d 41d372ec d4cfaef3 c2454434 a1d96704 2f87cef5 0ea8b816 d455a55a 7a634485 4662f63e 514b0673 c8a4aff7 06d32a11 117f0820 50c8caed cc31b4da d69666f4 53554517 32d7113a 6cd19af9 2ef90fdc 44c84ec7 c1684f1d 03a2ef97 668b8073 3fa97831 9692e726 cf7257fc 6cbfd69a c9f84114 2d05111b b584e65f 08258237 5910ca0b c2598a65 8c9e474a 9f25f0ae e918410b 6eadd04f c35fa123 9f85456a ba42471e 37d02205 e2516ae1 95b67260 a0a34127 ed3c59d6`
+	signed_encr := packets.Hexit(_signed_encr).Bytes()
+	if _, _, err := tkm.VerifyDecrypt(signed_encr); err != nil {
+		t.Fatal(err)
 	}
 }
