@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"net"
@@ -245,6 +246,12 @@ const (
 	ESN_NONE EsnTransformid = 0
 	ESN      EsnTransformid = 1
 )
+
+func MakeSpi() (ret Spi) {
+	spi, _ := rand.Prime(rand.Reader, 8*8)
+	copy(ret[:], spi.Bytes())
+	return
+}
 
 /*
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -789,21 +796,21 @@ const (
 
 type AuthPayload struct {
 	*PayloadHeader
-	Method AuthMethod
-	Data   []byte
+	AuthMethod AuthMethod
+	Data       []byte
 }
 
 func (s *AuthPayload) Type() PayloadType {
 	return PayloadTypeAUTH
 }
 func (s *AuthPayload) Encode() (b []byte) {
-	b = []byte{uint8(s.Method), 0, 0, 0}
+	b = []byte{uint8(s.AuthMethod), 0, 0, 0}
 	return append(b, s.Data...)
 }
 func (s *AuthPayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	authMethod, _ := packets.ReadB8(b, 0)
-	s.Method = AuthMethod(authMethod)
+	s.AuthMethod = AuthMethod(authMethod)
 	s.Data = append([]byte{}, b[4:]...)
 	return
 }
@@ -1273,6 +1280,11 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		}
 	}
 	for nextPayload != PayloadTypeNone {
+		if len(b) < PAYLOAD_HEADER_LENGTH {
+			log.V(LOG_CODEC).Info("")
+			err = ERR_INVALID_SYNTAX
+			return
+		}
 		pHeader := &PayloadHeader{}
 		if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
 			return
@@ -1318,11 +1330,13 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		b = b[pHeader.PayloadLength:]
 		s.Payloads.Add(payload)
 	}
+	if len(b) > 0 {
+		log.Errorf("remaining %d\n%s", len(b), hex.Dump(b))
+	}
 	return
 }
 
 func encodePayloads(payloads *Payloads) (b []byte) {
-	// fmt.Printf("%s\n", *payloads)
 	for _, pl := range payloads.Array {
 		body := pl.Encode()
 		hdr := encodePayloadHeader(pl.NextPayloadType(), uint16(len(body)))
@@ -1336,14 +1350,22 @@ func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
 	nextPayload := s.IkeHeader.NextPayload
 	if nextPayload == PayloadTypeSK {
 		if tkm == nil {
-			err = errors.New("cant decrypt, no tkm found")
+			err = errors.New("cant encrypt, no tkm found")
 			return
 		}
-		// nextPayload = s.Payloads.Get(PayloadTypeSK).NextPayloadType()
-		encr := tkm.Encrypt(encodePayloads(s.Payloads))
-		b = append(encodePayloadHeader(PayloadTypeSK, uint16(len(encr))), encr...)
+		// encrypt the remaining payloads
+		encr, err := tkm.Encrypt(encodePayloads(s.Payloads))
+		if err != nil {
+			return nil, err
+		}
+		firstPayload := s.Payloads.Array[0].Type()
+		// append to new secure payload
+		b = append(encodePayloadHeader(firstPayload, uint16(len(encr))), encr...)
+		// prepare proper ike header
 		s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + tkm.HashLength())
+		// encode and append ike header
 		b = append(s.IkeHeader.Encode(), b...)
+		// finally attach mac
 		b = append(b, tkm.Mac(b)...)
 	} else {
 		b = encodePayloads(s.Payloads)
