@@ -26,14 +26,22 @@ func TestTkm(t *testing.T) {
 		t.Fatal(3)
 	}
 
+	transforms := []*SaTransform{
+		&SaTransform{Transform: _ENCR_CAMELLIA_CBC},
+		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		&SaTransform{Transform: _MODP_2048},
+		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
+	}
 	tkm := &Tkm{
+		suite:       newCipherSuite(transforms),
 		isInitiator: false,
 		Ni:          Nonce,
 		Nr:          NonceO,
-		DhGroup:     kexAlgoMap[MODP_2048],
 		DhShared:    DhShared,
 	}
-
+	if tkm.suite == nil {
+		t.Fatal(4)
+	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
 	tkm.IsaCreate(spiI, []byte{})
 

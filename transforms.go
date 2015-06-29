@@ -3,14 +3,13 @@ package ike
 type Transform struct {
 	Type        TransformType
 	TransformId uint16
-	KeyLength   uint16
 }
 
 var (
-	_ENCR_AES_CBC      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CBC), KeyLength: 256}
-	_ENCR_AES_CTR      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CTR), KeyLength: 256}
-	_ENCR_CAMELLIA_CBC = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CBC), KeyLength: 256}
-	_ENCR_CAMELLIA_CTR = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CTR), KeyLength: 256}
+	_ENCR_AES_CBC      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CBC)}
+	_ENCR_AES_CTR      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CTR)}
+	_ENCR_CAMELLIA_CBC = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CBC)}
+	_ENCR_CAMELLIA_CTR = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CTR)}
 
 	_PRF_AES128_XCBC   = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_AES128_XCBC)}
 	_PRF_HMAC_SHA1     = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_HMAC_SHA1)}
@@ -64,4 +63,19 @@ var transforms = map[Transform]string{
 	_MODP_8192: "MODP_8192",
 
 	_ESN: "ESN",
+}
+
+// mutualCipherSuite returns a cipherSuite given
+// a list requested by the peer.
+func mutualTransform(want [][]*SaTransform) *cipherSuite {
+	for _, w := range want {
+		for _, t := range w {
+			if _, ok := transforms[t.Transform]; !ok {
+				break
+			}
+			// have all
+			return newCipherSuite(w)
+		}
+	}
+	return nil
 }

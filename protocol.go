@@ -3,6 +3,7 @@ package ike
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net"
 
@@ -320,6 +321,7 @@ func (h *IkeHeader) Encode() (b []byte) {
 	packets.WriteB8(b, 19, uint8(h.Flags))
 	packets.WriteB32(b, 20, h.MsgId)
 	packets.WriteB32(b, 24, h.MsgLength)
+	log.V(LOG_CODEC).Infof("Ike Header: %+v to \n%s", *h, hex.Dump(b))
 	return
 }
 
@@ -433,8 +435,9 @@ func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type SaTransform struct {
-	Transform
-	IsLast bool
+	Transform Transform
+	KeyLength uint16
+	IsLast    bool
 }
 
 const (
@@ -463,8 +466,8 @@ func decodeTransform(b []byte) (trans *SaTransform, used int, err error) {
 		return
 	}
 	trType, _ := packets.ReadB8(b, 4)
-	trans.Type = TransformType(trType)
-	trans.TransformId, _ = packets.ReadB16(b, 6)
+	trans.Transform.Type = TransformType(trType)
+	trans.Transform.TransformId, _ = packets.ReadB16(b, 6)
 	// variable parts
 	b = b[MIN_LEN_TRANSFORM:int(trLength)]
 	attrs := make(map[AttributeType]*TransformAttribute)
@@ -488,8 +491,8 @@ func encodeTransform(trans *SaTransform, isLast bool) (b []byte) {
 	if !isLast {
 		packets.WriteB8(b, 0, 3)
 	}
-	packets.WriteB8(b, 4, uint8(trans.Type))
-	packets.WriteB16(b, 6, trans.TransformId)
+	packets.WriteB8(b, 4, uint8(trans.Transform.Type))
+	packets.WriteB16(b, 6, trans.Transform.TransformId)
 	if trans.KeyLength != 0 {
 		// TODO - taken a shortcut for attribute
 		attr := make([]byte, 4)
@@ -1326,6 +1329,11 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		if err = payload.Decode(pbuf); err != nil {
 			return
 		}
+		if log.V(LOG_CODEC) {
+			js, _ := json.Marshal(payload)
+			log.Infof("Payload %s: %s", payload.Type(), js)
+			log.Info("from:\n" + hex.Dump(pbuf))
+		}
 		nextPayload = pHeader.NextPayload
 		b = b[pHeader.PayloadLength:]
 		s.Payloads.Add(payload)
@@ -1340,7 +1348,12 @@ func encodePayloads(payloads *Payloads) (b []byte) {
 	for _, pl := range payloads.Array {
 		body := pl.Encode()
 		hdr := encodePayloadHeader(pl.NextPayloadType(), uint16(len(body)))
-		b = append(b, hdr...)
+		body = append(hdr, body...)
+		if log.V(LOG_CODEC) {
+			js, _ := json.Marshal(pl)
+			log.Infof("Payload %s: %s", pl.Type(), js)
+			log.Info("to:\n" + hex.Dump(body))
+		}
 		b = append(b, body...)
 	}
 	return
@@ -1353,20 +1366,7 @@ func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
 			err = errors.New("cant encrypt, no tkm found")
 			return
 		}
-		// encrypt the remaining payloads
-		encr, err := tkm.Encrypt(encodePayloads(s.Payloads))
-		if err != nil {
-			return nil, err
-		}
-		firstPayload := s.Payloads.Array[0].Type()
-		// append to new secure payload
-		b = append(encodePayloadHeader(firstPayload, uint16(len(encr))), encr...)
-		// prepare proper ike header
-		s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + tkm.HashLength())
-		// encode and append ike header
-		b = append(s.IkeHeader.Encode(), b...)
-		// finally attach mac
-		b = append(b, tkm.Mac(b)...)
+		b, err = tkm.EncryptMac(s)
 	} else {
 		b = encodePayloads(s.Payloads)
 		s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN)

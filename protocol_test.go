@@ -115,7 +115,6 @@ func TestDecode(t *testing.T) {
 		isInitiator: false,
 		Ni:          no.Nonce,
 		Nr:          no.Nonce,
-		DhGroup:     kexAlgoMap[MODP_2048],
 		DhShared:    dhShared,
 	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
@@ -225,6 +224,15 @@ func makeAuthR(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, si
 	return authR
 }
 
+func getIkeTransforms(pr []*SaProposal) []*SaTransform {
+	for _, p := range pr {
+		if p.ProtocolId == IKE {
+			return p.Transforms
+		}
+	}
+	return nil
+}
+
 func TestRxTx(t *testing.T) {
 	env = make(map[Spi]*Tkm)
 	local, _ := net.ResolveUDPAddr("udp4", "0.0.0.0:5000")
@@ -243,13 +251,17 @@ func TestRxTx(t *testing.T) {
 
 	keI := initI.Payloads.Get(PayloadTypeKE).(*KePayload)
 	noI := initI.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
-	tkm, err := NewTkmResponder([]byte("foo"), keI.DhTransformId, keI.KeyData, noI.Nonce)
+	sa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
+	cs := newCipherSuite(getIkeTransforms(sa.Proposals))
+	if cs == nil {
+		t.Fatal("no appropriate ciphersuite")
+	}
+	tkm, err := NewTkmResponder(cs, []byte("foo"), keI.DhTransformId, keI.KeyData, noI.Nonce)
 	if err != nil {
 		t.Fatal(err)
 	}
 	env[initI.IkeHeader.SpiI] = tkm
 
-	sa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
 	spiI := initI.IkeHeader.SpiI
 	spiR := MakeSpi()
 
