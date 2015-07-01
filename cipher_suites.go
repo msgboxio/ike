@@ -72,6 +72,8 @@ func cipherTransform(cipherId uint16) (ivLen int, ciperFunc cipherFunc) {
 	switch EncrTransformId(cipherId) {
 	case ENCR_CAMELLIA_CBC:
 		return camellia.BlockSize, cipherCamellia
+	case ENCR_AES_CBC:
+		return aes.BlockSize, cipherAES
 	default:
 		panic("unsupported")
 	}

@@ -50,7 +50,7 @@ func MakeInit(spiI, spiR Spi, proposals []*SaProposal, tkm *Tkm) *Message {
 // b->a
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, signed1, idData []byte, tkm *Tkm) *Message {
+func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, signed1 []byte, tkm *Tkm) *Message {
 	flags := RESPONSE
 	idPayloadType := PayloadTypeIDr
 	if tkm.isInitiator {
@@ -74,7 +74,7 @@ func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeAUTH},
 		idPayloadType: idPayloadType,
 		IdType:        ID_RFC822_ADDR,
-		Data:          idData,
+		Data:          tkm.authId,
 	}
 	auth.Payloads.Add(id)
 	// responder's signed octet

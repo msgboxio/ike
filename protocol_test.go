@@ -166,12 +166,13 @@ func TestResp(t *testing.T) {
 	}
 
 	tkm.IsaCreate(spiI[:], spiR[:])
+	tkm.SetSecret([]byte("ak@msgbox.io"), []byte("foo"))
 
 	authI, _, _, err := RxDecode(tkm, udp, remote)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !authInitiator(authI, initIb, tkm) {
+	if !authenticateI(authI, initIb, tkm) {
 		t.Fatal("authentication failed")
 	}
 
@@ -182,7 +183,7 @@ func TestResp(t *testing.T) {
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(initRb, tkm.Ni.Bytes()...)
-	authR := MakeAuth(spiI, spiR, ipsecSa.Proposals, tsI, tsR, signed1, []byte("ak@msgbox.io"), tkm)
+	authR := MakeAuth(spiI, spiR, ipsecSa.Proposals, tsI, tsR, signed1, tkm)
 	_, err = EncodeTx(authR, tkm, udp, remote, false)
 	if err != nil {
 		t.Fatal(err)

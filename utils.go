@@ -117,11 +117,11 @@ func newTkmFromInit(initI *Message) (tkm *Tkm, err error) {
 		err = ERR_INVALID_KE_PAYLOAD
 		return
 	}
-	tkm, err = NewTkmResponder(cs, []byte("foo"), keI.KeyData, noI.Nonce)
+	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce)
 	return
 }
 
-func authInitiator(authI *Message, initIb []byte, tkm *Tkm) bool {
+func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 	// intiators's signed octet
 	// initI | Nr | prf(sk_pi | IDi )
 	idI := authI.Payloads.Get(PayloadTypeIDi).(*IdPayload)
@@ -132,7 +132,7 @@ func authInitiator(authI *Message, initIb []byte, tkm *Tkm) bool {
 	return bytes.Equal(auth, _authI.Data)
 }
 
-func authResponder(authR *Message, initRb []byte, tkm *Tkm) bool {
+func authenticateR(authR *Message, initRb []byte, tkm *Tkm) bool {
 	// responders's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	idR := authR.Payloads.Get(PayloadTypeIDr).(*IdPayload)

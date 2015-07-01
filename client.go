@@ -21,13 +21,15 @@ func NewClientCfg() *ClientCfg {
 	ikeSpiI := MakeSpi()
 	espSpiI := MakeSpi()
 	ikeTransforms := []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		// &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
 		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
 		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
 		&SaTransform{Transform: _MODP_2048, IsLast: true},
 	}
 	espTransforms := []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		// &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
 		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
 		&SaTransform{Transform: _ESN, IsLast: true},
 	}
@@ -76,7 +78,7 @@ func RunClient(remote *net.UDPAddr) {
 	}
 	cfg := NewClientCfg()
 	suite := NewCipherSuite(cfg.ikeTransforms)
-	tkm, err := NewTkmInitiator(suite, []byte("foo"))
+	tkm, err := NewTkmInitiator(suite)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -110,11 +112,12 @@ func RunClient(remote *net.UDPAddr) {
 	// create rest of ike sa
 	spiI, spiR := initR.IkeHeader.SpiI, initR.IkeHeader.SpiR
 	tkm.IsaCreate(spiI[:], spiR[:])
+	tkm.SetSecret([]byte("ak@msgbox.io"), []byte("foo"))
 
 	// auth
 	signed1 := append(initIb, tkm.Nr.Bytes()...)
 	espProposals := []*SaProposal{cfg.proposalEsp}
-	authI := MakeAuth(spiI, spiR, espProposals, cfg.TsI, cfg.TsR, signed1, []byte("ak@msgbox.io"), tkm)
+	authI := MakeAuth(spiI, spiR, espProposals, cfg.TsI, cfg.TsR, signed1, tkm)
 
 	if _, err := EncodeTx(authI, tkm, udp, remote, true); err != nil {
 		log.Fatal(err)
@@ -127,7 +130,7 @@ func RunClient(remote *net.UDPAddr) {
 	if !EnsurePayloads(authR, AuthRPayloads) {
 		log.Fatal("essential payload is missing from auth message")
 	}
-	if !authResponder(authR, initRb, tkm) {
+	if !authenticateR(authR, initRb, tkm) {
 		log.Fatal("could not authenticate")
 	}
 }

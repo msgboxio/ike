@@ -6,8 +6,6 @@ import (
 	"crypto/rand"
 	"errors"
 	"math/big"
-
-	"msgbox.io/log"
 )
 
 // ike-seperation.pdf
@@ -29,6 +27,7 @@ type Tkm struct {
 	isInitiator bool
 
 	secret []byte
+	authId []byte
 
 	Nr, Ni *big.Int
 
@@ -46,11 +45,10 @@ type Tkm struct {
 	espEi, espAi, espEr, espAr []byte
 }
 
-func NewTkmInitiator(suite *cipherSuite, secret []byte) (tkm *Tkm, err error) {
+func NewTkmInitiator(suite *cipherSuite) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite:       suite,
 		isInitiator: true,
-		secret:      suite.prf(secret, []byte("Key Pad for IKEv2")),
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
 	if err := tkm.NcCreate(suite.prfLen * 8); err != nil {
@@ -63,11 +61,10 @@ func NewTkmInitiator(suite *cipherSuite, secret []byte) (tkm *Tkm, err error) {
 	return tkm, nil
 }
 
-func NewTkmResponder(suite *cipherSuite, secret []byte, theirPublic, no *big.Int) (tkm *Tkm, err error) {
+func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int) (tkm *Tkm, err error) {
 	tkm = &Tkm{
-		suite:  suite,
-		Ni:     no,
-		secret: suite.prf(secret, []byte("Key Pad for IKEv2")),
+		suite: suite,
+		Ni:    no,
 	}
 	// at least 128 bits & at least half the key size of the negotiated prf
 	if err := tkm.NcCreate(no.BitLen()); err != nil {
@@ -80,6 +77,11 @@ func NewTkmResponder(suite *cipherSuite, secret []byte, theirPublic, no *big.Int
 		return nil, err
 	}
 	return tkm, nil
+}
+
+func (t *Tkm) SetSecret(authId, secret []byte) {
+	t.secret = t.suite.prf(secret, []byte("Key Pad for IKEv2"))
+	t.authId = authId
 }
 
 // 4.1.2 creation of ike sa
@@ -194,13 +196,15 @@ func (t *Tkm) VerifyDecrypt(ike []byte) (nextPayload PayloadType, dec []byte, er
 	if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
 		return
 	}
-	if r := len(b) - int(pHeader.PayloadLength); r != 0 {
-		log.Errorf("extra %d\n", r)
+	cslen := len(b) - int(pHeader.PayloadLength)
+	if cslen != t.suite.macLen {
+		err = errors.New("checksum data is not of required length")
+		return
 	}
-	nextPayload = pHeader.NextPayload
 	if err = t.VerifyMac(ike); err != nil {
 		return
 	}
+	nextPayload = pHeader.NextPayload
 	enc := b[PAYLOAD_HEADER_LENGTH : len(b)-t.suite.macLen]
 	// fmt.Printf("enc: \n%s", hex.Dump(enc))
 	key := t.skEi
@@ -267,7 +271,8 @@ func (tkm *Tkm) Auth(signed1, id []byte, flag IkeFlags) []byte {
 	if flag.IsInitiator() {
 		key = tkm.skPi
 	}
-	return tkm.suite.prf(tkm.secret, append(signed1, tkm.suite.prf(key, id)...))[:tkm.suite.prfLen]
+	signed := append(signed1, tkm.suite.prf(key, id)...)
+	return tkm.suite.prf(tkm.secret, signed)[:tkm.suite.prfLen]
 }
 
 func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) {
