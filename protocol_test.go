@@ -111,13 +111,23 @@ func TestDecode(t *testing.T) {
 	}
 
 	no := msg.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
+
+	transforms := []*SaTransform{
+		&SaTransform{Transform: _ENCR_CAMELLIA_CBC},
+		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		&SaTransform{Transform: _MODP_2048},
+		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
+	}
 	tkm := &Tkm{
+		suite:       NewCipherSuite(transforms),
 		isInitiator: false,
 		Ni:          no.Nonce,
 		Nr:          no.Nonce,
 		DhShared:    dhShared,
 	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
+	// spi := Spi{}
+	// copy(spi[:], spiI)
 	tkm.IsaCreate(spiI, []byte{})
 
 	env[msg.IkeHeader.SpiI] = tkm
@@ -126,189 +136,55 @@ func TestDecode(t *testing.T) {
 	testDecode(dec, t)
 }
 
-func testDecode1(dec []byte, t *testing.T) *Message {
-	msg := &Message{}
-	err := msg.DecodeHeader(dec)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tkm := env[msg.IkeHeader.SpiI]
-
-	if err = msg.DecodePayloads(dec, tkm); err != nil {
-		t.Fatal(err)
-	}
-
-	js, err := json.MarshalIndent(msg, "", " ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("\n%s", string(js))
-
-	return msg
-}
-
-func makeInitR(spiI, spiR Spi, proposals []*SaProposal, tkm *Tkm) *Message {
-	initR := &Message{
-		IkeHeader: &IkeHeader{
-			SpiI:         spiI,
-			SpiR:         spiR,
-			NextPayload:  PayloadTypeSA,
-			MajorVersion: IKEV2_MAJOR_VERSION,
-			MinorVersion: IKEV2_MINOR_VERSION,
-			ExchangeType: IKE_SA_INIT,
-			Flags:        RESPONSE,
-			MsgId:        0,
-		},
-		Payloads: makePayloads(),
-	}
-	initR.Payloads.Add(&SaPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeKE},
-		Proposals:     proposals,
-	})
-	initR.Payloads.Add(&KePayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNonce},
-		DhTransformId: MODP_1024,
-		KeyData:       tkm.DhPublic,
-	})
-	initR.Payloads.Add(&NoncePayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
-		Nonce:         tkm.Nr,
-	})
-	return initR
-}
-
-//  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func makeAuthR(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, signed1 []byte, tkm *Tkm) *Message {
-	authR := &Message{
-		IkeHeader: &IkeHeader{
-			SpiI:         spiI,
-			SpiR:         spiR,
-			NextPayload:  PayloadTypeSK,
-			MajorVersion: IKEV2_MAJOR_VERSION,
-			MinorVersion: IKEV2_MINOR_VERSION,
-			ExchangeType: IKE_AUTH,
-			Flags:        RESPONSE,
-			MsgId:        1,
-		},
-		Payloads: makePayloads(),
-	}
-	id := &IdPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeAUTH},
-		idPayloadType: PayloadTypeIDr,
-		IdType:        ID_RFC822_ADDR,
-		Data:          []byte("ak@msgbox.io"),
-	}
-	authR.Payloads.Add(id)
-	// responder's signed octet
-	// initR | Ni | prf(sk_pr | IDr )
-	authR.Payloads.Add(&AuthPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeSA},
-		AuthMethod:    SHARED_KEY_MESSAGE_INTEGRITY_CODE,
-		Data:          tkm.Auth(signed1, id.Encode(), RESPONSE),
-	})
-	authR.Payloads.Add(&SaPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeTSi},
-		Proposals:     proposals,
-	})
-	authR.Payloads.Add(&TrafficSelectorPayload{
-		PayloadHeader:              &PayloadHeader{NextPayload: PayloadTypeTSr},
-		trafficSelectorPayloadType: PayloadTypeTSi,
-		Selectors:                  tsI,
-	})
-	authR.Payloads.Add(&TrafficSelectorPayload{
-		PayloadHeader:              &PayloadHeader{NextPayload: PayloadTypeNone},
-		trafficSelectorPayloadType: PayloadTypeTSr,
-		Selectors:                  tsR,
-	})
-	return authR
-}
-
-func getIkeTransforms(pr []*SaProposal) []*SaTransform {
-	for _, p := range pr {
-		if p.ProtocolId == IKE {
-			return p.Transforms
-		}
-	}
-	return nil
-}
-
-func TestRxTx(t *testing.T) {
-	env = make(map[Spi]*Tkm)
+func TestResp(t *testing.T) {
 	local, _ := net.ResolveUDPAddr("udp4", "0.0.0.0:5000")
 	udp, err := net.ListenUDP("udp4", local)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b := make([]byte, 1500)
-	n, from, err := udp.ReadFromUDP(b)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%d from %s:\n%s", n, from, hex.Dump(b[:n]))
-	initIb := append([]byte{}, b[:n]...)
-	initI := testDecode1(initIb, t)
 
-	keI := initI.Payloads.Get(PayloadTypeKE).(*KePayload)
-	noI := initI.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
-	sa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
-	cs := newCipherSuite(getIkeTransforms(sa.Proposals))
-	if cs == nil {
-		t.Fatal("no appropriate ciphersuite")
-	}
-	tkm, err := NewTkmResponder(cs, []byte("foo"), keI.DhTransformId, keI.KeyData, noI.Nonce)
+	initI, initIb, remote, err := RxDecode(nil, udp, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	env[initI.IkeHeader.SpiI] = tkm
+	// get ikeSa part
+	ikeSa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
+	// check if we already have an sa - TODO
+
+	tkm, err := newTkmFromInit(initI)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	spiI := initI.IkeHeader.SpiI
 	spiR := MakeSpi()
 
-	initR := makeInitR(spiI, spiR, sa.Proposals, tkm)
-	initRb, err := initR.Encode(nil)
+	initR := MakeInit(spiI, spiR, ikeSa.Proposals, tkm)
+	initRb, err := EncodeTx(initR, nil, udp, remote, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err = udp.WriteToUDP(initRb, from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%d to %s:\n%s", n, from, hex.Dump(initRb))
 
 	tkm.IsaCreate(spiI[:], spiR[:])
 
-	n, from, err = udp.ReadFromUDP(b)
+	authI, _, _, err := RxDecode(tkm, udp, remote)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("%d from %s:\n%s", n, from, hex.Dump(b[:n]))
+	if !authInitiator(authI, initIb, tkm) {
+		t.Fatal("authentication failed")
+	}
 
-	authI := testDecode1(b[:n], t)
-
-	// intiators's signed octet
-	// initI | Nr | prf(sk_pi | IDi )
-	idI := authI.Payloads.Get(PayloadTypeIDi).(*IdPayload)
-	t.Logf("ID:%s", string(idI.Data))
-	_authI := authI.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
-	auth := tkm.Auth(append(initIb, tkm.Nr.Bytes()...), idI.Encode(), INITIATOR)
-	t.Logf("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authI.Data))
-
-	sa = authI.Payloads.Get(PayloadTypeSA).(*SaPayload)
+	ipsecSa := authI.Payloads.Get(PayloadTypeSA).(*SaPayload)
 	tsI := authI.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
 	tsR := authI.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
 
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
-	signed1 := append(initRb, noI.Nonce.Bytes()...)
-	authR := makeAuthR(spiI, spiR, sa.Proposals, tsI, tsR, signed1, tkm)
-	authRB, err := authR.Encode(tkm)
+	signed1 := append(initRb, tkm.Ni.Bytes()...)
+	authR := MakeAuth(spiI, spiR, ipsecSa.Proposals, tsI, tsR, signed1, []byte("ak@msgbox.io"), tkm)
+	_, err = EncodeTx(authR, tkm, udp, remote, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, err = udp.WriteToUDP(authRB, from)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Logf("%d to %s:\n%s", n, from, hex.Dump(authRB))
 }

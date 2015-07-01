@@ -74,7 +74,7 @@ func mutualTransform(want [][]*SaTransform) *cipherSuite {
 				break
 			}
 			// have all
-			return newCipherSuite(w)
+			return NewCipherSuite(w)
 		}
 	}
 	return nil

@@ -33,7 +33,7 @@ func TestTkm(t *testing.T) {
 		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
 	}
 	tkm := &Tkm{
-		suite:       newCipherSuite(transforms),
+		suite:       NewCipherSuite(transforms),
 		isInitiator: false,
 		Ni:          Nonce,
 		Nr:          NonceO,

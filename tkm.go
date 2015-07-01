@@ -24,26 +24,6 @@ import (
 // 2.1.4 CREATE_CHILD_SA
 // tkm creates SK, Ni, [KEi]
 
-func NewTkmResponder(suite *cipherSuite, secret []byte, dhTransform DhTransformId, theirPublic, no *big.Int) (tkm *Tkm, err error) {
-	tkm = &Tkm{
-		suite:       suite,
-		isInitiator: false,
-		Ni:          no,
-		secret:      suite.prf(secret, []byte("Key Pad for IKEv2")),
-	}
-	// at least 128 bits & at least half the key size of the negotiated prf
-	if err := tkm.NcCreate(no.BitLen()); err != nil {
-		return nil, err
-	}
-	if _, err := tkm.DhCreate(dhTransform); err != nil {
-		return nil, err
-	}
-	if err := tkm.DhGenerateKey(theirPublic); err != nil {
-		return nil, err
-	}
-	return tkm, nil
-}
-
 type Tkm struct {
 	suite       *cipherSuite
 	isInitiator bool
@@ -66,6 +46,42 @@ type Tkm struct {
 	espEi, espAi, espEr, espAr []byte
 }
 
+func NewTkmInitiator(suite *cipherSuite, secret []byte) (tkm *Tkm, err error) {
+	tkm = &Tkm{
+		suite:       suite,
+		isInitiator: true,
+		secret:      suite.prf(secret, []byte("Key Pad for IKEv2")),
+	}
+	// standard says nonce shwould be at least half of size of negotiated prf
+	if err := tkm.NcCreate(suite.prfLen * 8); err != nil {
+		return nil, err
+	}
+	// for sending public key
+	if _, err := tkm.DhCreate(); err != nil {
+		return nil, err
+	}
+	return tkm, nil
+}
+
+func NewTkmResponder(suite *cipherSuite, secret []byte, theirPublic, no *big.Int) (tkm *Tkm, err error) {
+	tkm = &Tkm{
+		suite:  suite,
+		Ni:     no,
+		secret: suite.prf(secret, []byte("Key Pad for IKEv2")),
+	}
+	// at least 128 bits & at least half the key size of the negotiated prf
+	if err := tkm.NcCreate(no.BitLen()); err != nil {
+		return nil, err
+	}
+	if _, err := tkm.DhCreate(); err != nil {
+		return nil, err
+	}
+	if err := tkm.DhGenerateKey(theirPublic); err != nil {
+		return nil, err
+	}
+	return tkm, nil
+}
+
 // 4.1.2 creation of ike sa
 
 // The client gets the Nr
@@ -80,7 +96,7 @@ func (t *Tkm) NcCreate(bits int) (err error) {
 }
 
 // the client get the dh public value
-func (t *Tkm) DhCreate(dhTransform DhTransformId) (n *big.Int, err error) {
+func (t *Tkm) DhCreate() (n *big.Int, err error) {
 	t.DhPrivate, err = t.suite.dhGroup.private(rand.Reader)
 	if err != nil {
 		return nil, err

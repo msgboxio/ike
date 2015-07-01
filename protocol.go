@@ -1,7 +1,6 @@
 package ike
 
 import (
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -247,12 +246,6 @@ const (
 	ESN_NONE EsnTransformid = 0
 	ESN      EsnTransformid = 1
 )
-
-func MakeSpi() (ret Spi) {
-	spi, _ := rand.Prime(rand.Reader, 8*8)
-	copy(ret[:], spi.Bytes())
-	return
-}
 
 /*
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -842,7 +835,7 @@ func (s *NoncePayload) Encode() (b []byte) {
 func (s *NoncePayload) Decode(b []byte) (err error) {
 	// Header has already been decoded
 	// between 16 and 256 octets
-	if len(b) < 16 || len(b) > 256 {
+	if len(b) < (16+PAYLOAD_HEADER_LENGTH) || len(b) > (256+PAYLOAD_HEADER_LENGTH) {
 		log.V(LOG_CODEC).Info("")
 		err = ERR_INVALID_SYNTAX
 		return
@@ -1039,8 +1032,8 @@ func decodeSelector(b []byte) (sel *Selector, used int, err error) {
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	sport, _ := packets.ReadB16(b, 8)
-	eport, _ := packets.ReadB16(b, 10)
+	sport, _ := packets.ReadB16(b, 4)
+	eport, _ := packets.ReadB16(b, 6)
 	iplen := net.IPv4len
 	if SelectorType(stype) == TS_IPV6_ADDR_RANGE {
 		iplen = net.IPv6len
@@ -1117,7 +1110,6 @@ func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
 		sel, used, serr := decodeSelector(b)
 		if serr != nil {
 			err = serr
-			log.V(LOG_CODEC).Info("")
 			return
 		}
 		s.Selectors = append(s.Selectors, sel)
@@ -1193,22 +1185,6 @@ func (s *EapPayload) Decode(b []byte) (err error) {
 	return
 }
 
-// IKE_SA_INIT
-// a->b
-//	HDR(SPIi=xxx, SPIr=0, IKE_SA_INIT, Flags: Initiator, Message ID=0),
-//	SAi1, KEi, Ni
-// b->a
-//	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
-// 	SAr1, KEr, Nr, [CERTREQ]
-
-// IKE_AUTH
-// a->b
-//  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Initiator, Message ID=1)
-//  SK {IDi, [CERT,] [CERTREQ,] [IDr,] AUTH, SAi2, TSi, TSr,  N(INITIAL_CONTACT)}
-// b->a
-//  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
-//  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-
 // INFORMATIONAL
 // b<-a
 //  HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: none, Message ID=m),
@@ -1247,6 +1223,7 @@ func (p *Payloads) Get(t PayloadType) Payload {
 }
 func (p *Payloads) Add(t Payload) {
 	if idx, ok := p.Map[t.Type()]; ok {
+		// overwrite
 		p.Array[idx] = t
 		return
 	}

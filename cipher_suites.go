@@ -12,9 +12,13 @@ import (
 	"msgbox.io/log"
 )
 
+type macFunc func(key, data []byte) []byte
+type prfFunc func(key, data []byte) []byte
+type cipherFunc func(key, iv []byte, isRead bool) interface{}
+
 type cipherSuite struct {
 	prfLen int
-	prf    func(key, data []byte) []byte
+	prf    prfFunc
 
 	dhGroup *dhGroup
 
@@ -24,12 +28,14 @@ type cipherSuite struct {
 	ivLen  int
 	// ka     func(version uint16) keyAgreement
 
-	cipher func(key, iv []byte, isRead bool) interface{}
-	mac    func(key, data []byte) []byte
-	aead   func(key, fixedNonce []byte) cipher.AEAD
+	cipher cipherFunc
+	mac    macFunc
+	// aead   func(key, fixedNonce []byte) cipher.AEAD
 }
 
-func newCipherSuite(trs []*SaTransform) *cipherSuite {
+// assume that transforms are supported
+// TODO - check that the entire sute makes sense
+func NewCipherSuite(trs []*SaTransform) *cipherSuite {
 	cs := &cipherSuite{}
 	for _, tr := range trs {
 		switch tr.Transform.Type {
@@ -42,22 +48,44 @@ func newCipherSuite(trs []*SaTransform) *cipherSuite {
 			cs.dhGroup = dhGroup
 		case TRANSFORM_TYPE_PRF:
 			// for hmac based prf, preferred key size is size of output
-			cs.prfLen = sha256.Size
-			cs.prf = macPrf(sha256.New)
+			cs.prfLen, cs.prf = prfTranform(tr.Transform.TransformId)
 		case TRANSFORM_TYPE_ENCR:
 			// for block mode ciphers, equal to block length
-			cs.cipher = cipherCamellia
-			cs.ivLen = camellia.BlockSize
-			cs.keyLen = int(tr.KeyLength) // from attribute; 32
+			cs.ivLen, cs.cipher = cipherTransform(tr.Transform.TransformId)
+			cs.keyLen = int(tr.KeyLength) / 8 // from attribute; in bits; 256
 		case TRANSFORM_TYPE_INTEG:
-			cs.macLen = 16 // truncated
-			cs.mac = hashMac(sha256.New, cs.macLen)
+			cs.macLen, cs.mac = integrityTransform(tr.Transform.TransformId)
 		}
 	}
 	return cs
 }
 
-func macPrf(h func() hash.Hash) func(key, data []byte) []byte {
+func prfTranform(prfId uint16) (prfLen int, prfFunc prfFunc) {
+	switch PrfTransformId(prfId) {
+	case PRF_HMAC_SHA2_256:
+		return sha256.Size, macPrf(sha256.New)
+	default:
+		panic("unsupported")
+	}
+}
+func cipherTransform(cipherId uint16) (ivLen int, ciperFunc cipherFunc) {
+	switch EncrTransformId(cipherId) {
+	case ENCR_CAMELLIA_CBC:
+		return camellia.BlockSize, cipherCamellia
+	default:
+		panic("unsupported")
+	}
+}
+func integrityTransform(trfId uint16) (macLen int, macFunc macFunc) {
+	switch AuthTransformId(trfId) {
+	case AUTH_HMAC_SHA2_256_128:
+		return 16 /* truncated */, hashMac(sha256.New, 16)
+	default:
+		panic("unsupported")
+	}
+}
+
+func macPrf(h func() hash.Hash) prfFunc {
 	return func(key, data []byte) []byte {
 		mac := hmac.New(h, key)
 		mac.Write(data)
@@ -81,7 +109,7 @@ func cipherCamellia(key, iv []byte, isRead bool) interface{} {
 	return cipher.NewCBCEncrypter(block, iv)
 }
 
-func hashMac(h func() hash.Hash, macLen int) func(key, data []byte) []byte {
+func hashMac(h func() hash.Hash, macLen int) macFunc {
 	return func(key, data []byte) []byte {
 		mac := hmac.New(h, key)
 		mac.Write(data)
