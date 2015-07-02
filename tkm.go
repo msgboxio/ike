@@ -4,7 +4,9 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
 )
 
@@ -130,32 +132,39 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte) {
 	// SKEYSEED = prf(Ni | Nr, g^ir)
 	SKEYSEED := t.suite.prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
 	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
-	plen := t.suite.prfLen
+	kmLen := 3*t.suite.prfLen + 2*t.suite.keyLen + 2*t.suite.macKeyLen
 	// TODO - supports 32B keys only
 	KEYMAT := t.prfplus(SKEYSEED,
 		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
-		plen*7)
+		kmLen)
 
-	t.skD, t.skAi, t.skAr, t.skEi, t.skEr, t.skPi, t.skPr =
-		KEYMAT[0:plen],
-		KEYMAT[plen:plen*2],
-		KEYMAT[plen*2:plen*3],
-		KEYMAT[plen*3:plen*4],
-		KEYMAT[plen*4:plen*5],
-		KEYMAT[plen*5:plen*6],
-		KEYMAT[plen*6:plen*7]
+	// SK_d, SK_pi, and SK_pr MUST be prfLength
+	offset := t.suite.prfLen
+	t.skD = KEYMAT[0:offset]
+	t.skAi = KEYMAT[offset : offset+t.suite.macKeyLen]
+	offset += t.suite.macKeyLen
+	t.skAr = KEYMAT[offset : offset+t.suite.macKeyLen]
+	offset += t.suite.macKeyLen
+	t.skEi = KEYMAT[offset : offset+t.suite.keyLen]
+	offset += t.suite.keyLen
+	t.skEr = KEYMAT[offset : offset+t.suite.keyLen]
+	offset += t.suite.keyLen
+	t.skPi = KEYMAT[offset : offset+t.suite.prfLen]
+	offset += t.suite.prfLen
+	t.skPr = KEYMAT[offset : offset+t.suite.prfLen]
 
 	// for test
 	t.KEYMAT = KEYMAT
 	t.SKEYSEED = SKEYSEED
-	// fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
-	// 	hex.Dump(t.skD),
-	// 	hex.Dump(t.skAi),
-	// 	hex.Dump(t.skAr),
-	// 	hex.Dump(t.skEi),
-	// 	hex.Dump(t.skEr),
-	// 	hex.Dump(t.skPi),
-	// 	hex.Dump(t.skPr))
+	fmt.Printf("keymat length %d\n", len(KEYMAT))
+	fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
+		hex.Dump(t.skD),
+		hex.Dump(t.skAi),
+		hex.Dump(t.skAr),
+		hex.Dump(t.skEi),
+		hex.Dump(t.skEr),
+		hex.Dump(t.skPi),
+		hex.Dump(t.skPr))
 }
 
 // verify message appended with mac
@@ -196,9 +205,8 @@ func (t *Tkm) VerifyDecrypt(ike []byte) (nextPayload PayloadType, dec []byte, er
 	if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
 		return
 	}
-	cslen := len(b) - int(pHeader.PayloadLength)
-	if cslen != t.suite.macLen {
-		err = errors.New("checksum data is not of required length")
+	if extra := len(b) - int(pHeader.PayloadLength); extra != 0 {
+		err = errors.New("extra encrypted data")
 		return
 	}
 	if err = t.VerifyMac(ike); err != nil {
@@ -229,7 +237,7 @@ func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
 	}
 	firstPayload := s.Payloads.Array[0].Type()
 	// append to new secure payload
-	b = append(encodePayloadHeader(firstPayload, uint16(len(encr))), encr...)
+	b = append(encodePayloadHeader(firstPayload, uint16(len(encr)+t.suite.macLen)), encr...)
 	// prepare proper ike header
 	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + t.suite.macLen)
 	// encode and append ike header

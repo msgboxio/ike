@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
+	"crypto/sha1"
 	"crypto/sha256"
 	"hash"
 
@@ -23,10 +24,9 @@ type cipherSuite struct {
 	dhGroup *dhGroup
 
 	// the lengths, in bytes, of the key material needed for each component.
-	keyLen int
-	macLen int
-	ivLen  int
-	// ka     func(version uint16) keyAgreement
+	keyLen            int
+	macLen, macKeyLen int
+	ivLen             int
 
 	cipher cipherFunc
 	mac    macFunc
@@ -54,7 +54,7 @@ func NewCipherSuite(trs []*SaTransform) *cipherSuite {
 			cs.ivLen, cs.cipher = cipherTransform(tr.Transform.TransformId)
 			cs.keyLen = int(tr.KeyLength) / 8 // from attribute; in bits; 256
 		case TRANSFORM_TYPE_INTEG:
-			cs.macLen, cs.mac = integrityTransform(tr.Transform.TransformId)
+			cs.macLen, cs.macKeyLen, cs.mac = integrityTransform(tr.Transform.TransformId)
 		}
 	}
 	return cs
@@ -64,6 +64,8 @@ func prfTranform(prfId uint16) (prfLen int, prfFunc prfFunc) {
 	switch PrfTransformId(prfId) {
 	case PRF_HMAC_SHA2_256:
 		return sha256.Size, macPrf(sha256.New)
+	case PRF_HMAC_SHA1:
+		return sha1.Size, macPrf(sha1.New)
 	default:
 		panic("unsupported")
 	}
@@ -78,10 +80,12 @@ func cipherTransform(cipherId uint16) (ivLen int, ciperFunc cipherFunc) {
 		panic("unsupported")
 	}
 }
-func integrityTransform(trfId uint16) (macLen int, macFunc macFunc) {
+func integrityTransform(trfId uint16) (macLen, macKeyLength int, macFunc macFunc) {
 	switch AuthTransformId(trfId) {
 	case AUTH_HMAC_SHA2_256_128:
-		return 16 /* truncated */, hashMac(sha256.New, 16)
+		return 16 /* truncated */, sha256.Size, hashMac(sha256.New, 16)
+	case AUTH_HMAC_SHA1_96:
+		return 12 /* truncated */, sha1.Size, hashMac(sha1.New, 12)
 	default:
 		panic("unsupported")
 	}

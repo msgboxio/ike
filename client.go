@@ -5,12 +5,14 @@ import (
 	"net"
 
 	"msgbox.io/log"
+	"msgbox.io/packets"
 )
 
 type ClientCfg struct {
 	ikeTransforms, espTransforms []*SaTransform
 
-	ikeSpiI, espSpiI Spi
+	ikeSpiI Spi
+	EspSpi  []byte
 
 	proposalIke, proposalEsp *SaProposal
 
@@ -19,23 +21,26 @@ type ClientCfg struct {
 
 func NewClientCfg() *ClientCfg {
 	ikeSpiI := MakeSpi()
-	espSpiI := MakeSpi()
+	espSpi := MakeSpi()
 	ikeTransforms := []*SaTransform{
 		// &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
 		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
-		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
-		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&SaTransform{Transform: _MODP_2048, IsLast: true},
+		// &SaTransform{Transform: _PRF_HMAC_SHA2_256},
+		&SaTransform{Transform: _PRF_HMAC_SHA1},
+		// &SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		// &SaTransform{Transform: _MODP_2048, IsLast: true},
+		&SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
 	espTransforms := []*SaTransform{
 		// &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
 		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
-		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&SaTransform{Transform: _ESN, IsLast: true},
+		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		&SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 	return &ClientCfg{
 		ikeSpiI:       ikeSpiI,
-		espSpiI:       espSpiI,
+		EspSpi:        espSpi[:4],
 		ikeTransforms: ikeTransforms,
 		espTransforms: espTransforms,
 		proposalIke: &SaProposal{
@@ -48,7 +53,7 @@ func NewClientCfg() *ClientCfg {
 			IsLast:     true,
 			Number:     2,
 			ProtocolId: ESP,
-			Spi:        espSpiI[:],
+			Spi:        espSpi[:4],
 			Transforms: espTransforms,
 		},
 		TsI: []*Selector{&Selector{
@@ -133,4 +138,6 @@ func RunClient(remote *net.UDPAddr) {
 	if !authenticateR(authR, initRb, tkm) {
 		log.Fatal("could not authenticate")
 	}
+	spi, _ := packets.ReadB32(cfg.EspSpi, 0)
+	log.Infof("sa Established: %x", spi)
 }

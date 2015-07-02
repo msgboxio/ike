@@ -32,7 +32,8 @@ var (
 	_MODP_6144 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_6144)}
 	_MODP_8192 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_8192)}
 
-	_ESN = Transform{Type: TRANSFORM_TYPE_ESN, TransformId: uint16(ESN)}
+	_ESN    = Transform{Type: TRANSFORM_TYPE_ESN, TransformId: uint16(ESN)}
+	_NO_ESN = Transform{Type: TRANSFORM_TYPE_ESN, TransformId: uint16(ESN_NONE)}
 )
 
 var transforms = map[Transform]string{
@@ -62,7 +63,8 @@ var transforms = map[Transform]string{
 	_MODP_6144: "MODP_6144",
 	_MODP_8192: "MODP_8192",
 
-	_ESN: "ESN",
+	_ESN:    "ESN",
+	_NO_ESN: "NO_ESN",
 }
 
 // mutualCipherSuite returns a cipherSuite given

@@ -1140,6 +1140,16 @@ func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
    ~                    Integrity Checksum Data                    ~
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
+type EncryptedPayload struct {
+	*PayloadHeader
+}
+
+func (s *EncryptedPayload) Type() PayloadType  { return PayloadTypeSK }
+func (s *EncryptedPayload) Encode() (b []byte) { return }
+func (s *EncryptedPayload) Decode(b []byte) (err error) {
+	// TODO
+	return
+}
 
 /*
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
