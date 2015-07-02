@@ -1,10 +1,5 @@
 package ike
 
-type Transform struct {
-	Type        TransformType
-	TransformId uint16
-}
-
 var (
 	_ENCR_AES_CBC      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CBC)}
 	_ENCR_AES_CTR      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CTR)}

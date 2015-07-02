@@ -427,6 +427,11 @@ func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
    |                                                               |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
+type Transform struct {
+	Type        TransformType
+	TransformId uint16
+}
+
 type SaTransform struct {
 	Transform Transform
 	KeyLength uint16
@@ -1147,7 +1152,6 @@ type EncryptedPayload struct {
 func (s *EncryptedPayload) Type() PayloadType  { return PayloadTypeSK }
 func (s *EncryptedPayload) Encode() (b []byte) { return }
 func (s *EncryptedPayload) Decode(b []byte) (err error) {
-	// TODO
 	return
 }
 
@@ -1244,24 +1248,7 @@ func (s *Message) decodeHeader(b []byte) (err error) {
 	return
 }
 
-func (s *Message) decodePayloads(ib []byte, tkm *Tkm) (err error) {
-	s.Payloads = makePayloads()
-	if len(ib) < int(s.IkeHeader.MsgLength) {
-		log.V(LOG_CODEC).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
-	}
-	nextPayload := s.IkeHeader.NextPayload
-	b := ib[IKE_HEADER_LEN:s.IkeHeader.MsgLength]
-	if nextPayload == PayloadTypeSK {
-		if tkm == nil {
-			err = errors.New("cant decrypt, no tkm found")
-			return
-		}
-		if nextPayload, b, err = tkm.VerifyDecrypt(ib); err != nil {
-			return
-		}
-	}
+func (s *Message) decodePayloads(b []byte, nextPayload PayloadType) (err error) {
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
 			log.V(LOG_CODEC).Info("")
@@ -1305,6 +1292,8 @@ func (s *Message) decodePayloads(ib []byte, tkm *Tkm) (err error) {
 			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, trafficSelectorPayloadType: PayloadTypeTSi}
 		case PayloadTypeTSr:
 			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, trafficSelectorPayloadType: PayloadTypeTSr}
+		case PayloadTypeSK:
+			payload = &EncryptedPayload{PayloadHeader: pHeader}
 		case PayloadTypeCP:
 			payload = &ConfigurationPayload{PayloadHeader: pHeader}
 		case PayloadTypeEAP:
@@ -1319,9 +1308,13 @@ func (s *Message) decodePayloads(ib []byte, tkm *Tkm) (err error) {
 			log.Infof("Payload %s: %s", payload.Type(), js)
 			log.Info("from:\n" + hex.Dump(pbuf))
 		}
+		s.Payloads.Add(payload)
+		if nextPayload == PayloadTypeSK {
+			log.V(3).Info("found encrypted payload")
+			return
+		}
 		nextPayload = pHeader.NextPayload
 		b = b[pHeader.PayloadLength:]
-		s.Payloads.Add(payload)
 	}
 	if len(b) > 0 {
 		log.Errorf("remaining %d\n%s", len(b), hex.Dump(b))
@@ -1335,9 +1328,29 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = msg.decodePayloads(dec, tkm); err != nil {
+	if len(dec) < int(msg.IkeHeader.MsgLength) {
+		log.V(LOG_CODEC).Info("")
+		err = ERR_INVALID_SYNTAX
 		return nil, err
 	}
+	msg.Payloads = makePayloads()
+	if err = msg.decodePayloads(dec[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+		return nil, err
+	}
+	if msg.IkeHeader.NextPayload == PayloadTypeSK {
+		if tkm == nil {
+			err = errors.New("cant decrypt, no tkm found")
+			return nil, err
+		}
+		nextPayload, b, err := tkm.VerifyDecrypt(dec)
+		if err != nil {
+			return nil, err
+		}
+		if err = msg.decodePayloads(b, nextPayload); err != nil {
+			return nil, err
+		}
+	}
+
 	return msg, nil
 }
 

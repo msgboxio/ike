@@ -121,7 +121,7 @@ func MakeFsm(h FsmHandler, parent context.Context) (s *Fsm) {
 		Context:    parent,
 		events:     make(chan IkeEvent, 10),
 	}
-	// timers we started above are stopped immediately in Idle state
+	// go to SmiInit state
 	s.StateFunc(s, StateEntry)
 	go s.run()
 	return
