@@ -28,7 +28,7 @@ var (
 func EnsurePayloads(msg *Message, payloadTypes []PayloadType) bool {
 	mp := msg.Payloads
 	for _, pt := range payloadTypes {
-		if _, ok := mp.Map[pt]; !ok {
+		if mp.Get(pt) == nil {
 			return false
 		}
 	}
@@ -44,18 +44,6 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func decode(dec []byte, tkm *Tkm) (*Message, error) {
-	msg := &Message{}
-	err := msg.DecodeHeader(dec)
-	if err != nil {
-		return nil, err
-	}
-	if err = msg.DecodePayloads(dec, tkm); err != nil {
-		return nil, err
-	}
-	return msg, nil
-}
-
 func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
 	b := make([]byte, 1500)
 	n, from, err := udp.ReadFromUDP(b)
@@ -69,7 +57,7 @@ func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte
 		log.Infof("%d from %s", n, from)
 		log.V(4).Info("\n" + hex.Dump(b))
 	}
-	msg, err := decode(b, tkm)
+	msg, err := DecodeMessage(b, tkm)
 	if err != nil {
 		return nil, nil, from, err
 	} else if log.V(3) {

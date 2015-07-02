@@ -1215,30 +1215,23 @@ func (s *EapPayload) Decode(b []byte) (err error) {
 //  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
 
 type Payloads struct {
-	Map   map[PayloadType]int
 	Array []Payload
 }
 
 func makePayloads() *Payloads {
-	return &Payloads{
-		Map: make(map[PayloadType]int),
-	}
+	return &Payloads{}
 }
 
 func (p *Payloads) Get(t PayloadType) Payload {
-	if idx, ok := p.Map[t]; ok {
-		return p.Array[idx]
+	for _, pl := range p.Array {
+		if pl.Type() == t {
+			return pl
+		}
 	}
 	return nil
 }
 func (p *Payloads) Add(t Payload) {
-	if idx, ok := p.Map[t.Type()]; ok {
-		// overwrite
-		p.Array[idx] = t
-		return
-	}
 	p.Array = append(p.Array, t)
-	p.Map[t.Type()] = len(p.Array) - 1
 }
 
 type Message struct {
@@ -1246,12 +1239,12 @@ type Message struct {
 	Payloads  *Payloads
 }
 
-func (s *Message) DecodeHeader(b []byte) (err error) {
+func (s *Message) decodeHeader(b []byte) (err error) {
 	s.IkeHeader, err = DecodeIkeHeader(b[:IKE_HEADER_LEN])
 	return
 }
 
-func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
+func (s *Message) decodePayloads(ib []byte, tkm *Tkm) (err error) {
 	s.Payloads = makePayloads()
 	if len(ib) < int(s.IkeHeader.MsgLength) {
 		log.V(LOG_CODEC).Info("")
@@ -1277,6 +1270,11 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		}
 		pHeader := &PayloadHeader{}
 		if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
+			return
+		}
+		if len(b) < int(pHeader.PayloadLength) {
+			log.V(LOG_CODEC).Info("")
+			err = ERR_INVALID_SYNTAX
 			return
 		}
 		var payload Payload
@@ -1329,6 +1327,18 @@ func (s *Message) DecodePayloads(ib []byte, tkm *Tkm) (err error) {
 		log.Errorf("remaining %d\n%s", len(b), hex.Dump(b))
 	}
 	return
+}
+
+func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
+	msg := &Message{}
+	err := msg.decodeHeader(dec)
+	if err != nil {
+		return nil, err
+	}
+	if err = msg.decodePayloads(dec, tkm); err != nil {
+		return nil, err
+	}
+	return msg, nil
 }
 
 func encodePayloads(payloads *Payloads) (b []byte) {

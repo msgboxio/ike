@@ -8,42 +8,50 @@ import (
 func (p PayloadType) String() string {
 	switch p {
 	case PayloadTypeNone:
-		return "No Next Payload"
+		return "None"
 	case PayloadTypeSA:
-		return "Security Association"
+		return "SA"
 	case PayloadTypeKE:
-		return "Key Exchange"
+		return "KE"
 	case PayloadTypeIDi:
-		return "Identification - Initiator"
+		return "IDi"
 	case PayloadTypeIDr:
-		return "Identification - Responder"
+		return "IDr"
 	case PayloadTypeCERT:
-		return "Certificate"
+		return "CERT"
 	case PayloadTypeCERTREQ:
-		return "Certificate Request"
+		return "CERTREQ"
 	case PayloadTypeAUTH:
-		return "Authentication"
+		return "AUTH"
 	case PayloadTypeNonce:
 		return "Nonce"
 	case PayloadTypeN:
-		return "Notify"
+		return "N"
 	case PayloadTypeD:
-		return "Delete"
+		return "D"
 	case PayloadTypeV:
-		return "Vendor ID"
+		return "V"
 	case PayloadTypeTSi:
-		return "Traffic Selector - Initiator"
+		return "TSi"
 	case PayloadTypeTSr:
-		return "Traffic Selector - Responder"
+		return "TSr"
 	case PayloadTypeSK:
-		return "Encrypted and Authenticated"
+		return "SK"
 	case PayloadTypeCP:
-		return "Configuration"
+		return "CP"
 	case PayloadTypeEAP:
-		return "Extensible Authentication"
+		return "EAP"
 	default:
 		return "Unknown"
 	}
+}
+
+func (p Payloads) String() string {
+	var pls []PayloadType
+	for _, pl := range p.Array {
+		pls = append(pls, pl.Type())
+	}
+	return fmt.Sprintf("%v", pls)
 }
 
 func (p PayloadType) MarshalJSON() ([]byte, error) {

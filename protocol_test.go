@@ -67,18 +67,9 @@ func init() {
 	flag.Parse()
 }
 
-var env map[Spi]*Tkm
-
-func testDecode(dec []byte, t *testing.T) *Message {
-	msg := &Message{}
-	err := msg.DecodeHeader(dec)
+func testDecode(dec []byte, tkm *Tkm, t *testing.T) *Message {
+	msg, err := DecodeMessage(dec, tkm)
 	if err != nil {
-		t.Fatal(err)
-	}
-
-	tkm := env[msg.IkeHeader.SpiI]
-
-	if err = msg.DecodePayloads(dec, tkm); err != nil {
 		t.Fatal(err)
 	}
 
@@ -99,10 +90,9 @@ func testDecode(dec []byte, t *testing.T) *Message {
 }
 
 func TestDecode(t *testing.T) {
-	env = make(map[Spi]*Tkm)
 	dec := packets.Hexit(sa_init).Bytes()
 
-	msg := testDecode(dec, t)
+	msg := testDecode(dec, nil, t)
 
 	shared := `327adb6c8f7185d4897b652861f5474f8e7be3882853093029d15747645cae97be69b476e0a11a12d03ea6d6ebabc51aedc7c66399b6c7d6a2e3da2b087834762e0ca23ede6a9a0a6948e8291a13969c9be0961eff40c06700c279cb99983e1f22ddba4ead1c2cd180832b534e0bfe5a2a3d4210d721efb1868b555e1912e98133c0b690abfd16e0e5d01c99c73934c380aa7c2363179069d2c8abfc061a1107e9cfa40ce3735258fcf81456bff7edc2bd63b99e2c32ff6ec33f2552b80ce870f3d268d47c72ef61c8c9e8ebe975e7012f8b79a75b2ddf914048c69b169c2f67a816c276fb1dff11fcc63e883a51505baecfb581ab375534b52d43e441996089`
 	dhShared, ok := new(big.Int).SetString(shared, 16)
@@ -113,7 +103,7 @@ func TestDecode(t *testing.T) {
 	no := msg.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
 
 	transforms := []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC},
+		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
 		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
 		&SaTransform{Transform: _MODP_2048},
 		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
@@ -126,14 +116,11 @@ func TestDecode(t *testing.T) {
 		DhShared:    dhShared,
 	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
-	// spi := Spi{}
-	// copy(spi[:], spiI)
 	tkm.IsaCreate(spiI, []byte{})
-
-	env[msg.IkeHeader.SpiI] = tkm
+	tkm.SetSecret([]byte("ak@msgbox.io"), []byte("foo"))
 
 	dec = packets.Hexit(auth_psk).Bytes()
-	testDecode(dec, t)
+	testDecode(dec, tkm, t)
 }
 
 func TestResp(t *testing.T) {
