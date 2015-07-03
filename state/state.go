@@ -1,4 +1,4 @@
-package ike
+package state
 
 import (
 	"msgbox.io/context"
@@ -42,7 +42,7 @@ const (
 
 type IkeEvent struct {
 	Id      IkeEventId
-	Message *Message
+	Message interface{}
 }
 
 type IkeSaState int
@@ -101,8 +101,8 @@ const (
 type FsmHandler interface {
 	SendIkeSaInit()
 	SendIkeAuth()
-	HandleSaInitResponse(*Message) error
-	HandleSaAuthResponse(*Message) error
+	HandleSaInitResponse(interface{}) error
+	HandleSaAuthResponse(interface{}) error
 	DownloadCrl()
 	InstallChildSa()
 }
@@ -138,7 +138,7 @@ func (s *Fsm) PostEvent(evt IkeEvent) {
 	case <-s.Done(): // will return immediately if closed
 		break
 	default:
-		log.V(2).Infof("Post: Event %s, in State %s", evt, s.State)
+		log.V(2).Infof("Post: Event %s, in State %s", evt.Id, s.State)
 		s.events <- evt
 	}
 }
@@ -148,7 +148,7 @@ func (s *Fsm) runEvent(evt IkeEvent) {
 	case <-s.Done(): // will return immediately if closed
 		break
 	default:
-		log.V(2).Infof("Run: Event %s, in State %s", evt, s.State)
+		log.V(2).Infof("Run: Event %s, in State %s", evt.Id, s.State)
 		if err := s.StateFunc(s, evt); err != nil {
 
 		}
@@ -208,8 +208,9 @@ func SmiAuth(s *Fsm, evt IkeEvent) (err error) {
 		// recerate IKE_SA_INIT and send
 	case IKE_SA_INIT_RESPONSE:
 		if err = s.HandleSaInitResponse(evt.Message); err != nil {
-			s.stateChange(SmiAuthWait)
+			s.stateChange(SmDead)
 		}
+		s.stateChange(SmiAuthWait)
 	case N_NO_PROPOSAL_CHOSEN:
 		s.stateChange(SmDead)
 	case IKE_TIMEOUT:
@@ -225,10 +226,12 @@ func SmiAuthWait(s *Fsm, evt IkeEvent) (err error) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SMI_AUTH_WAIT
+		s.SendIkeAuth()
 	case IKE_AUTH_RESPONSE:
 		if err = s.HandleSaAuthResponse(evt.Message); err != nil {
-			s.stateChange(SmMature)
+			s.stateChange(SmDead)
 		}
+		s.stateChange(SmMature)
 	}
 	return
 }

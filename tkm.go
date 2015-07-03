@@ -4,9 +4,7 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"math/big"
 )
 
@@ -156,15 +154,15 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte) {
 	// for test
 	t.KEYMAT = KEYMAT
 	t.SKEYSEED = SKEYSEED
-	fmt.Printf("keymat length %d\n", len(KEYMAT))
-	fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
-		hex.Dump(t.skD),
-		hex.Dump(t.skAi),
-		hex.Dump(t.skAr),
-		hex.Dump(t.skEi),
-		hex.Dump(t.skEr),
-		hex.Dump(t.skPi),
-		hex.Dump(t.skPr))
+	// fmt.Printf("keymat length %d\n", len(KEYMAT))
+	// fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
+	// 	hex.Dump(t.skD),
+	// 	hex.Dump(t.skAi),
+	// 	hex.Dump(t.skAr),
+	// 	hex.Dump(t.skEi),
+	// 	hex.Dump(t.skEr),
+	// 	hex.Dump(t.skPi),
+	// 	hex.Dump(t.skPr))
 }
 
 // verify message appended with mac
