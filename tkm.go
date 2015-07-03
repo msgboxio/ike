@@ -248,9 +248,7 @@ func (t *Tkm) Encrypt(clear, key []byte) (b []byte, err error) {
 		pad[padlen-1] = byte(padlen - 1)
 		clear = append(clear, pad...)
 	}
-	// fmt.Printf("dec1: \n%s", hex.Dump(clear))
 	mode.CryptBlocks(clear, clear)
-	// fmt.Printf("enc1: \n%s", hex.Dump(clear))
 	b = append(iv.Bytes(), clear...)
 	return
 }
@@ -269,15 +267,23 @@ func (tkm *Tkm) Auth(signed1, id []byte, flag IkeFlags) []byte {
 }
 
 func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) {
-	plen := t.suite.prfLen
+	kmLen := 2*t.suite.keyLen + 2*t.suite.macKeyLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(t.Ni.Bytes(), t.Nr.Bytes()...),
-		plen*4)
-	t.espEi, t.espAi, t.espEr, t.espAr =
-		KEYMAT[0:plen],
-		KEYMAT[plen:plen*2],
-		KEYMAT[plen*2:plen*3],
-		KEYMAT[plen*3:plen*4]
+		kmLen)
+
+	offset := t.suite.keyLen
+	t.espEi = KEYMAT[0:offset]
+	t.espAi = KEYMAT[offset : offset+t.suite.macKeyLen]
+	offset += t.suite.macKeyLen
+	t.espEr = KEYMAT[offset : offset+t.suite.keyLen]
+	offset += t.suite.keyLen
+	t.espAr = KEYMAT[offset : offset+t.suite.macKeyLen]
+	// fmt.Printf("ESP keys : \n%s\n%s\n%s\n%s\n",
+	// 	hex.Dump(t.espEi),
+	// 	hex.Dump(t.espAi),
+	// 	hex.Dump(t.espEr),
+	// 	hex.Dump(t.espAr))
 }
 
 // request signed data from tkm

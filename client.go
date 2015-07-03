@@ -6,18 +6,17 @@ import (
 	"net"
 
 	"msgbox.io/context"
+	"msgbox.io/ike/platform"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
-	"msgbox.io/packets"
 )
 
 type stateEvents int
 
 const (
-	ikeInit stateEvents = iota + 1
-	ikeAuth
-	ikeCrl
-	ikeSa
+	ikeCrl stateEvents = iota + 1
+	installChildSa
+	removeChildSa
 )
 
 // Initiator will run over a socket
@@ -59,7 +58,7 @@ func NewInitiator(parent context.Context, remote *net.UDPAddr, cfg *ClientCfg) (
 		cancel(err)
 		return
 	}
-	log.Infof("socket connected: %s", o.udp)
+	log.Infof("socket connected: %s<=>%s", o.udp.LocalAddr(), o.udp.RemoteAddr())
 
 	o.cfg = cfg
 	suite := NewCipherSuite(o.cfg.IkeTransforms)
@@ -98,11 +97,13 @@ func (o *Initiator) SendIkeAuth() {
 	}
 }
 func (o *Initiator) DownloadCrl()    { o.events <- ikeCrl }
-func (o *Initiator) InstallChildSa() { o.events <- ikeSa }
+func (o *Initiator) InstallChildSa() { o.events <- installChildSa }
 
 func (o *Initiator) HandleSaInitResponse(msg interface{}) (err error) {
 	m := msg.(*Message)
-	log.V(1).Infof("Handling %s: payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
+	if err := o.handleEncryptedMessage(m); err != nil {
+		return err
+	}
 	// we know what cryptographyc algorithms peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// check NAT-T payload to determine if there is a NAT between the two peers
@@ -136,16 +137,8 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) (err error) {
 
 func (o *Initiator) HandleSaAuthResponse(msg interface{}) (err error) {
 	m := msg.(*Message)
-	log.V(1).Infof("Handling %s: payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
-	if m.IkeHeader.NextPayload == PayloadTypeSK {
-		b, err := o.tkm.VerifyDecrypt(m.data)
-		if err != nil {
-			return err
-		}
-		sk := m.Payloads.Get(PayloadTypeSK)
-		if err = m.decodePayloads(b, sk.NextPayloadType()); err != nil {
-			return err
-		}
+	if err := o.handleEncryptedMessage(m); err != nil {
+		return err
 	}
 	if !EnsurePayloads(m, AuthRPayloads) {
 		err = errors.New("essential payload is missing from auth message")
@@ -156,12 +149,58 @@ func (o *Initiator) HandleSaAuthResponse(msg interface{}) (err error) {
 		err = errors.New("could not authenticate")
 		return
 	}
-	log.V(1).Infof("Handling %s: decrypted payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
-	// TODO - check other parameters
-	spi, _ := packets.ReadB32(o.cfg.EspSpi, 0)
-	log.Infof("sa Established: %x", spi)
+	// TODO - check other parameters including spi
+	// if !bytes.Equal(o.cfg.EspSpi, o.cfg.ProposalEsp.Spi) {
+	// 	err = errors.New("different esp spi")
+	// 	return
+	// }
+	log.Infof("sa Established: %#x", o.cfg.EspSpi)
 	// TODO install child sa
 	return nil
+}
+
+func (o *Initiator) HandleSaRekey(msg interface{}) (err error) {
+	m := msg.(*Message)
+	if err := o.handleEncryptedMessage(m); err != nil {
+		return err
+	}
+	return
+}
+
+func (o *Initiator) handleInformational(msg *Message) (err error) {
+	if err = o.handleEncryptedMessage(msg); err != nil {
+		return err
+	}
+	if del := msg.Payloads.Get(PayloadTypeD); del != nil {
+		dp := del.(*DeletePayload)
+		if dp.ProtocolId == IKE {
+			log.Infof("removed IKE SA : %#x", msg.IkeHeader.SpiI)
+			o.fsm.PostEvent(state.IkeEvent{Id: IKE_TERMINATE})
+		}
+		for _, spi := range dp.Spis {
+			if dp.ProtocolId == ESP {
+				log.Info("removed ESP SA : %#x", spi)
+				// TODO
+			}
+		}
+	}
+	return
+}
+
+func (o *Initiator) handleEncryptedMessage(m *Message) (err error) {
+	log.V(1).Infof("Handling %s: payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
+	if m.IkeHeader.NextPayload == PayloadTypeSK {
+		var b []byte
+		if b, err = o.tkm.VerifyDecrypt(m.data); err != nil {
+			return err
+		}
+		sk := m.Payloads.Get(PayloadTypeSK)
+		if err = m.decodePayloads(b, sk.NextPayloadType()); err != nil {
+			return err
+		}
+		log.V(1).Infof("Handling %s: decrypted payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
+	}
+	return
 }
 
 func (o *Initiator) Notify(ie IkeError) {}
@@ -174,7 +213,23 @@ done:
 			break done
 		case evt := <-o.events:
 			switch evt {
-			case ikeSa:
+			case installChildSa:
+				o.tkm.IpsecSaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
+				la := o.udp.LocalAddr().(*net.UDPAddr)
+				ra := o.udp.RemoteAddr().(*net.UDPAddr)
+				sa := &platform.SaParams{
+					Src:     la.IP,
+					Dst:     ra.IP,
+					SrcPort: la.Port,
+					DstPort: ra.Port,
+					// SrcNet:
+					//  DstNet:
+					EspEi: o.tkm.espEi,
+					EspAi: o.tkm.espAi,
+					EspEr: o.tkm.espEr,
+					EspAr: o.tkm.espAr,
+				}
+				platform.InstallChildSa(sa)
 			}
 		case msg := <-o.messages:
 			evt := state.IkeEvent{Message: msg}
@@ -188,6 +243,8 @@ done:
 			case CREATE_CHILD_SA:
 				evt.Id = state.IKE_REKEY
 				o.fsm.PostEvent(evt)
+			case INFORMATIONAL:
+				o.handleInformational(msg)
 			}
 		}
 	}

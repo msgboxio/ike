@@ -73,3 +73,12 @@ func (et IkeExchangeType) String() string {
 		return "Unknown"
 	}
 }
+
+func (s Selector) String() string {
+	return fmt.Sprintf("(%d, %d-%d, %s-%s)",
+		s.IpProtocolId,
+		s.StartPort,
+		s.Endport,
+		s.StartAddress,
+		s.EndAddress)
+}

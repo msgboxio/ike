@@ -23,6 +23,8 @@ var (
 
 	AuthIPayloads = []PayloadType{PayloadTypeIDi, PayloadTypeAUTH, PayloadTypeSA, PayloadTypeTSi, PayloadTypeTSr}
 	AuthRPayloads = []PayloadType{PayloadTypeIDr, PayloadTypeAUTH, PayloadTypeSA, PayloadTypeTSi, PayloadTypeTSr}
+
+	AuthPayloads = []PayloadType{PayloadTypeIDr, PayloadTypeAUTH}
 )
 
 func EnsurePayloads(msg *Message, payloadTypes []PayloadType) bool {
@@ -67,7 +69,8 @@ func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte
 	msg, err := DecodeMessage(b, tkm)
 	if err != nil {
 		return nil, nil, from, err
-	} else if log.V(3) {
+	}
+	if log.V(3) {
 		js, _ := json.MarshalIndent(msg, " ", " ")
 		log.Info("\n" + string(js))
 	}
@@ -120,10 +123,10 @@ func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 	// intiators's signed octet
 	// initI | Nr | prf(sk_pi | IDi )
 	idI := authI.Payloads.Get(PayloadTypeIDi).(*IdPayload)
-	log.Infof("ID:%s", string(idI.Data))
+	log.V(2).Infof("ID:%s", string(idI.Data))
 	auth := tkm.Auth(append(initIb, tkm.Nr.Bytes()...), idI.Encode(), INITIATOR)
 	_authI := authI.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
-	log.Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authI.Data))
+	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authI.Data))
 	return bytes.Equal(auth, _authI.Data)
 }
 
@@ -131,9 +134,9 @@ func authenticateR(authR *Message, initRb []byte, tkm *Tkm) bool {
 	// responders's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	idR := authR.Payloads.Get(PayloadTypeIDr).(*IdPayload)
-	log.Infof("ID:%s", string(idR.Data))
+	log.V(2).Infof("ID:%s", string(idR.Data))
 	auth := tkm.Auth(append(initRb, tkm.Ni.Bytes()...), idR.Encode(), RESPONSE)
 	_authR := authR.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
-	log.Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authR.Data))
+	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authR.Data))
 	return bytes.Equal(auth, _authR.Data)
 }

@@ -27,6 +27,7 @@ const (
 
 	// common messages
 	IKE_REKEY
+	IKE_REKEY_RESPONSE
 	IKE_DPD
 	IKE_CRL_UPDATE
 	IKE_REAUTH
@@ -103,6 +104,7 @@ type FsmHandler interface {
 	SendIkeAuth()
 	HandleSaInitResponse(interface{}) error
 	HandleSaAuthResponse(interface{}) error
+	HandleSaRekey(interface{}) error
 	DownloadCrl()
 	InstallChildSa()
 }
@@ -240,6 +242,21 @@ func SmMature(s *Fsm, evt IkeEvent) (err error) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_MATURE
+		s.InstallChildSa()
+	case IKE_REKEY:
+		if err = s.HandleSaRekey(evt.Message); err != nil {
+			s.stateChange(SmDead)
+		}
+		s.stateChange(SmRekey)
+	}
+	return
+}
+
+func SmRekey(s *Fsm, evt IkeEvent) (err error) {
+	switch evt.Id {
+	case StateEntry:
+		s.State = SM_REKEY
+	case IKE_REKEY_RESPONSE:
 	}
 	return
 }
