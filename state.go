@@ -5,10 +5,10 @@ import (
 	"msgbox.io/log"
 )
 
-type IkeEvent int
+type IkeEventId int
 
 const (
-	ACQUIRE IkeEvent = iota + 1
+	ACQUIRE IkeEventId = iota + 1
 	CONNECT
 	REAUTH
 
@@ -40,7 +40,11 @@ const (
 	StateExit
 )
 
-// ike sa
+type IkeEvent struct {
+	Id      IkeEventId
+	Message *Message
+}
+
 type IkeSaState int
 
 const (
@@ -97,6 +101,8 @@ const (
 type FsmHandler interface {
 	SendIkeSaInit()
 	SendIkeAuth()
+	HandleSaInitResponse(*Message) error
+	HandleSaAuthResponse(*Message) error
 	DownloadCrl()
 	InstallChildSa()
 }
@@ -122,7 +128,7 @@ func MakeFsm(h FsmHandler, parent context.Context) (s *Fsm) {
 		events:     make(chan IkeEvent, 10),
 	}
 	// go to SmiInit state
-	s.StateFunc(s, StateEntry)
+	s.StateFunc(s, IkeEvent{Id: StateEntry})
 	go s.run()
 	return
 }
@@ -143,7 +149,9 @@ func (s *Fsm) runEvent(evt IkeEvent) {
 		break
 	default:
 		log.V(2).Infof("Run: Event %s, in State %s", evt, s.State)
-		s.StateFunc(s, evt)
+		if err := s.StateFunc(s, evt); err != nil {
+
+		}
 	}
 }
 
@@ -166,17 +174,17 @@ Done:
 func (s *Fsm) stateChange(fn StateFunc) {
 	prev := s.State
 	// execute exit event synchronously
-	s.StateFunc(s, StateExit)
+	s.StateFunc(s, IkeEvent{Id: StateExit})
 	// change state
 	s.StateFunc = fn
 	// execute new state entry event
-	s.StateFunc(s, StateEntry)
+	s.StateFunc(s, IkeEvent{Id: StateEntry})
 	log.V(2).Infof("Change: Previous %s, Next %s", prev, s.State)
 }
 
 // initial state:
 func SmiInit(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SMI_INIT
 	case ACQUIRE, CONNECT, REAUTH:
@@ -193,20 +201,15 @@ func SmiInit(s *Fsm, evt IkeEvent) (err error) {
 }
 
 func SmiAuth(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SMI_AUTH
 	case N_INVALID_KE, N_COOKIE:
 		// recerate IKE_SA_INIT and send
 	case IKE_SA_INIT_RESPONSE:
-		// we know what cryptographyc algorithms peer selected
-		// generate keys necessary for IKE SA protection and encryption.
-		// check NAT-T payload to determine if there is a NAT between the two peers
-		// If there is, then all the further communication is perfomed over port 4500 instead of the default port 500
-		// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
-		// find traffic selectors
-		// send IKE_AUTH req
-		s.stateChange(SmiAuthWait)
+		if err = s.HandleSaInitResponse(evt.Message); err != nil {
+			s.stateChange(SmiAuthWait)
+		}
 	case N_NO_PROPOSAL_CHOSEN:
 		s.stateChange(SmDead)
 	case IKE_TIMEOUT:
@@ -219,20 +222,19 @@ func SmiAuth(s *Fsm, evt IkeEvent) (err error) {
 }
 
 func SmiAuthWait(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SMI_AUTH_WAIT
 	case IKE_AUTH_RESPONSE:
-		// authenticate peer
-		// install child sa
-		/// move to mature state
-		s.stateChange(SmMature)
+		if err = s.HandleSaAuthResponse(evt.Message); err != nil {
+			s.stateChange(SmMature)
+		}
 	}
 	return
 }
 
 func SmMature(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SM_MATURE
 	}
@@ -240,7 +242,7 @@ func SmMature(s *Fsm, evt IkeEvent) (err error) {
 }
 
 func SmDead(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DEAD
 	}
@@ -248,7 +250,7 @@ func SmDead(s *Fsm, evt IkeEvent) (err error) {
 }
 
 func SmTerminate(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SM_TERMINATE
 	case IKE_TIMEOUT:
@@ -258,7 +260,7 @@ func SmTerminate(s *Fsm, evt IkeEvent) (err error) {
 }
 
 func SmDying(s *Fsm, evt IkeEvent) (err error) {
-	switch evt {
+	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DYING
 	}

@@ -183,7 +183,11 @@ func (t *Tkm) VerifyMac(b []byte) (err error) {
 	return
 }
 
-func (t *Tkm) Decrypt(b, key []byte) (dec []byte, err error) {
+func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
+	key := t.skEi
+	if t.isInitiator {
+		key = t.skEr
+	}
 	iv := b[0:t.suite.ivLen]
 	ciphertext := b[t.suite.ivLen:]
 	// block ciphers only yet
@@ -199,29 +203,12 @@ func (t *Tkm) Decrypt(b, key []byte) (dec []byte, err error) {
 	return
 }
 
-func (t *Tkm) VerifyDecrypt(ike []byte) (nextPayload PayloadType, dec []byte, err error) {
+func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
 	b := ike[IKE_HEADER_LEN:]
-	pHeader := &PayloadHeader{}
-	if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
-		return
-	}
-	if extra := len(b) - int(pHeader.PayloadLength); extra != 0 {
-		err = errors.New("extra encrypted data")
-		return
-	}
 	if err = t.VerifyMac(ike); err != nil {
 		return
 	}
-	nextPayload = pHeader.NextPayload
-	enc := b[PAYLOAD_HEADER_LENGTH : len(b)-t.suite.macLen]
-	// fmt.Printf("enc: \n%s", hex.Dump(enc))
-	key := t.skEi
-	if t.isInitiator {
-		key = t.skEr
-	}
-
-	dec, err = t.Decrypt(enc, key)
-	// fmt.Printf("dec: \n%s", hex.Dump(dec))
+	dec, err = t.Decrypt(b[PAYLOAD_HEADER_LENGTH : len(b)-t.suite.macLen])
 	return
 }
 

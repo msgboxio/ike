@@ -11,8 +11,8 @@ import (
 type ClientCfg struct {
 	ikeTransforms, espTransforms []*SaTransform
 
-	ikeSpiI Spi
-	EspSpi  []byte
+	ikeSpiI, ikeSpiR Spi
+	EspSpi           []byte
 
 	proposalIke, proposalEsp *SaProposal
 

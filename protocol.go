@@ -1241,6 +1241,7 @@ func (p *Payloads) Add(t Payload) {
 type Message struct {
 	IkeHeader *IkeHeader
 	Payloads  *Payloads
+	data      []byte // used to carry raw bytes
 }
 
 func (s *Message) decodeHeader(b []byte) (err error) {
@@ -1342,15 +1343,15 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 			err = errors.New("cant decrypt, no tkm found")
 			return nil, err
 		}
-		nextPayload, b, err := tkm.VerifyDecrypt(dec)
+		b, err := tkm.VerifyDecrypt(dec)
 		if err != nil {
 			return nil, err
 		}
-		if err = msg.decodePayloads(b, nextPayload); err != nil {
+		sk := msg.Payloads.Get(PayloadTypeSK)
+		if err = msg.decodePayloads(b, sk.NextPayloadType()); err != nil {
 			return nil, err
 		}
 	}
-
 	return msg, nil
 }
 

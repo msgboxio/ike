@@ -44,14 +44,11 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func readPacket(udp *net.UDPConn, remote *net.UDPAddr) ([]byte, *net.UDPAddr, error) {
+func readPacket(udp *net.UDPConn) ([]byte, *net.UDPAddr, error) {
 	b := make([]byte, 1500)
 	n, from, err := udp.ReadFromUDP(b)
 	if err != nil {
 		return nil, nil, err
-	}
-	if remote != nil && remote.String() != from.String() {
-		return nil, from, fmt.Errorf("from different address: %s", from)
 	}
 	b = b[:n]
 	log.Infof("%d from %s", n, from)
@@ -60,9 +57,12 @@ func readPacket(udp *net.UDPConn, remote *net.UDPAddr) ([]byte, *net.UDPAddr, er
 }
 
 func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
-	b, from, err := readPacket(udp, remote)
+	b, from, err := readPacket(udp)
 	if err != nil {
 		return nil, nil, from, err
+	}
+	if remote != nil && remote.String() != from.String() {
+		return nil, nil, from, fmt.Errorf("from different address: %s", from)
 	}
 	msg, err := DecodeMessage(b, tkm)
 	if err != nil {

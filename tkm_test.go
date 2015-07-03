@@ -59,7 +59,7 @@ func TestTkm(t *testing.T) {
 
 	_signed_encr := `928f3f58 1f05a563 00000000 00000000 2e202308 00000001 000000e0 230000c4 fcbb4a7a 26d6a66d 41d372ec d4cfaef3 c2454434 a1d96704 2f87cef5 0ea8b816 d455a55a 7a634485 4662f63e 514b0673 c8a4aff7 06d32a11 117f0820 50c8caed cc31b4da d69666f4 53554517 32d7113a 6cd19af9 2ef90fdc 44c84ec7 c1684f1d 03a2ef97 668b8073 3fa97831 9692e726 cf7257fc 6cbfd69a c9f84114 2d05111b b584e65f 08258237 5910ca0b c2598a65 8c9e474a 9f25f0ae e918410b 6eadd04f c35fa123 9f85456a ba42471e 37d02205 e2516ae1 95b67260 a0a34127 ed3c59d6`
 	signed_encr := packets.Hexit(_signed_encr).Bytes()
-	if _, _, err := tkm.VerifyDecrypt(signed_encr); err != nil {
+	if _, err := tkm.VerifyDecrypt(signed_encr); err != nil {
 		t.Fatal(err)
 	}
 }
