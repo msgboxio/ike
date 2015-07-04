@@ -87,18 +87,6 @@ const (
 	SA_DEAD
 )
 
-type DhcpState int
-
-const (
-	INIT DhcpState = iota + 1
-	SELECTING
-	REQUESTING
-	BOUND
-	RENEWING
-	FINISHED
-	ERROR
-)
-
 type FsmHandler interface {
 	SendIkeSaInit()
 	SendIkeAuth()

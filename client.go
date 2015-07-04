@@ -9,6 +9,7 @@ import (
 	"msgbox.io/ike/platform"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
+	"msgbox.io/packets"
 )
 
 type stateEvents int
@@ -149,12 +150,27 @@ func (o *Initiator) HandleSaAuthResponse(msg interface{}) (err error) {
 		err = errors.New("could not authenticate")
 		return
 	}
-	// TODO - check other parameters including spi
-	// if !bytes.Equal(o.cfg.EspSpi, o.cfg.ProposalEsp.Spi) {
-	// 	err = errors.New("different esp spi")
-	// 	return
-	// }
-	log.Infof("sa Established: %#x", o.cfg.EspSpi)
+	// get peer spi
+	var peerSpi []byte
+	props := m.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
+	for _, p := range props {
+		if !p.isSpiSizeCorrect(len(p.Spi)) {
+			log.Errorf("weird spi size :%+v", *p)
+		}
+		if p.ProtocolId == ESP {
+			peerSpi = p.Spi
+		}
+	}
+	if peerSpi == nil {
+		err = errors.New("Unknown Peer SPI")
+		return
+	}
+	o.cfg.EspSpiR = peerSpi
+	log.Infof("sa Established: %#x<=>%#x", o.cfg.EspSpiI, o.cfg.EspSpiR)
+	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
+	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
+	log.Infof("sa selectors: %s<=>%s", tsi.Selectors, tsr.Selectors)
+
 	// TODO install child sa
 	return nil
 }
@@ -175,7 +191,7 @@ func (o *Initiator) handleInformational(msg *Message) (err error) {
 		dp := del.(*DeletePayload)
 		if dp.ProtocolId == IKE {
 			log.Infof("removed IKE SA : %#x", msg.IkeHeader.SpiI)
-			o.fsm.PostEvent(state.IkeEvent{Id: IKE_TERMINATE})
+			o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_TERMINATE})
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == ESP {
@@ -188,7 +204,6 @@ func (o *Initiator) handleInformational(msg *Message) (err error) {
 }
 
 func (o *Initiator) handleEncryptedMessage(m *Message) (err error) {
-	log.V(1).Infof("Handling %s: payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
 	if m.IkeHeader.NextPayload == PayloadTypeSK {
 		var b []byte
 		if b, err = o.tkm.VerifyDecrypt(m.data); err != nil {
@@ -198,12 +213,15 @@ func (o *Initiator) handleEncryptedMessage(m *Message) (err error) {
 		if err = m.decodePayloads(b, sk.NextPayloadType()); err != nil {
 			return err
 		}
-		log.V(1).Infof("Handling %s: decrypted payloads %s", m.IkeHeader.ExchangeType, *(m.Payloads))
 	}
 	return
 }
 
 func (o *Initiator) Notify(ie IkeError) {}
+
+var (
+	hostMask = net.IPv4Mask(255, 255, 255, 255)
+)
 
 func runInitiator(o *Initiator) {
 done:
@@ -215,19 +233,23 @@ done:
 			switch evt {
 			case installChildSa:
 				o.tkm.IpsecSaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
-				la := o.udp.LocalAddr().(*net.UDPAddr)
-				ra := o.udp.RemoteAddr().(*net.UDPAddr)
+				local := o.udp.LocalAddr().(*net.UDPAddr)
+				remote := o.udp.RemoteAddr().(*net.UDPAddr)
+				SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
+				SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
 				sa := &platform.SaParams{
-					Src:     la.IP,
-					Dst:     ra.IP,
-					SrcPort: la.Port,
-					DstPort: ra.Port,
-					// SrcNet:
-					//  DstNet:
-					EspEi: o.tkm.espEi,
-					EspAi: o.tkm.espAi,
-					EspEr: o.tkm.espEr,
-					EspAr: o.tkm.espAr,
+					Src:     local.IP,
+					Dst:     remote.IP,
+					SrcPort: 0,
+					DstPort: 0,
+					SrcNet:  &net.IPNet{local.IP, hostMask},
+					DstNet:  &net.IPNet{remote.IP, hostMask},
+					EspEi:   o.tkm.espEi,
+					EspAi:   o.tkm.espAi,
+					EspEr:   o.tkm.espEr,
+					EspAr:   o.tkm.espAr,
+					SpiI:    int(SpiI),
+					SpiR:    int(SpiR),
 				}
 				platform.InstallChildSa(sa)
 			}
@@ -244,6 +266,7 @@ done:
 				evt.Id = state.IKE_REKEY
 				o.fsm.PostEvent(evt)
 			case INFORMATIONAL:
+				// handle in all states ?
 				o.handleInformational(msg)
 			}
 		}

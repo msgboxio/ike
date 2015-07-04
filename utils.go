@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -23,8 +22,6 @@ var (
 
 	AuthIPayloads = []PayloadType{PayloadTypeIDi, PayloadTypeAUTH, PayloadTypeSA, PayloadTypeTSi, PayloadTypeTSr}
 	AuthRPayloads = []PayloadType{PayloadTypeIDr, PayloadTypeAUTH, PayloadTypeSA, PayloadTypeTSi, PayloadTypeTSr}
-
-	AuthPayloads = []PayloadType{PayloadTypeIDr, PayloadTypeAUTH}
 )
 
 func EnsurePayloads(msg *Message, payloadTypes []PayloadType) bool {
@@ -58,6 +55,38 @@ func readPacket(udp *net.UDPConn) ([]byte, *net.UDPAddr, error) {
 	return b, from, nil
 }
 
+func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
+	msg := &Message{}
+	err := msg.decodeHeader(dec)
+	if err != nil {
+		return nil, err
+	}
+	if len(dec) < int(msg.IkeHeader.MsgLength) {
+		log.V(LOG_CODEC_ERR).Info("")
+		err = ERR_INVALID_SYNTAX
+		return nil, err
+	}
+	msg.Payloads = makePayloads()
+	if err = msg.decodePayloads(dec[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+		return nil, err
+	}
+	if msg.IkeHeader.NextPayload == PayloadTypeSK {
+		if tkm == nil {
+			err = errors.New("cant decrypt, no tkm found")
+			return nil, err
+		}
+		b, err := tkm.VerifyDecrypt(dec)
+		if err != nil {
+			return nil, err
+		}
+		sk := msg.Payloads.Get(PayloadTypeSK)
+		if err = msg.decodePayloads(b, sk.NextPayloadType()); err != nil {
+			return nil, err
+		}
+	}
+	return msg, nil
+}
+
 func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
 	b, from, err := readPacket(udp)
 	if err != nil {
@@ -70,14 +99,11 @@ func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte
 	if err != nil {
 		return nil, nil, from, err
 	}
-	if log.V(3) {
-		js, _ := json.MarshalIndent(msg, " ", " ")
-		log.Info("\n" + string(js))
-	}
 	return msg, b, from, nil
 }
 
 func EncodeTx(msg *Message, tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr, isConnected bool) (msgB []byte, err error) {
+	log.V(1).Infof("Sending %s: payloads %s", msg.IkeHeader.ExchangeType, *(msg.Payloads))
 	if msgB, err = msg.Encode(tkm); err != nil {
 		return
 	} else {
@@ -92,10 +118,6 @@ func EncodeTx(msg *Message, tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr, isC
 		} else {
 			log.Infof("%d to %s", n, remote)
 			log.V(4).Info("\n" + hex.Dump(msgB))
-			if log.V(3) {
-				js, _ := json.MarshalIndent(msg, " ", " ")
-				log.Info("\n" + string(js))
-			}
 		}
 		return msgB, nil
 	}

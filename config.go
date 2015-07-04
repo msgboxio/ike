@@ -4,7 +4,8 @@ type ClientCfg struct {
 	IkeTransforms, EspTransforms []*SaTransform
 
 	IkeSpiI, IkeSpiR Spi
-	EspSpi           []byte
+
+	EspSpiI, EspSpiR []byte
 
 	ProposalIke, ProposalEsp *SaProposal
 
