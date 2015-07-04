@@ -43,9 +43,16 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func readPacket(udp *net.UDPConn) ([]byte, *net.UDPAddr, error) {
-	b := make([]byte, 1500)
-	n, from, err := udp.ReadFromUDP(b)
+func readPacket(conn net.Conn, isConnected bool) (b []byte, from net.Addr, err error) {
+	b = make([]byte, 1500)
+	n := 0
+	if isConnected {
+		n, err = conn.Read(b)
+		from = conn.RemoteAddr()
+	} else {
+		udp := conn.(*net.UDPConn)
+		n, from, err = udp.ReadFromUDP(b)
+	}
 	if err != nil {
 		return nil, nil, err
 	}
@@ -88,10 +95,11 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 }
 
 func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
-	b, from, err := readPacket(udp)
+	b, fr, err := readPacket(udp, false)
 	if err != nil {
-		return nil, nil, from, err
+		return nil, nil, nil, err
 	}
+	from := fr.(*net.UDPAddr)
 	if remote != nil && remote.String() != from.String() {
 		return nil, nil, from, fmt.Errorf("from different address: %s", from)
 	}
@@ -102,16 +110,18 @@ func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte
 	return msg, b, from, nil
 }
 
-func EncodeTx(msg *Message, tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr, isConnected bool) (msgB []byte, err error) {
+func EncodeTx(msg *Message, tkm *Tkm, conn net.Conn, remote net.Addr, isConnected bool) (msgB []byte, err error) {
 	log.V(1).Infof("Sending %s: payloads %s", msg.IkeHeader.ExchangeType, *(msg.Payloads))
 	if msgB, err = msg.Encode(tkm); err != nil {
 		return
 	} else {
 		var n int
 		if isConnected {
-			n, err = udp.Write(msgB)
+			n, err = conn.Write(msgB)
 		} else {
-			n, err = udp.WriteToUDP(msgB, remote)
+			udp := conn.(*net.UDPConn)
+			addr := remote.(*net.UDPAddr)
+			n, err = udp.WriteToUDP(msgB, addr)
 		}
 		if err != nil {
 			return

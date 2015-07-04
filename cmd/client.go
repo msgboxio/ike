@@ -7,6 +7,7 @@ import (
 
 	"msgbox.io/context"
 	"msgbox.io/ike"
+	"msgbox.io/log"
 )
 
 func NewClientCfg() *ike.ClientCfg {
@@ -58,7 +59,15 @@ func main() {
 
 	remoteU, _ := net.ResolveUDPAddr("udp4", remote)
 
-	cli := ike.NewInitiator(context.Background(), remoteU, NewClientCfg())
+	// use random local address
+	udp, err := net.DialUDP("udp4", nil, remoteU)
+	if err != nil {
+		panic(err)
+	}
+	localU := udp.LocalAddr().(*net.UDPAddr)
+	log.Infof("socket connected: %s<=>%s", localU, remoteU)
+
+	cli := ike.NewInitiator(context.Background(), udp, remoteU.IP, localU.IP, NewClientCfg())
 	<-cli.Done()
 	fmt.Printf("client finished: %v", cli.Err())
 }

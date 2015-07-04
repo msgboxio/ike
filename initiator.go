@@ -30,8 +30,8 @@ type Initiator struct {
 	tkm *Tkm
 	cfg *ClientCfg
 
-	udp    *net.UDPConn
-	remote *net.UDPAddr
+	conn          net.Conn
+	remote, local net.IP
 
 	initIb, initRb []byte
 
@@ -41,25 +41,20 @@ type Initiator struct {
 	fsm *state.Fsm
 }
 
-func NewInitiator(parent context.Context, remote *net.UDPAddr, cfg *ClientCfg) (o *Initiator) {
+func NewInitiator(parent context.Context, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{
 		Context:  cxt,
 		cancel:   cancel,
+		conn:     conn,
 		remote:   remote,
+		local:    local,
 		events:   make(chan stateEvents, 10),
 		messages: make(chan *Message, 10),
 	}
 
 	var err error
-	// use random local address
-	if o.udp, err = net.DialUDP("udp4", nil, remote); err != nil {
-		log.Error(err)
-		cancel(err)
-		return
-	}
-	log.Infof("socket connected: %s<=>%s", o.udp.LocalAddr(), o.udp.RemoteAddr())
 
 	o.cfg = cfg
 	suite := NewCipherSuite(o.cfg.IkeTransforms)
@@ -82,7 +77,7 @@ func (o *Initiator) SendIkeSaInit() {
 	prop := []*SaProposal{o.cfg.ProposalIke}
 	init := MakeInit(o.cfg.IkeSpiI, Spi{}, prop, o.tkm)
 	var err error
-	o.initIb, err = EncodeTx(init, o.tkm, o.udp, o.remote, true)
+	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
 	if err != nil {
 		log.Error(err)
 		o.cancel(err)
@@ -92,7 +87,7 @@ func (o *Initiator) SendIkeAuth() {
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	porp := []*SaProposal{o.cfg.ProposalEsp}
 	authI := MakeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
-	if _, err := EncodeTx(authI, o.tkm, o.udp, o.remote, true); err != nil {
+	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
 		log.Error(err)
 		o.cancel(err)
 	}
@@ -235,22 +230,20 @@ done:
 		case evt := <-o.events:
 			switch evt {
 			case installChildSa:
-				o.tkm.IpsecSaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
-				local := o.udp.LocalAddr().(*net.UDPAddr)
-				remote := o.udp.RemoteAddr().(*net.UDPAddr)
+				espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
 				SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
 				SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
 				sa := &platform.SaParams{
-					Src:     local.IP,
-					Dst:     remote.IP,
+					Src:     o.local,
+					Dst:     o.remote,
 					SrcPort: 0,
 					DstPort: 0,
-					SrcNet:  &net.IPNet{local.IP, hostMask},
-					DstNet:  &net.IPNet{remote.IP, hostMask},
-					EspEi:   o.tkm.espEi,
-					EspAi:   o.tkm.espAi,
-					EspEr:   o.tkm.espEr,
-					EspAr:   o.tkm.espAr,
+					SrcNet:  &net.IPNet{o.local, hostMask},
+					DstNet:  &net.IPNet{o.remote, hostMask},
+					EspEi:   espEi,
+					EspAi:   espAi,
+					EspEr:   espEr,
+					EspAr:   espAr,
 					SpiI:    int(SpiI),
 					SpiR:    int(SpiR),
 				}
@@ -276,22 +269,22 @@ done:
 			}
 		}
 	}
-	o.udp.Close()
+	o.conn.Close()
 	close(o.events)
 	close(o.messages)
 }
 
 func runReader(o *Initiator) {
 	for {
-		b, from, err := readPacket(o.udp)
+		b, _, err := readPacket(o.conn, true)
 		if err != nil {
 			log.Error(err)
 			break
 		}
-		if o.remote != nil && o.remote.String() != from.String() {
-			log.Errorf("from different address: %s", from)
-			continue
-		}
+		// if o.remote != nil && o.remote.String() != from.String() {
+		// 	log.Errorf("from different address: %s", from)
+		// 	continue
+		// }
 		msg := &Message{}
 		if err := msg.decodeHeader(b); err != nil {
 			o.Notify(ERR_INVALID_SYNTAX)

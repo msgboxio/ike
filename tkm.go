@@ -34,15 +34,13 @@ type Tkm struct {
 	DhPrivate, DhPublic *big.Int
 	DhShared            *big.Int
 
+	// for debug
 	SKEYSEED, KEYMAT []byte
-	// size is preferred key lenght of prf
+
 	skD        []byte // further keying material for child sa
 	skPi, skPr []byte
 	skAi, skAr []byte // integrity protection keys
 	skEi, skEr []byte // encryption keys
-
-	IpsecKEYMAT                []byte
-	espEi, espAi, espEr, espAr []byte
 }
 
 func NewTkmInitiator(suite *cipherSuite) (tkm *Tkm, err error) {
@@ -276,24 +274,25 @@ func (tkm *Tkm) Auth(signed1, id []byte, flag IkeFlags) []byte {
 	return tkm.suite.prf(tkm.secret, signed)[:tkm.suite.prfLen]
 }
 
-func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) {
+func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byte) {
 	kmLen := 2*t.suite.keyLen + 2*t.suite.macKeyLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(t.Ni.Bytes(), t.Nr.Bytes()...),
 		kmLen)
 
 	offset := t.suite.keyLen
-	t.espEi = KEYMAT[0:offset]
-	t.espAi = KEYMAT[offset : offset+t.suite.macKeyLen]
+	espEi = KEYMAT[0:offset]
+	espAi = KEYMAT[offset : offset+t.suite.macKeyLen]
 	offset += t.suite.macKeyLen
-	t.espEr = KEYMAT[offset : offset+t.suite.keyLen]
+	espEr = KEYMAT[offset : offset+t.suite.keyLen]
 	offset += t.suite.keyLen
-	t.espAr = KEYMAT[offset : offset+t.suite.macKeyLen]
+	espAr = KEYMAT[offset : offset+t.suite.macKeyLen]
 	// fmt.Printf("ESP keys : \n%s\n%s\n%s\n%s\n",
-	// 	hex.Dump(t.espEi),
-	// 	hex.Dump(t.espAi),
-	// 	hex.Dump(t.espEr),
-	// 	hex.Dump(t.espAr))
+	// 	hex.Dump(espEi),
+	// 	hex.Dump(espAi),
+	// 	hex.Dump(espEr),
+	// 	hex.Dump(espAr))
+	return
 }
 
 // request signed data from tkm
