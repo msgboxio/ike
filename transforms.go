@@ -5,6 +5,7 @@ var (
 	_ENCR_AES_CTR      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CTR)}
 	_ENCR_CAMELLIA_CBC = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CBC)}
 	_ENCR_CAMELLIA_CTR = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CTR)}
+	_ENCR_NULL         = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_NULL)}
 
 	_PRF_AES128_XCBC   = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_AES128_XCBC)}
 	_PRF_HMAC_SHA1     = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_HMAC_SHA1)}
@@ -36,6 +37,7 @@ var transforms = map[Transform]string{
 	_ENCR_AES_CTR:      "ENCR_AES_CTR",
 	_ENCR_CAMELLIA_CBC: "ENCR_CAMELLIA_CBC",
 	_ENCR_CAMELLIA_CTR: "ENCR_CAMELLIA_CTR",
+	_ENCR_NULL:         "ENCR_NULL",
 
 	_PRF_AES128_XCBC:   "PRF_AES128_XCBC",
 	_PRF_HMAC_SHA1:     "PRF_HMAC_SHA1",
@@ -61,6 +63,40 @@ var transforms = map[Transform]string{
 	_ESN:    "ESN",
 	_NO_ESN: "NO_ESN",
 }
+
+var (
+	IKE_AES_CBC_SHA1_96_DH_1024 = []*SaTransform{
+		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
+		&SaTransform{Transform: _PRF_HMAC_SHA1},
+		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		&SaTransform{Transform: _MODP_1024, IsLast: true},
+	}
+
+	IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048 = []*SaTransform{
+		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
+		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		&SaTransform{Transform: _MODP_2048, IsLast: true},
+	}
+
+	ESP_AES_CBC_SHA1_96 = []*SaTransform{
+		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
+		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		&SaTransform{Transform: _NO_ESN, IsLast: true},
+	}
+
+	ESP_NULL_SHA1_96 = []*SaTransform{
+		&SaTransform{Transform: _ENCR_NULL},
+		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		&SaTransform{Transform: _NO_ESN, IsLast: true},
+	}
+
+	ESP_CAMELLIA_CBC_SHA2_256_128 = []*SaTransform{
+		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		&SaTransform{Transform: _ESN, IsLast: true},
+	}
+)
 
 // mutualCipherSuite returns a cipherSuite given
 // a list requested by the peer.

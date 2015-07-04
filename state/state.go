@@ -21,6 +21,10 @@ const (
 	IKE_SA_INIT_RESPONSE
 	IKE_AUTH_RESPONSE
 	DELETE_IKE_SA_RESPONSE
+	// successes
+	IKE_SA_INIT_SUCCESS
+	IKE_AUTH_SUCCESS
+	DELETE_IKE_SA_SUCCESS
 
 	// errors
 	INVALID_KE
@@ -90,9 +94,11 @@ const (
 type FsmHandler interface {
 	SendIkeSaInit()
 	SendIkeAuth()
-	HandleSaInitResponse(interface{}) error
-	HandleSaAuthResponse(interface{}) error
-	HandleSaRekey(interface{}) error
+
+	HandleSaInitResponse(interface{})
+	HandleSaAuthResponse(interface{})
+	HandleSaRekey(interface{})
+
 	DownloadCrl()
 	InstallChildSa()
 }
@@ -128,7 +134,7 @@ func (s *Fsm) PostEvent(evt IkeEvent) {
 	case <-s.Done(): // will return immediately if closed
 		break
 	default:
-		log.V(2).Infof("Post: Event %s, in State %s", evt.Id, s.State)
+		// log.V(2).Infof("Post: Event %s, in State %s", evt.Id, s.State)
 		s.events <- evt
 	}
 }
@@ -197,9 +203,8 @@ func SmiAuth(s *Fsm, evt IkeEvent) (err error) {
 	case N_INVALID_KE, N_COOKIE:
 		// recerate IKE_SA_INIT and send
 	case IKE_SA_INIT_RESPONSE:
-		if err = s.HandleSaInitResponse(evt.Message); err != nil {
-			s.stateChange(SmDead)
-		}
+		s.HandleSaInitResponse(evt.Message)
+	case IKE_SA_INIT_SUCCESS:
 		s.stateChange(SmiAuthWait)
 	case N_NO_PROPOSAL_CHOSEN:
 		s.stateChange(SmDead)
@@ -218,10 +223,10 @@ func SmiAuthWait(s *Fsm, evt IkeEvent) (err error) {
 		s.State = SMI_AUTH_WAIT
 		s.SendIkeAuth()
 	case IKE_AUTH_RESPONSE:
-		if err = s.HandleSaAuthResponse(evt.Message); err != nil {
-			s.stateChange(SmDead)
-		}
+		s.HandleSaAuthResponse(evt.Message)
+	case IKE_AUTH_SUCCESS:
 		s.stateChange(SmMature)
+	default:
 	}
 	return
 }
@@ -232,9 +237,7 @@ func SmMature(s *Fsm, evt IkeEvent) (err error) {
 		s.State = SM_MATURE
 		s.InstallChildSa()
 	case IKE_REKEY:
-		if err = s.HandleSaRekey(evt.Message); err != nil {
-			s.stateChange(SmDead)
-		}
+		s.HandleSaRekey(evt.Message)
 		s.stateChange(SmRekey)
 	}
 	return

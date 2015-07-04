@@ -100,11 +100,8 @@ func (o *Initiator) SendIkeAuth() {
 func (o *Initiator) DownloadCrl()    { o.events <- ikeCrl }
 func (o *Initiator) InstallChildSa() { o.events <- installChildSa }
 
-func (o *Initiator) HandleSaInitResponse(msg interface{}) (err error) {
+func (o *Initiator) HandleSaInitResponse(msg interface{}) {
 	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		return err
-	}
 	// we know what cryptographyc algorithms peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// check NAT-T payload to determine if there is a NAT between the two peers
@@ -113,14 +110,14 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) (err error) {
 	// find traffic selectors
 	// send IKE_AUTH req
 	if !EnsurePayloads(m, InitPayloads) {
-		err = errors.New("essential payload is missing from init message")
+		err := errors.New("essential payload is missing from init message")
 		log.Error(err)
 		return
 	}
 	// TODO - ensure sa parameters are same
 	// initialize dh shared with their public key
 	keR := m.Payloads.Get(PayloadTypeKE).(*KePayload)
-	if err = o.tkm.DhGenerateKey(keR.KeyData); err != nil {
+	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
 		log.Error(err)
 		return
 	}
@@ -133,21 +130,26 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) (err error) {
 	o.tkm.IsaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
 	o.tkm.SetSecret([]byte("ak@msgbox.io"), []byte("foo"))
 	o.initRb = m.data
+	//
+	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
 	return
 }
 
-func (o *Initiator) HandleSaAuthResponse(msg interface{}) (err error) {
+func (o *Initiator) HandleSaAuthResponse(msg interface{}) {
 	m := msg.(*Message)
 	if err := o.handleEncryptedMessage(m); err != nil {
-		return err
+		log.Error(err)
+		return
 	}
 	if !EnsurePayloads(m, AuthRPayloads) {
-		err = errors.New("essential payload is missing from auth message")
+		err := errors.New("essential payload is missing from auth message")
+		log.Error(err)
 		return
 	}
 	// authenticate peer
 	if !authenticateR(m, o.initRb, o.tkm) {
-		err = errors.New("could not authenticate")
+		err := errors.New("could not authenticate")
+		log.Error(err)
 		return
 	}
 	// get peer spi
@@ -162,25 +164,26 @@ func (o *Initiator) HandleSaAuthResponse(msg interface{}) (err error) {
 		}
 	}
 	if peerSpi == nil {
-		err = errors.New("Unknown Peer SPI")
+		err := errors.New("Unknown Peer SPI")
+		log.Error(err)
 		return
 	}
 	o.cfg.EspSpiR = peerSpi
-	log.Infof("sa Established: %#x<=>%#x", o.cfg.EspSpiI, o.cfg.EspSpiR)
+	log.Infof("SA Established: %#x<=>%#x", o.cfg.EspSpiI, o.cfg.EspSpiR)
 	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
 	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
-	log.Infof("sa selectors: %s<=>%s", tsi.Selectors, tsr.Selectors)
+	log.Infof("SA selectors: %s<=>%s", tsi.Selectors, tsr.Selectors)
 
-	// TODO install child sa
-	return nil
+	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
 }
 
-func (o *Initiator) HandleSaRekey(msg interface{}) (err error) {
+func (o *Initiator) HandleSaRekey(msg interface{}) {
 	m := msg.(*Message)
 	if err := o.handleEncryptedMessage(m); err != nil {
-		return err
+		log.Error(err)
+		return
 	}
-	return
+	// TODO
 }
 
 func (o *Initiator) handleInformational(msg *Message) (err error) {
@@ -251,7 +254,9 @@ done:
 					SpiI:    int(SpiI),
 					SpiR:    int(SpiR),
 				}
-				platform.InstallChildSa(sa)
+				if err := platform.InstallChildSa(sa); err != nil {
+					log.Error("Error installing child SA: %v", err)
+				}
 			}
 		case msg := <-o.messages:
 			evt := state.IkeEvent{Message: msg}

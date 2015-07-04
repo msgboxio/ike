@@ -76,6 +76,8 @@ func cipherTransform(cipherId uint16) (ivLen int, ciperFunc cipherFunc) {
 		return camellia.BlockSize, cipherCamellia
 	case ENCR_AES_CBC:
 		return aes.BlockSize, cipherAES
+	case ENCR_NULL:
+		return 0, cipherNull
 	default:
 		panic("unsupported")
 	}
@@ -114,6 +116,8 @@ func cipherCamellia(key, iv []byte, isRead bool) interface{} {
 	}
 	return cipher.NewCBCEncrypter(block, iv)
 }
+
+func cipherNull([]byte, []byte, bool) interface{} { return nil }
 
 func hashMac(h func() hash.Hash, macLen int) macFunc {
 	return func(key, data []byte) []byte {

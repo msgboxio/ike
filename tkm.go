@@ -189,13 +189,18 @@ func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
 	iv := b[0:t.suite.ivLen]
 	ciphertext := b[t.suite.ivLen:]
 	// block ciphers only yet
-	mode := t.suite.cipher(key, iv, true).(cipher.BlockMode)
+	mode := t.suite.cipher(key, iv, true)
+	if mode == nil {
+		// null transform
+		return b, nil
+	}
+	block := mode.(cipher.BlockMode)
 	// CBC mode always works in whole blocks.
-	if len(ciphertext)%mode.BlockSize() != 0 {
+	if len(ciphertext)%block.BlockSize() != 0 {
 		err = errors.New("ciphertext is not a multiple of the block size")
 		return
 	}
-	mode.CryptBlocks(ciphertext, ciphertext)
+	block.CryptBlocks(ciphertext, ciphertext)
 	padlen := ciphertext[len(ciphertext)-1] + 1 // padlen byte itself
 	dec = ciphertext[:len(ciphertext)-int(padlen)]
 	return
@@ -241,14 +246,19 @@ func (t *Tkm) Encrypt(clear, key []byte) (b []byte, err error) {
 	if err != nil {
 		return
 	}
-	mode := t.suite.cipher(key, iv.Bytes(), false).(cipher.BlockMode)
+	mode := t.suite.cipher(key, iv.Bytes(), false)
+	if mode == nil {
+		// null transform
+		return clear, nil
+	}
+	block := mode.(cipher.BlockMode)
 	// CBC mode always works in whole blocks.
-	if padlen := mode.BlockSize() - len(clear)%mode.BlockSize(); padlen != 0 {
+	if padlen := block.BlockSize() - len(clear)%block.BlockSize(); padlen != 0 {
 		pad := make([]byte, padlen)
 		pad[padlen-1] = byte(padlen - 1)
 		clear = append(clear, pad...)
 	}
-	mode.CryptBlocks(clear, clear)
+	block.CryptBlocks(clear, clear)
 	b = append(iv.Bytes(), clear...)
 	return
 }
