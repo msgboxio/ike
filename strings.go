@@ -21,7 +21,7 @@ func (p PayloadType) String() string {
 	case PayloadTypeAUTH:
 		return "AUTH"
 	case PayloadTypeNonce:
-		return "Nonce"
+		return "No"
 	case PayloadTypeN:
 		return "N"
 	case PayloadTypeD:
@@ -43,10 +43,81 @@ func (p PayloadType) String() string {
 	}
 }
 
+func (n NotificationType) String() string {
+	switch n {
+	// errors
+	case UNSUPPORTED_CRITICAL_PAYLOAD:
+		return "UNSUPPORTED_CRITICAL_PAYLOAD"
+	case INVALID_IKE_SPI:
+		return "INVALID_IKE_SPI"
+	case INVALID_MAJOR_VERSION:
+		return "INVALID_MAJOR_VERSION"
+	case INVALID_SYNTAX:
+		return "INVALID_SYNTAX"
+	case INVALID_MESSAGE_ID:
+		return "INVALID_MESSAGE_ID"
+	case INVALID_SPI:
+		return "INVALID_SPI"
+	case NO_PROPOSAL_CHOSEN:
+		return "NO_PROPOSAL_CHOSEN"
+	case INVALID_KE_PAYLOAD:
+		return "INVALID_KE_PAYLOAD"
+	case AUTHENTICATION_FAILED:
+		return "AUTHENTICATION_FAILED"
+	case SINGLE_PAIR_REQUIRED:
+		return "SINGLE_PAIR_REQUIRED"
+	case NO_ADDITIONAL_SAS:
+		return "NO_ADDITIONAL_SAS"
+	case INTERNAL_ADDRESS_FAILURE:
+		return "INTERNAL_ADDRESS_FAILURE"
+	case FAILED_CP_REQUIRED:
+		return "FAILED_CP_REQUIRED"
+	case TS_UNACCEPTABLE:
+		return "TS_UNACCEPTABLE"
+	case INVALID_SELECTORS:
+		return "INVALID_SELECTORS"
+	case TEMPORARY_FAILURE:
+		return "TEMPORARY_FAILURE"
+	case CHILD_SA_NOT_FOUND:
+		return "CHILD_SA_NOT_FOUND"
+	// statuses
+	case INITIAL_CONTACT:
+		return "INITIAL_CONTACT"
+	case SET_WINDOW_SIZE:
+		return "SET_WINDOW_SIZE"
+	case ADDITIONAL_TS_POSSIBLE:
+		return "ADDITIONAL_TS_POSSIBLE"
+	case IPCOMP_SUPPORTED:
+		return "IPCOMP_SUPPORTED"
+	case NAT_DETECTION_SOURCE_IP:
+		return "NAT_DETECTION_SOURCE_IP"
+	case NAT_DETECTION_DESTINATION_IP:
+		return "NAT_DETECTION_DESTINATION_IP"
+	case COOKIE:
+		return "COOKIE"
+	case USE_TRANSPORT_MODE:
+		return "USE_TRANSPORT_MODE"
+	case HTTP_CERT_LOOKUP_SUPPORTED:
+		return "HTTP_CERT_LOOKUP_SUPPORTED"
+	case REKEY_SA:
+		return "REKEY_SA"
+	case ESP_TFC_PADDING_NOT_SUPPORTED:
+		return "ESP_TFC_PADDING_NOT_SUPPORTED"
+	case NON_FIRST_FRAGMENTS_ALSO:
+		return "NON_FIRST_FRAGMENTS_ALSO"
+	default:
+		return "Unknown"
+	}
+}
 func (p Payloads) String() string {
-	var pls []PayloadType
+	var pls []string
 	for _, pl := range p.Array {
-		pls = append(pls, pl.Type())
+		if ty := pl.Type(); ty == PayloadTypeN {
+			n := pl.(*NotifyPayload)
+			pls = append(pls, fmt.Sprintf("N[%s]", n.NotificationType))
+		} else {
+			pls = append(pls, ty.String())
+		}
 	}
 	return fmt.Sprintf("%v", pls)
 }

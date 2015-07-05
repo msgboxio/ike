@@ -26,8 +26,7 @@ type Tkm struct {
 	suite       *cipherSuite
 	isInitiator bool
 
-	secret []byte
-	authId []byte
+	ids Identities
 
 	Nr, Ni *big.Int
 
@@ -43,10 +42,11 @@ type Tkm struct {
 	skEi, skEr []byte // encryption keys
 }
 
-func NewTkmInitiator(suite *cipherSuite) (tkm *Tkm, err error) {
+func NewTkmInitiator(suite *cipherSuite, ids Identities) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite:       suite,
 		isInitiator: true,
+		ids:         ids,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
 	if err := tkm.NcCreate(suite.prfLen * 8); err != nil {
@@ -59,10 +59,11 @@ func NewTkmInitiator(suite *cipherSuite) (tkm *Tkm, err error) {
 	return tkm, nil
 }
 
-func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int) (tkm *Tkm, err error) {
+func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int, ids Identities) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite: suite,
 		Ni:    no,
+		ids:   ids,
 	}
 	// at least 128 bits & at least half the key size of the negotiated prf
 	if err := tkm.NcCreate(no.BitLen()); err != nil {
@@ -75,11 +76,6 @@ func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int) (tkm *Tkm, er
 		return nil, err
 	}
 	return tkm, nil
-}
-
-func (t *Tkm) SetSecret(authId, secret []byte) {
-	t.secret = t.suite.prf(secret, []byte("Key Pad for IKEv2"))
-	t.authId = authId
 }
 
 // 4.1.2 creation of ike sa
@@ -213,33 +209,11 @@ func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
 	return
 }
 
-func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
+func (t *Tkm) Encrypt(clear []byte) (b []byte, err error) {
 	key := t.skEr
 	if t.isInitiator {
 		key = t.skEi
 	}
-	// encrypt the remaining payloads
-	encr, err := t.Encrypt(encodePayloads(s.Payloads), key)
-	if err != nil {
-		return
-	}
-	firstPayload := s.Payloads.Array[0].Type()
-	// append to new secure payload
-	b = append(encodePayloadHeader(firstPayload, uint16(len(encr)+t.suite.macLen)), encr...)
-	// prepare proper ike header
-	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + t.suite.macLen)
-	// encode and append ike header
-	b = append(s.IkeHeader.Encode(), b...)
-	// finally attach mac
-	macKey := t.skAr
-	if t.isInitiator {
-		macKey = t.skAi
-	}
-	b = append(b, t.suite.mac(macKey, b)...)
-	return
-}
-
-func (t *Tkm) Encrypt(clear, key []byte) (b []byte, err error) {
 	iv, err := rand.Prime(rand.Reader, t.suite.ivLen*8) // bits
 	if err != nil {
 		return
@@ -261,17 +235,49 @@ func (t *Tkm) Encrypt(clear, key []byte) (b []byte, err error) {
 	return
 }
 
+func (t *Tkm) mac(b []byte) []byte {
+	macKey := t.skAr
+	if t.isInitiator {
+		macKey = t.skAi
+	}
+	return t.suite.mac(macKey, b)
+}
+
+func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
+	// encrypt the remaining payloads
+	encr, err := t.Encrypt(encodePayloads(s.Payloads))
+	if err != nil {
+		return
+	}
+	firstPayload := s.Payloads.Array[0].Type()
+	// append to new secure payload
+	b = append(encodePayloadHeader(firstPayload, uint16(len(encr)+t.suite.macLen)), encr...)
+	// prepare proper ike header
+	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + t.suite.macLen)
+	// encode and append ike header
+	b = append(s.IkeHeader.Encode(), b...)
+	// finally attach mac
+	b = append(b, t.mac(b)...)
+	return
+}
+
+func (t *Tkm) AuthId(idType IdType) []byte {
+	return t.ids.ForAuthentication(idType)
+}
+
 // signed
 //  intiator:  signed1 | prf(sk_pi | IDi )
 //  responder: signed1 | prf(sk_pr | IDr )
 // AUTH = prf( prf(Shared Secret, "Key Pad for IKEv2"), signed)
-func (tkm *Tkm) Auth(signed1, id []byte, flag IkeFlags) []byte {
-	key := tkm.skPr
+func (t *Tkm) Auth(signed1 []byte, id *IdPayload, method AuthMethod, flag IkeFlags) []byte {
+	key := t.skPr
 	if flag.IsInitiator() {
-		key = tkm.skPi
+		key = t.skPi
 	}
-	signed := append(signed1, tkm.suite.prf(key, id)...)
-	return tkm.suite.prf(tkm.secret, signed)[:tkm.suite.prfLen]
+	signed := append(signed1, t.suite.prf(key, id.Encode())...)
+	secret := t.ids.AuthData(id.Data, method)
+	secret = t.suite.prf(secret, []byte("Key Pad for IKEv2"))
+	return t.suite.prf(secret, signed)[:t.suite.prfLen]
 }
 
 func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byte) {

@@ -147,28 +147,41 @@ func newTkmFromInit(initI *Message) (tkm *Tkm, err error) {
 		err = ERR_INVALID_KE_PAYLOAD
 		return
 	}
-	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce)
+	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce, nil) // TODO
 	return
 }
 
 func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
+	// id payload
+	idI := authI.Payloads.Get(PayloadTypeIDi).(*IdPayload)
+	// id used to authenticate peer
+	log.V(2).Infof("Initiator ID:%s", string(idI.Data))
 	// intiators's signed octet
 	// initI | Nr | prf(sk_pi | IDi )
-	idI := authI.Payloads.Get(PayloadTypeIDi).(*IdPayload)
-	log.V(2).Infof("ID:%s", string(idI.Data))
-	auth := tkm.Auth(append(initIb, tkm.Nr.Bytes()...), idI.Encode(), INITIATOR)
-	_authI := authI.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
-	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authI.Data))
-	return bytes.Equal(auth, _authI.Data)
+	// first part of signed bytes
+	signed1 := append(initIb, tkm.Nr.Bytes()...)
+	// auth payload
+	authIp := authI.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
+	// expected auth
+	auth := tkm.Auth(signed1, idI, authIp.AuthMethod, INITIATOR)
+	// compare
+	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authIp.Data))
+	return bytes.Equal(auth, authIp.Data)
 }
 
 func authenticateR(authR *Message, initRb []byte, tkm *Tkm) bool {
+	// id payload
+	idR := authR.Payloads.Get(PayloadTypeIDr).(*IdPayload)
+	// id used to authenticate peer
+	log.V(2).Infof("Responder ID:%s", string(idR.Data))
 	// responders's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
-	idR := authR.Payloads.Get(PayloadTypeIDr).(*IdPayload)
-	log.V(2).Infof("ID:%s", string(idR.Data))
-	auth := tkm.Auth(append(initRb, tkm.Ni.Bytes()...), idR.Encode(), RESPONSE)
-	_authR := authR.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
-	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(_authR.Data))
-	return bytes.Equal(auth, _authR.Data)
+	signed1 := append(initRb, tkm.Ni.Bytes()...)
+	// auth payload
+	authRp := authR.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
+	// expected auth
+	auth := tkm.Auth(signed1, idR, authRp.AuthMethod, RESPONSE)
+	// compare
+	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authRp.Data))
+	return bytes.Equal(auth, authRp.Data)
 }

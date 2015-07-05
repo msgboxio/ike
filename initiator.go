@@ -41,7 +41,7 @@ type Initiator struct {
 	fsm *state.Fsm
 }
 
-func NewInitiator(parent context.Context, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
+func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{
@@ -58,7 +58,7 @@ func NewInitiator(parent context.Context, conn net.Conn, remote, local net.IP, c
 
 	o.cfg = cfg
 	suite := NewCipherSuite(o.cfg.IkeTransforms)
-	if o.tkm, err = NewTkmInitiator(suite); err != nil {
+	if o.tkm, err = NewTkmInitiator(suite, ids); err != nil {
 		log.Error(err)
 		cancel(err)
 		return
@@ -86,6 +86,7 @@ func (o *Initiator) SendIkeSaInit() {
 func (o *Initiator) SendIkeAuth() {
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	porp := []*SaProposal{o.cfg.ProposalEsp}
+	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
 	authI := MakeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
 	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
 		log.Error(err)
@@ -123,7 +124,6 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) {
 	copy(o.cfg.IkeSpiR[:], m.IkeHeader.SpiR[:])
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
-	o.tkm.SetSecret([]byte("ak@msgbox.io"), []byte("foo"))
 	o.initRb = m.data
 	//
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})

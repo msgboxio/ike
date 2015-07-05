@@ -74,7 +74,7 @@ func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeAUTH},
 		idPayloadType: idPayloadType,
 		IdType:        ID_RFC822_ADDR,
-		Data:          tkm.authId,
+		Data:          tkm.AuthId(ID_RFC822_ADDR),
 	}
 	auth.Payloads.Add(id)
 	// responder's signed octet
@@ -82,7 +82,7 @@ func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 	auth.Payloads.Add(&AuthPayload{
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeSA},
 		AuthMethod:    SHARED_KEY_MESSAGE_INTEGRITY_CODE,
-		Data:          tkm.Auth(signed1, id.Encode(), flags),
+		Data:          tkm.Auth(signed1, id, SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
 	})
 	auth.Payloads.Add(&SaPayload{
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeTSi},
