@@ -52,7 +52,7 @@ const (
 	IKEV2_MINOR_VERSION = 0
 )
 
-type Spi [8]byte
+type Spi []byte
 
 type IkeExchangeType uint16
 
@@ -286,8 +286,8 @@ func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
 		log.V(LOG_CODEC_ERR).Infof("Packet Too short : %d", len(b))
 		return nil, ERR_INVALID_SYNTAX
 	}
-	copy(h.SpiI[:], b)
-	copy(h.SpiR[:], b[8:])
+	h.SpiI = append([]byte{}, b[:8]...)
+	h.SpiR = append([]byte{}, b[8:16]...)
 	pt, _ := packets.ReadB8(b, 16)
 	h.NextPayload = PayloadType(pt)
 	ver, _ := packets.ReadB8(b, 16+1)
@@ -1436,7 +1436,7 @@ func encodePayloads(payloads *Payloads) (b []byte) {
 		body = append(hdr, body...)
 		if log.V(LOG_CODEC) {
 			js, _ := json.Marshal(pl)
-			log.Infof("Payload %s: %s to:\n", pl.Type(), js, hex.Dump(body))
+			log.Infof("Payload %s: %s to:\n%s", pl.Type(), js, hex.Dump(body))
 		}
 		b = append(b, body...)
 	}

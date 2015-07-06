@@ -121,7 +121,7 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) {
 	no := m.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
 	o.tkm.Nr = no.Nonce
 	// set spiR
-	copy(o.cfg.IkeSpiR[:], m.IkeHeader.SpiR[:])
+	o.cfg.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
 	o.initRb = m.data

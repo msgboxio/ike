@@ -120,7 +120,7 @@ func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 }
 
 // create ike sa
-func (t *Tkm) IsaCreate(spiI, spiR []byte) {
+func (t *Tkm) IsaCreate(spiI, spiR Spi) {
 	// SKEYSEED = prf(Ni | Nr, g^ir)
 	SKEYSEED := t.suite.prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
 	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
@@ -280,7 +280,7 @@ func (t *Tkm) Auth(signed1 []byte, id *IdPayload, method AuthMethod, flag IkeFla
 	return t.suite.prf(secret, signed)[:t.suite.prfLen]
 }
 
-func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byte) {
+func (t *Tkm) IpsecSaCreate(spiI, spiR Spi) (espEi, espAi, espEr, espAr []byte) {
 	kmLen := 2*t.suite.keyLen + 2*t.suite.macKeyLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(t.Ni.Bytes(), t.Nr.Bytes()...),

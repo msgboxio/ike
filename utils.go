@@ -13,8 +13,7 @@ import (
 
 func MakeSpi() (ret Spi) {
 	spi, _ := rand.Prime(rand.Reader, 8*8)
-	copy(ret[:], spi.Bytes())
-	return
+	return spi.Bytes()
 }
 
 var (
