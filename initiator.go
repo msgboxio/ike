@@ -65,7 +65,7 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	}
 
 	go runInitiator(o)
-	go runReader(o)
+	go runReader(o, conn.RemoteAddr())
 
 	o.fsm = state.MakeFsm(o, cxt)
 	o.fsm.PostEvent(state.IkeEvent{Id: state.CONNECT})
@@ -164,11 +164,15 @@ func (o *Initiator) HandleSaAuthResponse(msg interface{}) {
 		return
 	}
 	o.cfg.EspSpiR = peerSpi
-	log.Infof("SA Established: %#x<=>%#x", o.cfg.EspSpiI, o.cfg.EspSpiR)
 	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
 	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
-	log.Infof("SA selectors: %s<=>%s", tsi.Selectors, tsr.Selectors)
-
+	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, tsi.Selectors, tsr.Selectors)
+	if note := m.Payloads.Get(PayloadTypeN); note != nil {
+		switch notify := note.(*NotifyPayload); notify.NotificationType {
+		case AUTH_LIFETIME:
+			log.Infof("Lifetime: %v", notify.NotificationMessage)
+		}
+	}
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
 }
 
@@ -274,9 +278,9 @@ done:
 	close(o.messages)
 }
 
-func runReader(o *Initiator) {
+func runReader(o *Initiator, remoteAddr net.Addr) {
 	for {
-		b, _, err := readPacket(o.conn, true)
+		b, _, err := readPacket(o.conn, remoteAddr, true)
 		if err != nil {
 			log.Error(err)
 			break

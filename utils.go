@@ -43,12 +43,12 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func readPacket(conn net.Conn, isConnected bool) (b []byte, from net.Addr, err error) {
+func readPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
 	b = make([]byte, 1500)
 	n := 0
 	if isConnected {
 		n, err = conn.Read(b)
-		from = conn.RemoteAddr()
+		from = remote
 	} else {
 		udp := conn.(*net.UDPConn)
 		n, from, err = udp.ReadFromUDP(b)
@@ -95,7 +95,7 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 }
 
 func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
-	b, fr, err := readPacket(udp, false)
+	b, fr, err := readPacket(udp, remote, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}

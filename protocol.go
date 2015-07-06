@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"time"
 
 	"math/big"
 
@@ -914,6 +915,43 @@ const (
 	REKEY_SA                      NotificationType = 16393
 	ESP_TFC_PADDING_NOT_SUPPORTED NotificationType = 16394
 	NON_FIRST_FRAGMENTS_ALSO      NotificationType = 16395
+	// non rfc7396
+	MOBIKE_SUPPORTED                    NotificationType = 16396 //	[RFC4555]
+	ADDITIONAL_IP4_ADDRESS              NotificationType = 16397 //	[RFC4555]
+	ADDITIONAL_IP6_ADDRESS              NotificationType = 16398 //	[RFC4555]
+	NO_ADDITIONAL_ADDRESSES             NotificationType = 16399 //	[RFC4555]
+	UPDATE_SA_ADDRESSES                 NotificationType = 16400 //	[RFC4555]
+	COOKIE2                             NotificationType = 16401 //	[RFC4555]
+	NO_NATS_ALLOWED                     NotificationType = 16402 //	[RFC4555]
+	AUTH_LIFETIME                       NotificationType = 16403 //	[RFC4478]
+	MULTIPLE_AUTH_SUPPORTED             NotificationType = 16404 //	[RFC4739]
+	ANOTHER_AUTH_FOLLOWS                NotificationType = 16405 //	[RFC4739]
+	REDIRECT_SUPPORTED                  NotificationType = 16406 //	[RFC5685]
+	REDIRECT                            NotificationType = 16407 //	[RFC5685]
+	REDIRECTED_FROM                     NotificationType = 16408 //	[RFC5685]
+	TICKET_LT_OPAQUE                    NotificationType = 16409 //	[RFC5723]
+	TICKET_REQUEST                      NotificationType = 16410 //	[RFC5723]
+	TICKET_ACK                          NotificationType = 16411 //	[RFC5723]
+	TICKET_NACK                         NotificationType = 16412 //	[RFC5723]
+	TICKET_OPAQUE                       NotificationType = 16413 //	[RFC5723]
+	LINK_ID                             NotificationType = 16414 //	[RFC5739]
+	USE_WESP_MODE                       NotificationType = 16415 //	[RFC5840]
+	ROHC_SUPPORTED                      NotificationType = 16416 //	[RFC5857]
+	EAP_ONLY_AUTHENTICATION             NotificationType = 16417 //	[RFC5998]
+	CHILDLESS_IKEV2_SUPPORTED           NotificationType = 16418 //	[RFC6023]
+	QUICK_CRASH_DETECTION               NotificationType = 16419 //	[RFC6290]
+	IKEV2_MESSAGE_ID_SYNC_SUPPORTED     NotificationType = 16420 //	[RFC6311]
+	IPSEC_REPLAY_COUNTER_SYNC_SUPPORTED NotificationType = 16421 //	[RFC6311]
+	IKEV2_MESSAGE_ID_SYNC               NotificationType = 16422 //	[RFC6311]
+	IPSEC_REPLAY_COUNTER_SYNC           NotificationType = 16423 //	[RFC6311]
+	SECURE_PASSWORD_METHODS             NotificationType = 16424 //	[RFC6467]
+	PSK_PERSIST                         NotificationType = 16425 //	[RFC6631]
+	PSK_CONFIRM                         NotificationType = 16426 //	[RFC6631]
+	ERX_SUPPORTED                       NotificationType = 16427 //	[RFC6867]
+	IFOM_CAPABILITY                     NotificationType = 16428 //	[Frederic_Firmin][3GPP TS 24.303 v10.6.0 annex B.2]
+	SENDER_REQUEST_ID                   NotificationType = 16429 //	[draft-yeung-g-ikev2]
+	IKEV2_FRAGMENTATION_SUPPORTED       NotificationType = 16430 //	[RFC7383]
+	SIGNATURE_HASH_ALGORITHMS           NotificationType = 16431 //	[RFC7427]
 )
 
 /*
@@ -934,10 +972,11 @@ const (
 */
 type NotifyPayload struct {
 	*PayloadHeader
-	ProtocolId       ProtocolId
-	NotificationType NotificationType
-	Spi              []byte
-	Data             []byte
+	ProtocolId          ProtocolId
+	NotificationType    NotificationType
+	Spi                 []byte
+	Data                []byte
+	NotificationMessage interface{}
 }
 
 func (s *NotifyPayload) Type() PayloadType {
@@ -968,6 +1007,17 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 	s.NotificationType = NotificationType(nType)
 	s.Spi = append([]byte{}, b[4:spiLen+4]...)
 	s.Data = append([]byte{}, b[spiLen+4:]...)
+	switch s.NotificationType {
+	case AUTH_LIFETIME:
+		if ltime, errc := packets.ReadB32(s.Data, 0); errc != nil {
+			log.V(LOG_CODEC_ERR).Info("")
+			err = ERR_INVALID_SYNTAX
+			return
+		} else {
+			s.NotificationMessage = time.Second * time.Duration(ltime)
+		}
+	}
+
 	return
 }
 
