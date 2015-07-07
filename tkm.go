@@ -4,8 +4,12 @@ import (
 	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"math/big"
+
+	"msgbox.io/log"
 )
 
 // ike-seperation.pdf
@@ -121,11 +125,13 @@ func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 
 // create ike sa
 func (t *Tkm) IsaCreate(spiI, spiR Spi) {
+	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
+	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
+	// 	hex.Dump(spiI), hex.Dump(spiR))
 	// SKEYSEED = prf(Ni | Nr, g^ir)
 	SKEYSEED := t.suite.prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
-	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
 	kmLen := 3*t.suite.prfLen + 2*t.suite.keyLen + 2*t.suite.macKeyLen
-	// TODO - supports 32B keys only
+	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
 	KEYMAT := t.prfplus(SKEYSEED,
 		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
 		kmLen)
@@ -170,7 +176,8 @@ func (t *Tkm) VerifyMac(b []byte) (err error) {
 	msgMAC := b[l-t.suite.macLen:]
 	expectedMAC := t.suite.mac(key, msg)[:t.suite.macLen]
 	if !hmac.Equal(msgMAC, expectedMAC) {
-		return errors.New("HMAC verify failed: ")
+		return fmt.Errorf("HMAC verify failed: \n%s\nvs\n%s",
+			hex.Dump(msgMAC), hex.Dump(expectedMAC))
 	}
 	return
 }
@@ -194,9 +201,15 @@ func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
 		err = errors.New("ciphertext is not a multiple of the block size")
 		return
 	}
-	block.CryptBlocks(ciphertext, ciphertext)
-	padlen := ciphertext[len(ciphertext)-1] + 1 // padlen byte itself
-	dec = ciphertext[:len(ciphertext)-int(padlen)]
+	clear := make([]byte, len(ciphertext))
+	block.CryptBlocks(clear, ciphertext)
+	padlen := clear[len(clear)-1] + 1 // padlen byte itself
+	if int(padlen) > block.BlockSize() {
+		err = errors.New("pad length is larger than block size")
+		return
+	}
+	dec = clear[:len(clear)-int(padlen)]
+	log.V(4).Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
 	return
 }
 
@@ -225,13 +238,18 @@ func (t *Tkm) Encrypt(clear []byte) (b []byte, err error) {
 	}
 	block := mode.(cipher.BlockMode)
 	// CBC mode always works in whole blocks.
-	if padlen := block.BlockSize() - len(clear)%block.BlockSize(); padlen != 0 {
-		pad := make([]byte, padlen)
-		pad[padlen-1] = byte(padlen - 1)
+	// (b - (length % b)) % b
+	// pl := (block.BlockSize() - (len(clear) % block.BlockSize())) % block.BlockSize()
+	pl := block.BlockSize() - len(clear)%block.BlockSize()
+	if pl != 0 {
+		pad := make([]byte, pl)
+		pad[pl-1] = byte(pl - 1)
 		clear = append(clear, pad...)
 	}
-	block.CryptBlocks(clear, clear)
-	b = append(iv.Bytes(), clear...)
+	cyp := make([]byte, len(clear))
+	block.CryptBlocks(cyp, clear)
+	b = append(iv.Bytes(), cyp...)
+	log.V(4).Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", pl, hex.Dump(clear), hex.Dump(cyp), hex.Dump(iv.Bytes()))
 	return
 }
 
@@ -249,9 +267,16 @@ func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
 	if err != nil {
 		return
 	}
-	firstPayload := s.Payloads.Array[0].Type()
+	firstPayload := PayloadTypeNone // no payloads are one possibility
+	if len(s.Payloads.Array) > 0 {
+		firstPayload = s.Payloads.Array[0].Type()
+	}
 	// append to new secure payload
-	b = append(encodePayloadHeader(firstPayload, uint16(len(encr)+t.suite.macLen)), encr...)
+	h := PayloadHeader{
+		NextPayload:   firstPayload,
+		PayloadLength: uint16(len(encr) + t.suite.macLen),
+	}
+	b = append(h.Encode(), encr...)
 	// prepare proper ike header
 	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + t.suite.macLen)
 	// encode and append ike header

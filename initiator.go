@@ -39,6 +39,8 @@ type Initiator struct {
 	messages chan *Message
 
 	fsm *state.Fsm
+
+	msgId uint32
 }
 
 func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
@@ -73,26 +75,59 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 }
 
 func (o *Initiator) SendIkeSaInit() {
-	// send IKE_SA_INIT
-	prop := []*SaProposal{o.cfg.ProposalIke}
-	init := MakeInit(o.cfg.IkeSpiI, Spi{}, prop, o.tkm)
+	// IKE_SA_INIT
+	init := makeInit(initParams{
+		isInitiator:   o.tkm.isInitiator,
+		spiI:          o.cfg.IkeSpiI,
+		spiR:          make([]byte, 8),
+		proposals:     []*SaProposal{o.cfg.ProposalIke},
+		nonce:         o.tkm.Ni,
+		dhTransformId: o.tkm.suite.dhGroup.DhTransformId,
+		dhPublic:      o.tkm.DhPublic,
+	})
+	init.IkeHeader.MsgId = o.msgId
 	var err error
 	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
 	if err != nil {
 		log.Error(err)
 		o.cancel(err)
 	}
+	o.msgId++
 }
 func (o *Initiator) SendIkeAuth() {
+	// IKE_AUTH
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	porp := []*SaProposal{o.cfg.ProposalEsp}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
-	authI := MakeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	authI := makeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	authI.IkeHeader.MsgId = o.msgId
 	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
 		log.Error(err)
 		o.cancel(err)
 	}
+	o.msgId++
 }
+func (o *Initiator) SendSaDeleteResponse() {
+	// INFORMATIONAL
+	info := makeInformational(infoParams{
+		isInitiator: o.tkm.isInitiator,
+		spiI:        o.cfg.IkeSpiI,
+		spiR:        o.cfg.IkeSpiR,
+		payload: &DeletePayload{
+			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+			ProtocolId:    IKE,
+			Spis:          []Spi{o.cfg.IkeSpiR},
+		},
+	})
+	info.IkeHeader.MsgId = o.msgId
+	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+		log.Error(err)
+		o.cancel(err)
+	}
+	o.events <- removeChildSa
+	o.msgId++
+}
+
 func (o *Initiator) DownloadCrl()    { o.events <- ikeCrl }
 func (o *Initiator) InstallChildSa() { o.events <- installChildSa }
 
@@ -123,9 +158,10 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) {
 	// set spiR
 	o.cfg.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	// create rest of ike sa
-	o.tkm.IsaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
-	o.initRb = m.data
-	//
+	o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	log.Infof("IKE SA Established: %#x<=>%#x", o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	// save Data
+	o.initRb = m.Data
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
 	return
 }
@@ -185,6 +221,12 @@ func (o *Initiator) HandleSaRekey(msg interface{}) {
 	// TODO
 }
 
+// close session
+func (o *Initiator) HandleSaDead() {
+	log.Info("close session")
+	o.cancel(context.Canceled)
+}
+
 func (o *Initiator) handleInformational(msg *Message) (err error) {
 	if err = o.handleEncryptedMessage(msg); err != nil {
 		return err
@@ -192,8 +234,8 @@ func (o *Initiator) handleInformational(msg *Message) (err error) {
 	if del := msg.Payloads.Get(PayloadTypeD); del != nil {
 		dp := del.(*DeletePayload)
 		if dp.ProtocolId == IKE {
-			log.Infof("removed IKE SA : %#x", msg.IkeHeader.SpiI)
-			o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_TERMINATE})
+			log.Infof("Peer removed IKE SA : %#x", msg.IkeHeader.SpiI)
+			o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_DELETE_REQUEST})
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == ESP {
@@ -208,11 +250,11 @@ func (o *Initiator) handleInformational(msg *Message) (err error) {
 func (o *Initiator) handleEncryptedMessage(m *Message) (err error) {
 	if m.IkeHeader.NextPayload == PayloadTypeSK {
 		var b []byte
-		if b, err = o.tkm.VerifyDecrypt(m.data); err != nil {
+		if b, err = o.tkm.VerifyDecrypt(m.Data); err != nil {
 			return err
 		}
 		sk := m.Payloads.Get(PayloadTypeSK)
-		if err = m.decodePayloads(b, sk.NextPayloadType()); err != nil {
+		if err = m.DecodePayloads(b, sk.NextPayloadType()); err != nil {
 			return err
 		}
 	}
@@ -220,10 +262,6 @@ func (o *Initiator) handleEncryptedMessage(m *Message) (err error) {
 }
 
 func (o *Initiator) Notify(ie IkeError) {}
-
-var (
-	hostMask = net.IPv4Mask(255, 255, 255, 255)
-)
 
 func runInitiator(o *Initiator) {
 done:
@@ -234,7 +272,7 @@ done:
 		case evt := <-o.events:
 			switch evt {
 			case installChildSa:
-				espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.cfg.IkeSpiI[:], o.cfg.IkeSpiR[:])
+				espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
 				SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
 				SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
 				sa := &platform.SaParams{
@@ -242,8 +280,8 @@ done:
 					Dst:     o.remote,
 					SrcPort: 0,
 					DstPort: 0,
-					SrcNet:  &net.IPNet{o.local, hostMask},
-					DstNet:  &net.IPNet{o.remote, hostMask},
+					SrcNet:  &net.IPNet{o.local, net.CIDRMask(32, 32)},
+					DstNet:  &net.IPNet{o.remote, net.CIDRMask(32, 32)},
 					EspEi:   espEi,
 					EspAi:   espAi,
 					EspEr:   espEr,
@@ -254,6 +292,18 @@ done:
 				if err := platform.InstallChildSa(sa); err != nil {
 					log.Error("Error installing child SA: %v", err)
 				}
+			case removeChildSa:
+				// remove sa
+				SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
+				SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
+				sa := &platform.SaParams{
+					SpiI: int(SpiI),
+					SpiR: int(SpiR),
+				}
+				if err := platform.RemoveChildSa(sa); err != nil {
+					log.Error("Error removing child SA: %v", err)
+				}
+				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_TERMINATE})
 			}
 		case msg := <-o.messages:
 			evt := state.IkeEvent{Message: msg}
@@ -264,9 +314,9 @@ done:
 			case IKE_AUTH:
 				evt.Id = state.IKE_AUTH_RESPONSE
 				o.fsm.PostEvent(evt)
-			case CREATE_CHILD_SA:
-				evt.Id = state.IKE_REKEY
-				o.fsm.PostEvent(evt)
+			// case CREATE_CHILD_SA:
+			// evt.Id = state.IKE_REKEY
+			// o.fsm.PostEvent(evt)
 			case INFORMATIONAL:
 				// handle in all states ?
 				o.handleInformational(msg)
@@ -280,7 +330,7 @@ done:
 
 func runReader(o *Initiator, remoteAddr net.Addr) {
 	for {
-		b, _, err := readPacket(o.conn, remoteAddr, true)
+		b, _, err := ReadPacket(o.conn, remoteAddr, true)
 		if err != nil {
 			log.Error(err)
 			break
@@ -290,7 +340,7 @@ func runReader(o *Initiator, remoteAddr net.Addr) {
 		// 	continue
 		// }
 		msg := &Message{}
-		if err := msg.decodeHeader(b); err != nil {
+		if err := msg.DecodeHeader(b); err != nil {
 			o.Notify(ERR_INVALID_SYNTAX)
 			continue
 		}
@@ -299,18 +349,18 @@ func runReader(o *Initiator, remoteAddr net.Addr) {
 			o.Notify(ERR_INVALID_SYNTAX)
 			continue
 		}
-		if spi := msg.IkeHeader.SpiI[:]; !bytes.Equal(spi, o.cfg.IkeSpiI[:]) {
+		if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, o.cfg.IkeSpiI) {
 			log.Errorf("different initiator Spi %s", spi)
 			o.Notify(ERR_INVALID_SYNTAX)
 			continue
 		}
-		msg.Payloads = makePayloads()
-		if err = msg.decodePayloads(b[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+		msg.Payloads = MakePayloads()
+		if err = msg.DecodePayloads(b[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
 			o.Notify(ERR_INVALID_SYNTAX)
 			continue
 		}
 		// decrypt later
-		msg.data = b
+		msg.Data = b
 		o.messages <- msg
 	}
 }

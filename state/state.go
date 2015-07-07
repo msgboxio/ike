@@ -29,14 +29,16 @@ const (
 	// errors
 	INVALID_KE
 
-	// common messages
-	IKE_REKEY
-	IKE_REKEY_RESPONSE
-	IKE_DPD
-	IKE_CRL_UPDATE
-	IKE_REAUTH
-	IKE_TERMINATE
-	IKE_LEASE_RENEW
+	// internal state machine messages
+	MSG_IKE_REKEY
+	MSG_IKE_REKEY_RESPONSE
+	MSG_IKE_DPD
+	MSG_IKE_CRL_UPDATE
+	MSG_IKE_REAUTH
+	MSG_IKE_TERMINATE
+
+	// requests
+	IKE_SA_DELETE_REQUEST
 
 	// timeouts
 	IKE_TIMEOUT
@@ -81,14 +83,14 @@ const (
 	SM_DEAD
 
 	// child sa states
-	SA_INIT
-	SA_CREATE
-	SA_CREATE_WAIT
-	SA_MATURE
-	SA_REKEY
-	SA_REKEY_WAIT
-	SA_REMOVE
-	SA_DEAD
+	// SA_INIT
+	// SA_CREATE
+	// SA_CREATE_WAIT
+	// SA_MATURE
+	// SA_REKEY
+	// SA_REKEY_WAIT
+	// SA_REMOVE
+	// SA_DEAD
 )
 
 type FsmHandler interface {
@@ -101,6 +103,9 @@ type FsmHandler interface {
 
 	DownloadCrl()
 	InstallChildSa()
+
+	SendSaDeleteResponse()
+	HandleSaDead()
 }
 
 type StateFunc func(*Fsm, IkeEvent) error
@@ -175,7 +180,7 @@ func (s *Fsm) stateChange(fn StateFunc) {
 	s.StateFunc = fn
 	// execute new state entry event
 	s.StateFunc(s, IkeEvent{Id: StateEntry})
-	log.V(2).Infof("Change: Previous %s, Next %s", prev, s.State)
+	log.V(2).Infof("Change: Previous %s, Current %s", prev, s.State)
 }
 
 // initial state:
@@ -236,9 +241,11 @@ func SmMature(s *Fsm, evt IkeEvent) (err error) {
 	case StateEntry:
 		s.State = SM_MATURE
 		s.InstallChildSa()
-	case IKE_REKEY:
+	case MSG_IKE_REKEY:
 		s.HandleSaRekey(evt.Message)
 		s.stateChange(SmRekey)
+	case IKE_SA_DELETE_REQUEST:
+		s.stateChange(SmDying)
 	}
 	return
 }
@@ -247,7 +254,7 @@ func SmRekey(s *Fsm, evt IkeEvent) (err error) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_REKEY
-	case IKE_REKEY_RESPONSE:
+	case MSG_IKE_REKEY_RESPONSE:
 	}
 	return
 }
@@ -256,6 +263,7 @@ func SmDead(s *Fsm, evt IkeEvent) (err error) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DEAD
+		s.HandleSaDead()
 	}
 	return
 }
@@ -270,10 +278,14 @@ func SmTerminate(s *Fsm, evt IkeEvent) (err error) {
 	return
 }
 
+//
 func SmDying(s *Fsm, evt IkeEvent) (err error) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DYING
+		s.SendSaDeleteResponse()
+	case MSG_IKE_TERMINATE:
+		s.stateChange(SmDead)
 	}
 	return
 }

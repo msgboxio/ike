@@ -42,7 +42,7 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func readPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
+func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
 	b = make([]byte, 1500)
 	n := 0
 	if isConnected {
@@ -63,7 +63,7 @@ func readPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, fro
 
 func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 	msg := &Message{}
-	err := msg.decodeHeader(dec)
+	err := msg.DecodeHeader(dec)
 	if err != nil {
 		return nil, err
 	}
@@ -72,8 +72,8 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 		err = ERR_INVALID_SYNTAX
 		return nil, err
 	}
-	msg.Payloads = makePayloads()
-	if err = msg.decodePayloads(dec[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+	msg.Payloads = MakePayloads()
+	if err = msg.DecodePayloads(dec[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
 		return nil, err
 	}
 	if msg.IkeHeader.NextPayload == PayloadTypeSK {
@@ -86,7 +86,7 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 			return nil, err
 		}
 		sk := msg.Payloads.Get(PayloadTypeSK)
-		if err = msg.decodePayloads(b, sk.NextPayloadType()); err != nil {
+		if err = msg.DecodePayloads(b, sk.NextPayloadType()); err != nil {
 			return nil, err
 		}
 	}
@@ -94,7 +94,7 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 }
 
 func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
-	b, fr, err := readPacket(udp, remote, false)
+	b, fr, err := ReadPacket(udp, remote, false)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -110,7 +110,6 @@ func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte
 }
 
 func EncodeTx(msg *Message, tkm *Tkm, conn net.Conn, remote net.Addr, isConnected bool) (msgB []byte, err error) {
-	log.V(1).Infof("Sending %s: payloads %s", msg.IkeHeader.ExchangeType, *(msg.Payloads))
 	if msgB, err = msg.Encode(tkm); err != nil {
 		return
 	} else {
@@ -132,7 +131,7 @@ func EncodeTx(msg *Message, tkm *Tkm, conn net.Conn, remote net.Addr, isConnecte
 	}
 }
 
-func newTkmFromInit(initI *Message) (tkm *Tkm, err error) {
+func newTkmFromInit(initI *Message, ids Identities) (tkm *Tkm, err error) {
 	keI := initI.Payloads.Get(PayloadTypeKE).(*KePayload)
 	noI := initI.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
 	ikeSa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
@@ -146,7 +145,7 @@ func newTkmFromInit(initI *Message) (tkm *Tkm, err error) {
 		err = ERR_INVALID_KE_PAYLOAD
 		return
 	}
-	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce, nil) // TODO
+	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce, ids) // TODO
 	return
 }
 

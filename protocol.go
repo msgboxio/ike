@@ -340,11 +340,14 @@ type PayloadHeader struct {
 func (h *PayloadHeader) NextPayloadType() PayloadType {
 	return h.NextPayload
 }
-
-func encodePayloadHeader(pt PayloadType, plen uint16) (b []byte) {
+func (h *PayloadHeader) Header() *PayloadHeader {
+	return h
+}
+func (h PayloadHeader) Encode() (b []byte) {
 	b = make([]byte, PAYLOAD_HEADER_LENGTH)
-	packets.WriteB8(b, 0, uint8(pt))
-	packets.WriteB16(b, 2, plen+PAYLOAD_HEADER_LENGTH)
+	packets.WriteB8(b, 0, uint8(h.NextPayload))
+	packets.WriteB16(b, 2, h.PayloadLength+PAYLOAD_HEADER_LENGTH)
+	log.V(LOG_CODEC).Infof("Payload Header: %+v to \n%s", h, hex.Dump(b))
 	return
 }
 func (h *PayloadHeader) Decode(b []byte) (err error) {
@@ -367,6 +370,7 @@ type Payload interface {
 	Decode([]byte) error
 	Encode() []byte
 	NextPayloadType() PayloadType
+	Header() *PayloadHeader
 }
 
 // payloads
@@ -1036,13 +1040,24 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 type DeletePayload struct {
 	*PayloadHeader
 	ProtocolId ProtocolId
-	Spis       [][]byte
+	Spis       []Spi
 }
 
 func (s *DeletePayload) Type() PayloadType {
 	return PayloadTypeD
 }
-func (s *DeletePayload) Encode() (b []byte) { return }
+func (s *DeletePayload) Encode() (b []byte) {
+	b = []byte{uint8(s.ProtocolId), 0, 0, 0}
+	nspi := len(s.Spis)
+	if nspi > 0 {
+		packets.WriteB8(b, 1, uint8(len(s.Spis[0])))
+		for _, spi := range s.Spis {
+			b = append(b, spi...)
+		}
+	}
+	packets.WriteB16(b, 2, uint16(nspi))
+	return
+}
 func (s *DeletePayload) Decode(b []byte) (err error) {
 	if len(b) < 4 {
 		log.V(LOG_CODEC_ERR).Info("")
@@ -1324,7 +1339,7 @@ type Payloads struct {
 	Array []Payload
 }
 
-func makePayloads() *Payloads {
+func MakePayloads() *Payloads {
 	return &Payloads{}
 }
 
@@ -1343,15 +1358,15 @@ func (p *Payloads) Add(t Payload) {
 type Message struct {
 	IkeHeader *IkeHeader
 	Payloads  *Payloads
-	data      []byte // used to carry raw bytes
+	Data      []byte // used to carry raw bytes
 }
 
-func (s *Message) decodeHeader(b []byte) (err error) {
+func (s *Message) DecodeHeader(b []byte) (err error) {
 	s.IkeHeader, err = DecodeIkeHeader(b[:IKE_HEADER_LEN])
 	return
 }
 
-func (s *Message) decodePayloads(b []byte, nextPayload PayloadType) (err error) {
+func (s *Message) DecodePayloads(b []byte, nextPayload PayloadType) (err error) {
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
 			log.V(LOG_CODEC_ERR).Info("")
@@ -1408,7 +1423,7 @@ func (s *Message) decodePayloads(b []byte, nextPayload PayloadType) (err error) 
 		}
 		if log.V(LOG_CODEC) {
 			js, _ := json.Marshal(payload)
-			log.Infof("Payload %s: %s from:\n", payload.Type(), js, hex.Dump(pbuf))
+			log.Infof("Payload %s: %s from:\n%s", payload.Type(), js, hex.Dump(pbuf))
 		}
 		s.Payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
@@ -1421,7 +1436,7 @@ func (s *Message) decodePayloads(b []byte, nextPayload PayloadType) (err error) 
 	if len(b) > 0 {
 		log.V(LOG_CODEC_ERR).Infof("remaining %d\n%s", len(b), hex.Dump(b))
 	}
-	log.V(1).Infof("Reveived %s: payloads %s", s.IkeHeader.ExchangeType, *(s.Payloads))
+	log.V(1).Infof("Received %s: payloads %s", s.IkeHeader.ExchangeType, *(s.Payloads))
 	if log.V(LOG_PACKET_JS) {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Rx:\n" + string(js))
@@ -1432,8 +1447,8 @@ func (s *Message) decodePayloads(b []byte, nextPayload PayloadType) (err error) 
 func encodePayloads(payloads *Payloads) (b []byte) {
 	for _, pl := range payloads.Array {
 		body := pl.Encode()
-		hdr := encodePayloadHeader(pl.NextPayloadType(), uint16(len(body)))
-		body = append(hdr, body...)
+		pl.Header().PayloadLength = uint16(len(body))
+		body = append(pl.Header().Encode(), body...)
 		if log.V(LOG_CODEC) {
 			js, _ := json.Marshal(pl)
 			log.Infof("Payload %s: %s to:\n%s", pl.Type(), js, hex.Dump(body))
@@ -1444,6 +1459,7 @@ func encodePayloads(payloads *Payloads) (b []byte) {
 }
 
 func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
+	log.V(1).Infof("Sending %s: payloads %s", s.IkeHeader.ExchangeType, s.Payloads)
 	if log.V(LOG_PACKET_JS) {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Tx:\n" + string(js))

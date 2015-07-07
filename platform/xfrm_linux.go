@@ -151,6 +151,42 @@ func InstallChildSa(sa *SaParams) error {
 			}
 		}
 	}
+	return nil
+}
 
+func RemoveChildSa(sa *SaParams) error {
+	ns, err := netlink.GetNetlinkSocket(syscall.NETLINK_XFRM)
+	if err != nil {
+		return err
+	}
+	defer ns.Close()
+	for _, policy := range getPolicies(256, sa.Src, sa.Dst, sa.SrcNet, sa.DstNet) {
+		log.Infof("removing Policy: %+v", policy)
+		// create xfrm policy rules
+		err = netlink.XfrmPolicyDel(ns, &policy)
+		if err != nil {
+			if err == syscall.EEXIST {
+				err = fmt.Errorf("Skipped remove policy %v because it already exists", policy)
+				return err
+			} else {
+				err = fmt.Errorf("Failed to remove policy %v: %v", policy, err)
+				return err
+			}
+		}
+	}
+	for _, state := range getStates(256, sa) {
+		log.Infof("removing State: %+v", state)
+		// crate xfrm state rules
+		err = netlink.XfrmStateDel(ns, &state)
+		if err != nil {
+			if err == syscall.EEXIST {
+				err = fmt.Errorf("Skipped removing state %v because it already exists", state)
+				return err
+			} else {
+				err = fmt.Errorf("Failed to remove state %+v: %v", state, err)
+				return err
+			}
+		}
+	}
 	return nil
 }

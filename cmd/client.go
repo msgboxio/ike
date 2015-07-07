@@ -35,5 +35,5 @@ func main() {
 	transportMode := ike.TransportCfg(localU.IP, remoteU.IP)
 	cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
 	<-cli.Done()
-	fmt.Printf("client finished: %v", cli.Err())
+	fmt.Printf("client finished: %v\n", cli.Err())
 }

@@ -1,5 +1,17 @@
 package ike
 
+import "math/big"
+
+type initParams struct {
+	isInitiator bool
+	spiI, spiR  Spi
+	proposals   []*SaProposal
+
+	nonce         *big.Int
+	dhTransformId DhTransformId
+	dhPublic      *big.Int
+}
+
 // IKE_SA_INIT
 // a->b
 //	HDR(SPIi=xxx, SPIr=0, IKE_SA_INIT, Flags: Initiator, Message ID=0),
@@ -7,40 +19,47 @@ package ike
 // b->a
 //	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
 // 	SAr1, KEr, Nr, [CERTREQ]
-func MakeInit(spiI, spiR Spi, proposals []*SaProposal, tkm *Tkm) *Message {
+func makeInit(p initParams) *Message {
 	flags := RESPONSE
-	nonce := tkm.Nr
-	if tkm.isInitiator {
+	// nonce := tkm.Nr
+	if p.isInitiator {
 		flags = INITIATOR
-		nonce = tkm.Ni
+		// nonce = tkm.Ni
 	}
 	init := &Message{
 		IkeHeader: &IkeHeader{
-			SpiI:         spiI,
-			SpiR:         spiR,
+			SpiI:         p.spiI,
+			SpiR:         p.spiR,
 			NextPayload:  PayloadTypeSA,
 			MajorVersion: IKEV2_MAJOR_VERSION,
 			MinorVersion: IKEV2_MINOR_VERSION,
 			ExchangeType: IKE_SA_INIT,
 			Flags:        flags,
-			MsgId:        0,
 		},
-		Payloads: makePayloads(),
+		Payloads: MakePayloads(),
 	}
 	init.Payloads.Add(&SaPayload{
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeKE},
-		Proposals:     proposals,
+		Proposals:     p.proposals,
 	})
 	init.Payloads.Add(&KePayload{
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNonce},
-		DhTransformId: tkm.suite.dhGroup.DhTransformId,
-		KeyData:       tkm.DhPublic,
+		DhTransformId: p.dhTransformId,
+		KeyData:       p.dhPublic,
 	})
 	init.Payloads.Add(&NoncePayload{
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
-		Nonce:         nonce,
+		Nonce:         p.nonce,
 	})
 	return init
+}
+
+type authParams struct {
+	isInitiator bool
+	spiI, spiR  Spi
+	proposals   []*SaProposal
+
+	tsI, tsR []*Selector
 }
 
 // IKE_AUTH
@@ -50,7 +69,7 @@ func MakeInit(spiI, spiR Spi, proposals []*SaProposal, tkm *Tkm) *Message {
 // b->a
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, signed1 []byte, tkm *Tkm) *Message {
+func makeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, signed1 []byte, tkm *Tkm) *Message {
 	flags := RESPONSE
 	idPayloadType := PayloadTypeIDr
 	if tkm.isInitiator {
@@ -66,9 +85,8 @@ func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 			MinorVersion: IKEV2_MINOR_VERSION,
 			ExchangeType: IKE_AUTH,
 			Flags:        flags,
-			MsgId:        1,
 		},
-		Payloads: makePayloads(),
+		Payloads: MakePayloads(),
 	}
 	id := &IdPayload{
 		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeAUTH},
@@ -110,4 +128,34 @@ func MakeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 		})
 	}
 	return auth
+}
+
+type infoParams struct {
+	isInitiator bool
+	spiI, spiR  Spi
+	payload     Payload
+}
+
+// INFORMATIONAL
+func makeInformational(p infoParams) *Message {
+	flags := RESPONSE
+	if p.isInitiator {
+		flags = INITIATOR
+	}
+	info := &Message{
+		IkeHeader: &IkeHeader{
+			SpiI:         p.spiI,
+			SpiR:         p.spiR,
+			NextPayload:  PayloadTypeSK,
+			MajorVersion: IKEV2_MAJOR_VERSION,
+			MinorVersion: IKEV2_MINOR_VERSION,
+			ExchangeType: INFORMATIONAL,
+			Flags:        flags,
+		},
+		Payloads: MakePayloads(),
+	}
+	if p.payload != nil {
+		info.Payloads.Add(p.payload)
+	}
+	return info
 }
