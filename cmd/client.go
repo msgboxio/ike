@@ -19,21 +19,23 @@ func main() {
 
 	remoteU, _ := net.ResolveUDPAddr("udp4", remote)
 
-	// use random local address
-	udp, err := net.DialUDP("udp4", nil, remoteU)
-	if err != nil {
-		panic(err)
-	}
-	localU := udp.LocalAddr().(*net.UDPAddr)
-	log.Infof("socket connected: %s<=>%s", localU, remoteU)
+	for {
+		// use random local address
+		udp, err := net.DialUDP("udp4", nil, remoteU)
+		if err != nil {
+			panic(err)
+		}
+		localU := udp.LocalAddr().(*net.UDPAddr)
+		log.Infof("socket connected: %s<=>%s", localU, remoteU)
 
-	ids := ike.PskIdentities{
-		Primary: "ak@msgbox.io",
-		Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-	}
+		ids := ike.PskIdentities{
+			Primary: "ak@msgbox.io",
+			Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+		}
 
-	transportMode := ike.TransportCfg(localU.IP, remoteU.IP)
-	cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
-	<-cli.Done()
-	fmt.Printf("client finished: %v\n", cli.Err())
+		transportMode := ike.TransportCfg(localU.IP, remoteU.IP)
+		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
+		<-cli.Done()
+		fmt.Printf("client finished: %v\n", cli.Err())
+	}
 }

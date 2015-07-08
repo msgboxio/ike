@@ -5,26 +5,16 @@ import (
 	"net"
 
 	"msgbox.io/context"
+	"msgbox.io/ike/state"
 	"msgbox.io/log"
 )
 
 type Responder struct {
-	context.Context
-	cancel context.CancelFunc
-
-	conn              net.Conn
-	remote            net.Addr
-	remoteIP, localIP net.IP
-
-	tkm *Tkm
-	cfg *ClientCfg
-
-	initIb, initRb []byte
-
-	Messages chan *Message
+	Session
+	remoteAddr net.Addr
 }
 
-func NewResponder(parent context.Context, ids Identities, conn net.Conn, remote net.Addr, remoteIP, localIP net.IP, initI *Message) (*Responder, error) {
+func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteAddr net.Addr, remote, local net.IP, initI *Message) (*Responder, error) {
 	cxt, cancel := context.WithCancel(parent)
 
 	if !EnsurePayloads(initI, InitPayloads) {
@@ -43,99 +33,110 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remote 
 		return nil, err
 	}
 	o := &Responder{
-		Context:  cxt,
-		cancel:   cancel,
-		conn:     conn,
-		remote:   remote,
-		remoteIP: remoteIP,
-		localIP:  localIP,
-		tkm:      tkm,
-		cfg:      cfg,
-		// events:   make(chan stateEvents, 10),
-		Messages: make(chan *Message, 10),
+		Session: Session{
+			Context:  cxt,
+			cancel:   cancel,
+			conn:     conn,
+			remote:   remote,
+			local:    local,
+			tkm:      tkm,
+			cfg:      cfg,
+			events:   make(chan stateEvents, 10),
+			messages: make(chan *Message, 10),
+		},
+		remoteAddr: remoteAddr,
 	}
-	go runResponder(o)
+	go run(&o.Session)
+
+	o.fsm = state.MakeFsm(o, state.SmrInit, cxt)
 	return o, nil
 }
 
-func runResponder(o *Responder) {
+func (o *Responder) HandleMessage(m *Message) { o.messages <- m }
+
+func (o *Responder) SendIkeSaInit() {
+	// make response message
+	initR := makeInit(initParams{
+		isInitiator:   o.tkm.isInitiator,
+		spiI:          o.cfg.IkeSpiI,
+		spiR:          o.cfg.IkeSpiR,
+		proposals:     []*SaProposal{o.cfg.ProposalIke},
+		nonce:         o.tkm.Nr,
+		dhTransformId: o.tkm.suite.dhGroup.DhTransformId,
+		dhPublic:      o.tkm.DhPublic,
+	})
+	// encode & send
 	var err error
-done:
-	for {
-		select {
-		case <-o.Done():
-			break done
-		case msg := <-o.Messages:
-			switch msg.IkeHeader.ExchangeType {
-			case IKE_SA_INIT:
-				o.initIb = msg.Data
-				// make response message
-				initR := makeInit(initParams{
-					isInitiator:   o.tkm.isInitiator,
-					spiI:          o.cfg.IkeSpiI,
-					spiR:          o.cfg.IkeSpiR,
-					proposals:     []*SaProposal{o.cfg.ProposalIke},
-					nonce:         o.tkm.Nr,
-					dhTransformId: o.tkm.suite.dhGroup.DhTransformId,
-					dhPublic:      o.tkm.DhPublic,
-				})
-				// encode & send
-				o.initRb, err = EncodeTx(initR, nil, o.conn, o.remote, false)
-				if err != nil {
-					break done
-				}
-				// check spiR is still correct
-				o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
-				log.Infof("IKE SA Established: %#x<=>%#x", o.cfg.IkeSpiI, o.cfg.IkeSpiR)
-			case IKE_AUTH:
-				// decrypt
-				if err = o.handleEncryptedMessage(msg); err != nil {
-					log.Error(err)
-					continue
-				}
-				if !EnsurePayloads(msg, AuthIPayloads) {
-					err := errors.New("essential payload is missing from auth message")
-					log.Error(err)
-					continue
-				}
-				// authenticate peer
-				if !authenticateI(msg, o.initIb, o.tkm) {
-					err := errors.New("could not authenticate")
-					log.Error(err)
-					continue
-				}
-				ipsecSa := msg.Payloads.Get(PayloadTypeSA).(*SaPayload)
-				tsI := msg.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
-				tsR := msg.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
-				// responder's signed octet
-				// initR | Ni | prf(sk_pr | IDr )
-				signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
-				authR := makeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, ipsecSa.Proposals, tsI, tsR, signed1, o.tkm)
-				_, err = EncodeTx(authR, o.tkm, o.conn, o.remote, false)
-				if err != nil {
-					log.Error(err)
-					continue
-				}
-				log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, tsI.Selectors, tsR.Selectors)
-			case INFORMATIONAL:
-			}
-		}
+	o.initRb, err = EncodeTx(initR, nil, o.conn, o.remoteAddr, false)
+	if err != nil {
+		log.Error(err)
+		o.cancel(err)
+		return
 	}
-	o.cancel(err)
-	o.conn.Close()
-	close(o.Messages)
+	o.msgId++
+	o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	log.Infof("IKE SA Established: %#x<=>%#x", o.cfg.IkeSpiI, o.cfg.IkeSpiR)
 }
 
-func (o *Responder) handleEncryptedMessage(m *Message) (err error) {
-	if m.IkeHeader.NextPayload == PayloadTypeSK {
-		var b []byte
-		if b, err = o.tkm.VerifyDecrypt(m.Data); err != nil {
-			return err
-		}
-		sk := m.Payloads.Get(PayloadTypeSK)
-		if err = m.DecodePayloads(b, sk.NextPayloadType()); err != nil {
-			return err
-		}
+func (o *Responder) SendIkeAuth() {
+	// responder's signed octet
+	// initR | Ni | prf(sk_pr | IDr )
+	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
+	prop := []*SaProposal{o.cfg.ProposalEsp}
+	authR := makeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
+	if err != nil {
+		log.Error(err)
+		o.cancel(err)
+		return
 	}
-	return
+	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, o.cfg.TsI, o.cfg.TsR)
+}
+func (o *Responder) SendSaRekey() {
+	// CREATE_CHILD_SA
+}
+
+func (o *Responder) SendSaDeleteRequest() {
+}
+func (o *Responder) SendSaDeleteResponse() {
+}
+
+func (o *Responder) HandleSaInit(m interface{}) {
+	msg := m.(*Message)
+	o.initIb = msg.Data
+	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
+}
+func (o *Responder) HandleSaAuth(m interface{}) {
+	msg := m.(*Message)
+	// decrypt
+	if err := o.handleEncryptedMessage(msg); err != nil {
+		log.Error(err)
+		return
+	}
+	if !EnsurePayloads(msg, AuthIPayloads) {
+		err := errors.New("essential payload is missing from auth message")
+		log.Error(err)
+		return
+	}
+	// authenticate peer
+	if !authenticateI(msg, o.initIb, o.tkm) {
+		err := errors.New("could not authenticate")
+		log.Error(err)
+		return
+	}
+	// get peer spi
+	peerSpi, err := getPeerSpi(msg)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	o.cfg.EspSpiI = append([]byte{}, peerSpi...)
+
+	// props := msg.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
+	// tsI := msg.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
+	// tsR := msg.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
+	// Todo Check tsi & r
+	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
+}
+func (o *Responder) HandleSaRekey(msg interface{}) {
 }

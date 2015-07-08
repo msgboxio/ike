@@ -4,56 +4,33 @@ import (
 	"bytes"
 	"errors"
 	"net"
+	"time"
 
 	"msgbox.io/context"
-	"msgbox.io/ike/platform"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
-	"msgbox.io/packets"
-)
-
-type stateEvents int
-
-const (
-	ikeCrl stateEvents = iota + 1
-	installChildSa
-	removeChildSa
 )
 
 // Initiator will run over a socket
 // until asked to stop,
 // or when it gives up due to failure
 type Initiator struct {
-	context.Context
-	cancel context.CancelFunc
-
-	tkm *Tkm
-	cfg *ClientCfg
-
-	conn          net.Conn
-	remote, local net.IP
-
-	initIb, initRb []byte
-
-	events   chan stateEvents
-	messages chan *Message
-
-	fsm *state.Fsm
-
-	msgId uint32
+	Session
 }
 
 func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{
-		Context:  cxt,
-		cancel:   cancel,
-		conn:     conn,
-		remote:   remote,
-		local:    local,
-		events:   make(chan stateEvents, 10),
-		messages: make(chan *Message, 10),
+		Session{
+			Context:  cxt,
+			cancel:   cancel,
+			conn:     conn,
+			remote:   remote,
+			local:    local,
+			events:   make(chan stateEvents, 10),
+			messages: make(chan *Message, 10),
+		},
 	}
 
 	var err error
@@ -66,10 +43,10 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 		return
 	}
 
-	go runInitiator(o)
+	go run(&o.Session)
 	go runReader(o, conn.RemoteAddr())
 
-	o.fsm = state.MakeFsm(o, cxt)
+	o.fsm = state.MakeFsm(o, state.SmiInit, cxt)
 	o.fsm.PostEvent(state.IkeEvent{Id: state.CONNECT})
 	return
 }
@@ -94,6 +71,7 @@ func (o *Initiator) SendIkeSaInit() {
 	}
 	o.msgId++
 }
+
 func (o *Initiator) SendIkeAuth() {
 	// IKE_AUTH
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
@@ -107,6 +85,32 @@ func (o *Initiator) SendIkeAuth() {
 	}
 	o.msgId++
 }
+
+func (o *Initiator) SendSaRekey() {
+	// CREATE_CHILD_SA
+}
+
+func (o *Initiator) SendSaDeleteRequest() {
+	// INFORMATIONAL
+	info := makeInformational(infoParams{
+		isInitiator: o.tkm.isInitiator,
+		spiI:        o.cfg.IkeSpiI,
+		spiR:        o.cfg.IkeSpiR,
+		payload: &DeletePayload{
+			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+			ProtocolId:    IKE,
+			Spis:          []Spi{o.cfg.IkeSpiI},
+		},
+	})
+	info.IkeHeader.MsgId = o.msgId
+	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+		log.Error(err)
+		o.cancel(err)
+	}
+	o.msgId++
+}
+
+// delete resp & requests are sent without sa
 func (o *Initiator) SendSaDeleteResponse() {
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
@@ -124,14 +128,11 @@ func (o *Initiator) SendSaDeleteResponse() {
 		log.Error(err)
 		o.cancel(err)
 	}
-	o.events <- removeChildSa
 	o.msgId++
 }
 
-func (o *Initiator) DownloadCrl()    { o.events <- ikeCrl }
-func (o *Initiator) InstallChildSa() { o.events <- installChildSa }
-
-func (o *Initiator) HandleSaInitResponse(msg interface{}) {
+func (o *Initiator) HandleSaInit(msg interface{}) {
+	// response
 	m := msg.(*Message)
 	// we know what cryptographyc algorithms peer selected
 	// generate keys necessary for IKE SA protection and encryption.
@@ -166,7 +167,8 @@ func (o *Initiator) HandleSaInitResponse(msg interface{}) {
 	return
 }
 
-func (o *Initiator) HandleSaAuthResponse(msg interface{}) {
+func (o *Initiator) HandleSaAuth(msg interface{}) {
+	// response
 	m := msg.(*Message)
 	if err := o.handleEncryptedMessage(m); err != nil {
 		log.Error(err)
@@ -184,22 +186,13 @@ func (o *Initiator) HandleSaAuthResponse(msg interface{}) {
 		return
 	}
 	// get peer spi
-	var peerSpi []byte
-	props := m.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
-	for _, p := range props {
-		if !p.isSpiSizeCorrect(len(p.Spi)) {
-			log.Errorf("weird spi size :%+v", *p)
-		}
-		if p.ProtocolId == ESP {
-			peerSpi = p.Spi
-		}
-	}
-	if peerSpi == nil {
-		err := errors.New("Unknown Peer SPI")
+	peerSpi, err := getPeerSpi(m)
+	if err != nil {
 		log.Error(err)
 		return
 	}
-	o.cfg.EspSpiR = peerSpi
+	o.cfg.EspSpiR = append([]byte{}, peerSpi...)
+
 	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
 	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
 	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, tsi.Selectors, tsr.Selectors)
@@ -207,6 +200,10 @@ func (o *Initiator) HandleSaAuthResponse(msg interface{}) {
 		switch notify := note.(*NotifyPayload); notify.NotificationType {
 		case AUTH_LIFETIME:
 			log.Infof("Lifetime: %v", notify.NotificationMessage)
+			time.AfterFunc(notify.NotificationMessage.(time.Duration), func() {
+				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_TERMINATE})
+				// o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
+			})
 		}
 	}
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
@@ -218,114 +215,7 @@ func (o *Initiator) HandleSaRekey(msg interface{}) {
 		log.Error(err)
 		return
 	}
-	// TODO
-}
-
-// close session
-func (o *Initiator) HandleSaDead() {
-	log.Info("close session")
-	o.cancel(context.Canceled)
-}
-
-func (o *Initiator) handleInformational(msg *Message) (err error) {
-	if err = o.handleEncryptedMessage(msg); err != nil {
-		return err
-	}
-	if del := msg.Payloads.Get(PayloadTypeD); del != nil {
-		dp := del.(*DeletePayload)
-		if dp.ProtocolId == IKE {
-			log.Infof("Peer removed IKE SA : %#x", msg.IkeHeader.SpiI)
-			o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_DELETE_REQUEST})
-		}
-		for _, spi := range dp.Spis {
-			if dp.ProtocolId == ESP {
-				log.Info("removed ESP SA : %#x", spi)
-				// TODO
-			}
-		}
-	}
-	return
-}
-
-func (o *Initiator) handleEncryptedMessage(m *Message) (err error) {
-	if m.IkeHeader.NextPayload == PayloadTypeSK {
-		var b []byte
-		if b, err = o.tkm.VerifyDecrypt(m.Data); err != nil {
-			return err
-		}
-		sk := m.Payloads.Get(PayloadTypeSK)
-		if err = m.DecodePayloads(b, sk.NextPayloadType()); err != nil {
-			return err
-		}
-	}
-	return
-}
-
-func (o *Initiator) Notify(ie IkeError) {}
-
-func runInitiator(o *Initiator) {
-done:
-	for {
-		select {
-		case <-o.Done():
-			break done
-		case evt := <-o.events:
-			switch evt {
-			case installChildSa:
-				espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
-				SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
-				SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
-				sa := &platform.SaParams{
-					Src:     o.local,
-					Dst:     o.remote,
-					SrcPort: 0,
-					DstPort: 0,
-					SrcNet:  &net.IPNet{o.local, net.CIDRMask(32, 32)},
-					DstNet:  &net.IPNet{o.remote, net.CIDRMask(32, 32)},
-					EspEi:   espEi,
-					EspAi:   espAi,
-					EspEr:   espEr,
-					EspAr:   espAr,
-					SpiI:    int(SpiI),
-					SpiR:    int(SpiR),
-				}
-				if err := platform.InstallChildSa(sa); err != nil {
-					log.Error("Error installing child SA: %v", err)
-				}
-			case removeChildSa:
-				// remove sa
-				SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
-				SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
-				sa := &platform.SaParams{
-					SpiI: int(SpiI),
-					SpiR: int(SpiR),
-				}
-				if err := platform.RemoveChildSa(sa); err != nil {
-					log.Error("Error removing child SA: %v", err)
-				}
-				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_TERMINATE})
-			}
-		case msg := <-o.messages:
-			evt := state.IkeEvent{Message: msg}
-			switch msg.IkeHeader.ExchangeType {
-			case IKE_SA_INIT:
-				evt.Id = state.IKE_SA_INIT_RESPONSE
-				o.fsm.PostEvent(evt)
-			case IKE_AUTH:
-				evt.Id = state.IKE_AUTH_RESPONSE
-				o.fsm.PostEvent(evt)
-			// case CREATE_CHILD_SA:
-			// evt.Id = state.IKE_REKEY
-			// o.fsm.PostEvent(evt)
-			case INFORMATIONAL:
-				// handle in all states ?
-				o.handleInformational(msg)
-			}
-		}
-	}
-	o.conn.Close()
-	close(o.events)
-	close(o.messages)
+	// TODO - reject
 }
 
 func runReader(o *Initiator, remoteAddr net.Addr) {

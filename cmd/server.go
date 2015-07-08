@@ -69,7 +69,7 @@ func main() {
 				delete(responders, spi)
 			}()
 		}
-		responder.Messages <- msg
+		responder.HandleMessage(msg)
 	}
 	cancel(context.Canceled)
 }

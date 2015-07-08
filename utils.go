@@ -42,6 +42,24 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
+func getPeerSpi(m *Message) (peerSpi Spi, err error) {
+	props := m.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
+	for _, p := range props {
+		if !p.isSpiSizeCorrect(len(p.Spi)) {
+			err = fmt.Errorf("weird spi size :%+v", *p)
+			return
+		}
+		if p.ProtocolId == ESP {
+			peerSpi = p.Spi
+		}
+	}
+	if peerSpi == nil {
+		err = errors.New("Unknown Peer SPI")
+		return
+	}
+	return
+}
+
 func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
 	b = make([]byte, 1500)
 	n := 0
