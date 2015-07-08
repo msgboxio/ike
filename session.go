@@ -66,12 +66,17 @@ done:
 			case installChildSa:
 				if err := platform.InstallChildSa(sa); err != nil {
 					log.Error("Error installing child SA: %v", err)
+					o.cancel(err)
+					break done
 				}
+				log.Info("Installed child SA")
 			case removeChildSa:
 				if err := platform.RemoveChildSa(sa); err != nil {
 					log.Error("Error removing child SA: %v", err)
+				} else {
+					log.Info("Removed child SA")
 				}
-				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_TERMINATE})
+				o.fsm.PostEvent(state.IkeEvent{Id: state.DELETE_IKE_SA})
 			}
 		case msg := <-o.messages:
 			evt := state.IkeEvent{Message: msg}

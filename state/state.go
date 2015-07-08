@@ -275,7 +275,9 @@ func SmMature(s *Fsm, evt IkeEvent) {
 		s.SendSaRekey()
 		s.stateChange(SmRekey)
 	case MSG_IKE_TERMINATE:
-		s.stateChange(SmTerminate)
+		// Delete is sent without sa
+		s.RemoveSa()
+		s.stateChange(SmDying)
 	case IKE_REKEY:
 		s.HandleSaRekey(evt.Message)
 	}
@@ -292,23 +294,12 @@ func SmRekey(s *Fsm, evt IkeEvent) {
 	return
 }
 
-func SmDead(s *Fsm, evt IkeEvent) {
-	switch evt.Id {
-	case StateEntry:
-		s.State = SM_DEAD
-		s.HandleSaDead()
-	}
-	return
-}
-
 // remove SA & send delete reqest
 func SmTerminate(s *Fsm, evt IkeEvent) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_TERMINATE
-		s.RemoveSa()
 	case MSG_IKE_TERMINATE:
-		s.SendSaDeleteRequest()
 	case DELETE_IKE_SA:
 		s.stateChange(SmDead)
 	case IKE_SA_DELETE_REQUEST:
@@ -324,9 +315,21 @@ func SmDying(s *Fsm, evt IkeEvent) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DYING
-		s.SendSaDeleteResponse()
+	case DELETE_IKE_SA:
+		s.SendSaDeleteRequest()
+		// try and restart asap
+		s.stateChange(SmDead)
 	case MSG_IKE_TERMINATE:
 		s.stateChange(SmDead)
+	}
+	return
+}
+
+func SmDead(s *Fsm, evt IkeEvent) {
+	switch evt.Id {
+	case StateEntry:
+		s.State = SM_DEAD
+		s.HandleSaDead()
 	}
 	return
 }
