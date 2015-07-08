@@ -86,51 +86,6 @@ func (o *Initiator) SendIkeAuth() {
 	o.msgId++
 }
 
-func (o *Initiator) SendSaRekey() {
-	// CREATE_CHILD_SA
-}
-
-func (o *Initiator) SendSaDeleteRequest() {
-	// INFORMATIONAL
-	info := makeInformational(infoParams{
-		isInitiator: o.tkm.isInitiator,
-		spiI:        o.cfg.IkeSpiI,
-		spiR:        o.cfg.IkeSpiR,
-		payload: &DeletePayload{
-			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
-			ProtocolId:    IKE,
-			Spis:          []Spi{o.cfg.IkeSpiI},
-		},
-	})
-	info.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
-		log.Error(err)
-		o.cancel(err)
-	}
-	o.msgId++
-}
-
-// delete resp & requests are sent without sa
-func (o *Initiator) SendSaDeleteResponse() {
-	// INFORMATIONAL
-	info := makeInformational(infoParams{
-		isInitiator: o.tkm.isInitiator,
-		spiI:        o.cfg.IkeSpiI,
-		spiR:        o.cfg.IkeSpiR,
-		payload: &DeletePayload{
-			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
-			ProtocolId:    IKE,
-			Spis:          []Spi{o.cfg.IkeSpiR},
-		},
-	})
-	info.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
-		log.Error(err)
-		o.cancel(err)
-	}
-	o.msgId++
-}
-
 func (o *Initiator) HandleSaInit(msg interface{}) {
 	// response
 	m := msg.(*Message)
@@ -207,15 +162,6 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 		}
 	}
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
-}
-
-func (o *Initiator) HandleSaRekey(msg interface{}) {
-	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		log.Error(err)
-		return
-	}
-	// TODO - reject
 }
 
 func runReader(o *Initiator, remoteAddr net.Addr) {

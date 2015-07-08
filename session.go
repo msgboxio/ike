@@ -115,6 +115,42 @@ func (o *Session) HandleSaDead() {
 
 func (o *Session) Notify(ie IkeError) {}
 
+func (o *Session) SendSaDelete() {
+	spi := o.cfg.IkeSpiI
+	if o.tkm.isInitiator {
+		spi = o.cfg.IkeSpiR
+	}
+	// INFORMATIONAL
+	info := makeInformational(infoParams{
+		isInitiator: o.tkm.isInitiator,
+		spiI:        o.cfg.IkeSpiI,
+		spiR:        o.cfg.IkeSpiR,
+		payload: &DeletePayload{
+			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+			ProtocolId:    IKE,
+			Spis:          []Spi{spi},
+		},
+	})
+	info.IkeHeader.MsgId = o.msgId
+	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+		log.Error(err)
+	}
+	o.msgId++
+}
+
+func (o *Session) SendSaRekey() {
+	// CREATE_CHILD_SA
+}
+
+func (o *Session) HandleSaRekey(msg interface{}) {
+	m := msg.(*Message)
+	if err := o.handleEncryptedMessage(m); err != nil {
+		log.Error(err)
+		return
+	}
+	// TODO - reject
+}
+
 func (o *Session) handleInformational(msg *Message) (err error) {
 	if err = o.handleEncryptedMessage(msg); err != nil {
 		return err

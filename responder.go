@@ -92,14 +92,6 @@ func (o *Responder) SendIkeAuth() {
 	}
 	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, o.cfg.TsI, o.cfg.TsR)
 }
-func (o *Responder) SendSaRekey() {
-	// CREATE_CHILD_SA
-}
-
-func (o *Responder) SendSaDeleteRequest() {
-}
-func (o *Responder) SendSaDeleteResponse() {
-}
 
 func (o *Responder) HandleSaInit(m interface{}) {
 	msg := m.(*Message)
@@ -137,6 +129,4 @@ func (o *Responder) HandleSaAuth(m interface{}) {
 	// tsR := msg.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
 	// Todo Check tsi & r
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
-}
-func (o *Responder) HandleSaRekey(msg interface{}) {
 }

@@ -98,8 +98,7 @@ type FsmHandler interface {
 	SendIkeSaInit()
 	SendIkeAuth()
 	SendSaRekey()
-	SendSaDeleteRequest()
-	SendSaDeleteResponse()
+	SendSaDelete()
 
 	HandleSaInit(interface{})
 	HandleSaAuth(interface{})
@@ -316,7 +315,7 @@ func SmDying(s *Fsm, evt IkeEvent) {
 	case StateEntry:
 		s.State = SM_DYING
 	case DELETE_IKE_SA:
-		s.SendSaDeleteRequest()
+		s.SendSaDelete()
 		// try and restart asap
 		s.stateChange(SmDead)
 	case MSG_IKE_TERMINATE:
