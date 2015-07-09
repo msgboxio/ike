@@ -75,7 +75,11 @@ func (o *Responder) SendIkeSaInit() {
 	}
 	o.msgId++
 	o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
-	log.Infof("IKE SA Established: %#x<=>%#x", o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
+		o.remoteAddr,
+		o.cfg.IkeSpiI,
+		o.cfg.IkeSpiR,
+		o.conn.LocalAddr())
 }
 
 func (o *Responder) SendIkeAuth() {

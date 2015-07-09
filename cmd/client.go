@@ -37,5 +37,8 @@ func main() {
 		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
 		<-cli.Done()
 		fmt.Printf("client finished: %v\n", cli.Err())
+		if _, ok := cli.Err().(ike.IkeError); ok {
+			break
+		}
 	}
 }

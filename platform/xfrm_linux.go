@@ -9,42 +9,46 @@ import (
 	"msgbox.io/netlink"
 )
 
-func getPolicies(reqid int, src net.IP, dst net.IP, srcNet *net.IPNet, dstNet *net.IPNet) (policies []netlink.XfrmPolicy) {
+func getPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
 	out := netlink.XfrmPolicy{
-		Src:      srcNet,
-		Dst:      dstNet,
+		Src:      sa.SrcNet,
+		Dst:      sa.DstNet,
 		Dir:      netlink.XFRM_DIR_OUT,
 		Priority: 1795,
 	}
+	mode := netlink.XFRM_MODE_TUNNEL
+	if sa.IsTransportMode {
+		mode = netlink.XFRM_MODE_TRANSPORT
+	}
 	otmpl := netlink.XfrmPolicyTmpl{
-		Src:   src,
-		Dst:   dst,
+		Src:   sa.Src,
+		Dst:   sa.Dst,
 		Proto: netlink.XFRM_PROTO_ESP,
-		Mode:  netlink.XFRM_MODE_TUNNEL,
+		Mode:  mode,
 		Reqid: reqid,
 	}
 	out.Tmpls = append(out.Tmpls, otmpl)
 	policies = append(policies, out)
 
 	in := netlink.XfrmPolicy{
-		Src:      dstNet,
-		Dst:      srcNet,
+		Src:      sa.DstNet,
+		Dst:      sa.SrcNet,
 		Dir:      netlink.XFRM_DIR_IN,
 		Priority: 1795,
 	}
 	itmpl := netlink.XfrmPolicyTmpl{
-		Src:   dst,
-		Dst:   src,
+		Src:   sa.Dst,
+		Dst:   sa.Src,
 		Proto: netlink.XFRM_PROTO_ESP,
-		Mode:  netlink.XFRM_MODE_TUNNEL,
+		Mode:  mode,
 		Reqid: reqid,
 	}
 	in.Tmpls = append(in.Tmpls, itmpl)
 	policies = append(policies, in)
 
 	fwd := netlink.XfrmPolicy{
-		Src:      dstNet,
-		Dst:      srcNet,
+		Src:      sa.DstNet,
+		Dst:      sa.SrcNet,
 		Dir:      netlink.XFRM_DIR_FWD,
 		Priority: 1795,
 	}
@@ -53,13 +57,25 @@ func getPolicies(reqid int, src net.IP, dst net.IP, srcNet *net.IPNet, dstNet *n
 	return policies
 }
 
+func sel(src, dst *net.IPNet) (sel netlink.XfrmSelector) {
+	sel.Family = uint16(netlink.GetIPFamily(dst.IP))
+	sel.Daddr.FromIP(dst.IP)
+	sel.Saddr.FromIP(src.IP)
+	prefixlenD, _ := dst.Mask.Size()
+	sel.PrefixlenD = uint8(prefixlenD)
+	prefixlenS, _ := src.Mask.Size()
+	sel.PrefixlenS = uint8(prefixlenS)
+	return
+}
+
 func getStates(reqid int, sa *SaParams) []netlink.XfrmState {
 	states := make([]netlink.XfrmState, 0)
 	out := netlink.XfrmState{
+		Sel:          sel(sa.SrcNet, sa.DstNet),
 		Src:          sa.Src,
 		Dst:          sa.Dst,
 		Proto:        netlink.XFRM_PROTO_ESP,
-		Mode:         netlink.XFRM_MODE_TUNNEL,
+		Mode:         netlink.XFRM_MODE_TRANSPORT,
 		Spi:          sa.SpiR,
 		Reqid:        reqid,
 		ReplayWindow: 32,
@@ -85,10 +101,11 @@ func getStates(reqid int, sa *SaParams) []netlink.XfrmState {
 	}
 	states = append(states, out)
 	in := netlink.XfrmState{
+		Sel:          sel(sa.DstNet, sa.SrcNet),
 		Src:          sa.Dst,
 		Dst:          sa.Src,
 		Proto:        netlink.XFRM_PROTO_ESP,
-		Mode:         netlink.XFRM_MODE_TUNNEL,
+		Mode:         netlink.XFRM_MODE_TRANSPORT,
 		Spi:          sa.SpiI, // not sure why
 		Reqid:        reqid,
 		ReplayWindow: 32,
@@ -123,7 +140,7 @@ func InstallChildSa(sa *SaParams) error {
 	}
 	defer ns.Close()
 
-	for _, policy := range getPolicies(256, sa.Src, sa.Dst, sa.SrcNet, sa.DstNet) {
+	for _, policy := range getPolicies(256, sa) {
 		log.Infof("adding Policy: %+v", policy)
 		// create xfrm policy rules
 		err = netlink.XfrmPolicyAdd(ns, &policy)
@@ -160,7 +177,7 @@ func RemoveChildSa(sa *SaParams) error {
 		return err
 	}
 	defer ns.Close()
-	for _, policy := range getPolicies(256, sa.Src, sa.Dst, sa.SrcNet, sa.DstNet) {
+	for _, policy := range getPolicies(256, sa) {
 		log.Infof("removing Policy: %+v", policy)
 		// create xfrm policy rules
 		err = netlink.XfrmPolicyDel(ns, &policy)

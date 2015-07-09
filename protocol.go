@@ -1354,6 +1354,14 @@ func (p *Payloads) Get(t PayloadType) Payload {
 func (p *Payloads) Add(t Payload) {
 	p.Array = append(p.Array, t)
 }
+func (p *Payloads) GetNotifications() (ns []*NotifyPayload) {
+	for _, pl := range p.Array {
+		if pl.Type() == PayloadTypeN {
+			ns = append(ns, pl.(*NotifyPayload))
+		}
+	}
+	return
+}
 
 type Message struct {
 	IkeHeader *IkeHeader

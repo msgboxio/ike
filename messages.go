@@ -1,6 +1,9 @@
 package ike
 
-import "math/big"
+import (
+	"bytes"
+	"math/big"
+)
 
 type initParams struct {
 	isInitiator bool
@@ -120,6 +123,14 @@ func makeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 		trafficSelectorPayloadType: PayloadTypeTSr,
 		Selectors:                  tsR,
 	})
+	// check for transport mode config
+	if bytes.Equal(tsI[0].StartAddress, tsI[0].EndAddress) {
+		auth.Payloads.Add(&NotifyPayload{
+			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeN},
+			// ProtocolId:       IKE,
+			NotificationType: USE_TRANSPORT_MODE,
+		})
+	}
 	if tkm.isInitiator {
 		auth.Payloads.Add(&NotifyPayload{
 			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},

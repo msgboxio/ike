@@ -115,7 +115,11 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 	o.cfg.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
-	log.Infof("IKE SA Established: %#x<=>%#x", o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
+		o.conn.LocalAddr(),
+		o.cfg.IkeSpiI,
+		o.cfg.IkeSpiR,
+		o.conn.RemoteAddr())
 	// save Data
 	o.initRb = m.Data
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
@@ -130,14 +134,20 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 		return
 	}
 	if !EnsurePayloads(m, AuthRPayloads) {
+		for _, n := range m.Payloads.GetNotifications() {
+			if err, ok := GetIkeError(n.NotificationType); ok {
+				o.cancel(err)
+				return
+			}
+		}
 		err := errors.New("essential payload is missing from auth message")
 		log.Error(err)
+		// wait for timeout
 		return
 	}
 	// authenticate peer
 	if !authenticateR(m, o.initRb, o.tkm) {
-		err := errors.New("could not authenticate")
-		log.Error(err)
+		log.Error(AUTHENTICATION_FAILED)
 		return
 	}
 	// get peer spi
@@ -151,14 +161,16 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
 	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
 	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, tsi.Selectors, tsr.Selectors)
-	if note := m.Payloads.Get(PayloadTypeN); note != nil {
-		switch notify := note.(*NotifyPayload); notify.NotificationType {
+	for _, ns := range m.Payloads.GetNotifications() {
+		switch ns.NotificationType {
 		case AUTH_LIFETIME:
-			log.Infof("Lifetime: %v", notify.NotificationMessage)
-			time.AfterFunc(notify.NotificationMessage.(time.Duration), func() {
+			log.Infof("Lifetime: %v", ns.NotificationMessage)
+			time.AfterFunc(ns.NotificationMessage.(time.Duration), func() {
 				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_TERMINATE})
 				// o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
 			})
+		case USE_TRANSPORT_MODE:
+			o.cfg.IsTransportMode = true
 		}
 	}
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})

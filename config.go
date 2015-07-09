@@ -15,6 +15,8 @@ type ClientCfg struct {
 	ProposalIke, ProposalEsp *SaProposal
 
 	TsI, TsR []*Selector
+
+	IsTransportMode bool
 }
 
 func TransportCfg(from, to net.IP) *ClientCfg {
@@ -43,16 +45,20 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
-			StartAddress: net.IPv4(0, 0, 0, 0).To4(),
-			EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
+			StartAddress: from.To4(),
+			EndAddress:   from.To4(),
+			// StartAddress: net.IPv4(0, 0, 0, 0).To4(),
+			// EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
 		TsR: []*Selector{&Selector{
 			Type:         TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
-			StartAddress: net.IPv4(0, 0, 0, 0).To4(),
-			EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
+			StartAddress: to.To4(),
+			EndAddress:   to.To4(),
+			// StartAddress: net.IPv4(0, 0, 0, 0).To4(),
+			// EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
 	}
 }

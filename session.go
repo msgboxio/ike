@@ -49,30 +49,31 @@ done:
 			SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
 			SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
 			sa := &platform.SaParams{
-				Src:     o.local,
-				Dst:     o.remote,
-				SrcPort: 0,
-				DstPort: 0,
-				SrcNet:  &net.IPNet{o.local, net.CIDRMask(32, 32)},
-				DstNet:  &net.IPNet{o.remote, net.CIDRMask(32, 32)},
-				EspEi:   espEi,
-				EspAi:   espAi,
-				EspEr:   espEr,
-				EspAr:   espAr,
-				SpiI:    int(SpiI),
-				SpiR:    int(SpiR),
+				Src:             o.local,
+				Dst:             o.remote,
+				SrcPort:         0,
+				DstPort:         0,
+				SrcNet:          &net.IPNet{o.local, net.CIDRMask(32, 32)},
+				DstNet:          &net.IPNet{o.remote, net.CIDRMask(32, 32)},
+				EspEi:           espEi,
+				EspAi:           espAi,
+				EspEr:           espEr,
+				EspAr:           espAr,
+				SpiI:            int(SpiI),
+				SpiR:            int(SpiR),
+				IsTransportMode: o.cfg.IsTransportMode,
 			}
 			switch evt {
 			case installChildSa:
 				if err := platform.InstallChildSa(sa); err != nil {
-					log.Error("Error installing child SA: %v", err)
+					log.Error("Error installing child SA: %s", err)
 					o.cancel(err)
 					break done
 				}
 				log.Info("Installed child SA")
 			case removeChildSa:
 				if err := platform.RemoveChildSa(sa); err != nil {
-					log.Error("Error removing child SA: %v", err)
+					log.Error("Error removing child SA: %s", err)
 				} else {
 					log.Info("Removed child SA")
 				}
