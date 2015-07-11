@@ -68,14 +68,17 @@ func sel(src, dst *net.IPNet) (sel netlink.XfrmSelector) {
 	return
 }
 
-func getStates(reqid int, sa *SaParams) []netlink.XfrmState {
-	states := make([]netlink.XfrmState, 0)
+func getStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
+	mode := netlink.XFRM_MODE_TUNNEL
+	if sa.IsTransportMode {
+		mode = netlink.XFRM_MODE_TRANSPORT
+	}
 	out := netlink.XfrmState{
 		Sel:          sel(sa.SrcNet, sa.DstNet),
 		Src:          sa.Src,
 		Dst:          sa.Dst,
 		Proto:        netlink.XFRM_PROTO_ESP,
-		Mode:         netlink.XFRM_MODE_TRANSPORT,
+		Mode:         mode,
 		Spi:          sa.SpiR,
 		Reqid:        reqid,
 		ReplayWindow: 32,
@@ -105,7 +108,7 @@ func getStates(reqid int, sa *SaParams) []netlink.XfrmState {
 		Src:          sa.Dst,
 		Dst:          sa.Src,
 		Proto:        netlink.XFRM_PROTO_ESP,
-		Mode:         netlink.XFRM_MODE_TRANSPORT,
+		Mode:         mode,
 		Spi:          sa.SpiI, // not sure why
 		Reqid:        reqid,
 		ReplayWindow: 32,

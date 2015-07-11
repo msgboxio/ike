@@ -28,6 +28,7 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
 		EspTransforms: ESP_AES_CBC_SHA1_96,
 		ProposalIke: &SaProposal{
+			IsLast:     true,
 			Number:     1,
 			ProtocolId: IKE,
 			Spi:        []byte{}, // zero for ike sa init
@@ -45,8 +46,8 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
-			StartAddress: from.To4(),
-			EndAddress:   from.To4(),
+			StartAddress: from,
+			EndAddress:   from,
 			// StartAddress: net.IPv4(0, 0, 0, 0).To4(),
 			// EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
@@ -55,8 +56,8 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
-			StartAddress: to.To4(),
-			EndAddress:   to.To4(),
+			StartAddress: to,
+			EndAddress:   to,
 			// StartAddress: net.IPv4(0, 0, 0, 0).To4(),
 			// EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
@@ -95,6 +96,7 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
 		EspTransforms: ESP_AES_CBC_SHA1_96,
 		ProposalIke: &SaProposal{
+			IsLast:     true,
 			Number:     1,
 			ProtocolId: IKE,
 			Spi:        ikeSpiR,

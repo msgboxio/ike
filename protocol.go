@@ -987,7 +987,7 @@ func (s *NotifyPayload) Type() PayloadType {
 	return PayloadTypeN
 }
 func (s *NotifyPayload) Encode() (b []byte) {
-	b = []byte{uint8(s.ProtocolId), uint8(len(s.Spi)), 0, 0}
+	b = []byte{uint8(s.ProtocolId), uint8(len(s.Spi) + len(s.Data)), 0, 0}
 	packets.WriteB16(b, 2, uint16(s.NotificationType))
 	b = append(b, s.Spi...)
 	b = append(b, s.Data...)

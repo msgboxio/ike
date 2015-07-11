@@ -21,7 +21,7 @@ const (
 	IKE_SA_INIT
 	IKE_AUTH
 	DELETE_IKE_SA
-	IKE_REKEY // CREATE_CHILD_SA
+	CREATE_CHILD_SA
 
 	// successes
 	IKE_SA_INIT_SUCCESS
@@ -37,9 +37,6 @@ const (
 	MSG_IKE_CRL_UPDATE
 	MSG_IKE_REAUTH
 	MSG_IKE_TERMINATE
-
-	// requests
-	IKE_SA_DELETE_REQUEST
 
 	// timeouts
 	IKE_TIMEOUT
@@ -277,7 +274,7 @@ func SmMature(s *Fsm, evt IkeEvent) {
 		// Delete is sent without sa
 		s.RemoveSa()
 		s.stateChange(SmDying)
-	case IKE_REKEY:
+	case CREATE_CHILD_SA:
 		s.HandleSaRekey(evt.Message)
 	}
 	return
@@ -287,8 +284,8 @@ func SmRekey(s *Fsm, evt IkeEvent) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_REKEY
-	case IKE_REKEY:
-		s.HandleSaRekey(evt.Message)
+	case CREATE_CHILD_SA:
+		// s.HandleSaRekey(evt.Message)
 	}
 	return
 }
@@ -300,8 +297,6 @@ func SmTerminate(s *Fsm, evt IkeEvent) {
 		s.State = SM_TERMINATE
 	case MSG_IKE_TERMINATE:
 	case DELETE_IKE_SA:
-		s.stateChange(SmDead)
-	case IKE_SA_DELETE_REQUEST:
 		s.stateChange(SmDead)
 	case IKE_TIMEOUT:
 		s.stateChange(SmDead)

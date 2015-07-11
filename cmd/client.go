@@ -33,7 +33,7 @@ func main() {
 			Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 		}
 
-		transportMode := ike.TransportCfg(localU.IP, remoteU.IP)
+		transportMode := ike.TransportCfg(localU.IP.To4(), remoteU.IP.To4())
 		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
 		<-cli.Done()
 		fmt.Printf("client finished: %v\n", cli.Err())
