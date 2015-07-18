@@ -1,14 +1,25 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 
 	"msgbox.io/context"
 	"msgbox.io/ike"
 	"msgbox.io/log"
 )
+
+func waitForSignal(cancel context.CancelFunc) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	sig := <-c
+	// sig is a ^C, handle it
+	cancel(errors.New("received signal: " + sig.String()))
+}
 
 func main() {
 	var remote string
@@ -19,6 +30,10 @@ func main() {
 
 	remoteU, _ := net.ResolveUDPAddr("udp4", remote)
 
+	cxt, cancel := context.WithCancel(context.Background())
+	go waitForSignal(cancel)
+
+done:
 	for {
 		// use random local address
 		udp, err := net.DialUDP("udp4", nil, remoteU)
@@ -35,10 +50,18 @@ func main() {
 
 		transportMode := ike.TransportCfg(localU.IP.To4(), remoteU.IP.To4())
 		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
-		<-cli.Done()
-		fmt.Printf("client finished: %v\n", cli.Err())
-		if _, ok := cli.Err().(ike.IkeError); ok {
-			break
+		select {
+		case <-cxt.Done():
+			cli.Close()
+			// wait it colint is doen
+			<-cli.Done()
+			fmt.Printf("client finished: %v\n", cli.Err())
+			break done
+		case <-cli.Done():
+			fmt.Printf("client finished: %v\n", cli.Err())
+			if _, ok := cli.Err().(ike.IkeError); ok {
+				break done
+			}
 		}
 	}
 }

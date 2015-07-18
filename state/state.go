@@ -17,7 +17,7 @@ const (
 	N_INVALID_KE
 	N_NO_PROPOSAL_CHOSEN
 
-	// messages
+	// received messages
 	IKE_SA_INIT
 	IKE_AUTH
 	DELETE_IKE_SA
@@ -27,6 +27,7 @@ const (
 	IKE_SA_INIT_SUCCESS
 	IKE_AUTH_SUCCESS
 	DELETE_IKE_SA_SUCCESS
+	CREATE_CHILD_SA_SUCCESS
 
 	// errors
 	INVALID_KE
@@ -37,6 +38,7 @@ const (
 	MSG_IKE_CRL_UPDATE
 	MSG_IKE_REAUTH
 	MSG_IKE_TERMINATE
+	MSG_DELETE_IKE_SA
 
 	// timeouts
 	IKE_TIMEOUT
@@ -94,8 +96,8 @@ const (
 type FsmHandler interface {
 	SendIkeSaInit()
 	SendIkeAuth()
-	SendSaRekey()
-	SendSaDelete()
+	SendIkeSaRekey()
+	SendIkeSaDelete()
 
 	HandleSaInit(interface{})
 	HandleSaAuth(interface{})
@@ -267,15 +269,18 @@ func SmMature(s *Fsm, evt IkeEvent) {
 	case StateEntry:
 		s.State = SM_MATURE
 		s.InstallChildSa()
-	case MSG_IKE_REKEY:
-		s.SendSaRekey()
-		s.stateChange(SmRekey)
-	case MSG_IKE_TERMINATE:
-		// Delete is sent without sa
+	case DELETE_IKE_SA:
 		s.RemoveSa()
 		s.stateChange(SmDying)
+	case MSG_DELETE_IKE_SA:
+		s.SendIkeSaDelete() // after we deleted the sa
+		// dont wait for response,
+		s.stateChange(SmDead)
 	case CREATE_CHILD_SA:
 		s.HandleSaRekey(evt.Message)
+	case MSG_IKE_REKEY:
+		s.SendIkeSaRekey()
+		s.stateChange(SmRekey)
 	}
 	return
 }
@@ -285,7 +290,15 @@ func SmRekey(s *Fsm, evt IkeEvent) {
 	case StateEntry:
 		s.State = SM_REKEY
 	case CREATE_CHILD_SA:
-		// s.HandleSaRekey(evt.Message)
+		// we could have got a notificaion with error or positive response
+		s.HandleSaRekey(evt.Message)
+	case CREATE_CHILD_SA_SUCCESS:
+		s.SendIkeSaDelete()
+		// wait for delete IKE
+	case MSG_DELETE_IKE_SA:
+		s.RemoveSa()
+		s.SendIkeSaDelete()
+		s.stateChange(SmDead)
 	}
 	return
 }
@@ -309,8 +322,8 @@ func SmDying(s *Fsm, evt IkeEvent) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DYING
-	case DELETE_IKE_SA:
-		s.SendSaDelete()
+	case MSG_DELETE_IKE_SA:
+		s.SendIkeSaDelete() // after we deleted the sa
 		// try and restart asap
 		s.stateChange(SmDead)
 	case MSG_IKE_TERMINATE:

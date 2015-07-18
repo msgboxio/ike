@@ -27,6 +27,8 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 			cancel:   cancel,
 			conn:     conn,
 			remote:   remote,
+			IkeSpiI:  MakeSpi(),
+			EspSpiI:  MakeSpi()[:4],
 			local:    local,
 			events:   make(chan stateEvents, 10),
 			messages: make(chan *Message, 10),
@@ -55,7 +57,7 @@ func (o *Initiator) SendIkeSaInit() {
 	// IKE_SA_INIT
 	init := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
-		spiI:          o.cfg.IkeSpiI,
+		spiI:          o.IkeSpiI,
 		spiR:          make([]byte, 8),
 		proposals:     []*SaProposal{o.cfg.ProposalIke},
 		nonce:         o.tkm.Ni,
@@ -66,20 +68,6 @@ func (o *Initiator) SendIkeSaInit() {
 	var err error
 	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
 	if err != nil {
-		log.Error(err)
-		o.cancel(err)
-	}
-	o.msgId++
-}
-
-func (o *Initiator) SendIkeAuth() {
-	// IKE_AUTH
-	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
-	porp := []*SaProposal{o.cfg.ProposalEsp}
-	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
-	authI := makeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
-	authI.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
 		log.Error(err)
 		o.cancel(err)
 	}
@@ -112,18 +100,32 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 	no := m.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
 	o.tkm.Nr = no.Nonce
 	// set spiR
-	o.cfg.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
+	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	// create rest of ike sa
-	o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
 		o.conn.LocalAddr(),
-		o.cfg.IkeSpiI,
-		o.cfg.IkeSpiR,
+		o.IkeSpiI,
+		o.IkeSpiR,
 		o.conn.RemoteAddr())
 	// save Data
 	o.initRb = m.Data
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
-	return
+}
+
+func (o *Initiator) SendIkeAuth() {
+	// IKE_AUTH
+	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
+	o.cfg.ProposalEsp.Spi = o.EspSpiI
+	porp := []*SaProposal{o.cfg.ProposalEsp}
+	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
+	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	authI.IkeHeader.MsgId = o.msgId
+	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+		log.Error(err)
+		o.cancel(err)
+	}
+	o.msgId++
 }
 
 func (o *Initiator) HandleSaAuth(msg interface{}) {
@@ -151,22 +153,27 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 		return
 	}
 	// get peer spi
-	peerSpi, err := getPeerSpi(m)
+	peerSpi, err := getPeerSpi(m, ESP)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	o.cfg.EspSpiR = append([]byte{}, peerSpi...)
+	o.EspSpiR = append([]byte{}, peerSpi...)
 
 	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
 	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
-	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, tsi.Selectors, tsr.Selectors)
+	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, tsi.Selectors, tsr.Selectors)
 	for _, ns := range m.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case AUTH_LIFETIME:
-			log.Infof("Lifetime: %v", ns.NotificationMessage)
-			time.AfterFunc(ns.NotificationMessage.(time.Duration), func() {
-				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_TERMINATE})
+			lft := ns.NotificationMessage.(time.Duration)
+			reauth := lft - 2*time.Second
+			if lft <= 2*time.Second {
+				reauth = 0
+			}
+			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
+			time.AfterFunc(reauth, func() {
+				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
 				// o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
 			})
 		case USE_TRANSPORT_MODE:
@@ -176,39 +183,125 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
 }
 
+//  SK {SA, Ni, KEi} - ike sa
+func (o *Session) SendIkeSaRekey() {
+	var err error
+	suite := NewCipherSuite(o.cfg.IkeTransforms)
+	if o.newTkm, err = NewTkmInitiator(suite, o.tkm.ids); err != nil {
+		log.Error(err)
+		o.cancel(err)
+		return
+	}
+	o.newIkeSpiI = MakeSpi()
+	o.cfg.ProposalIke.Spi = o.newIkeSpiI
+	init := makeIkeChildSa(childSaParams{
+		isInitiator:   o.tkm.isInitiator,
+		spiI:          o.IkeSpiI,
+		spiR:          o.IkeSpiR,
+		proposals:     []*SaProposal{o.cfg.ProposalIke},
+		nonce:         o.newTkm.Ni,
+		dhTransformId: o.newTkm.suite.dhGroup.DhTransformId,
+		dhPublic:      o.newTkm.DhPublic,
+	})
+	init.IkeHeader.MsgId = o.msgId
+	// use old tkm to encrypt & sign
+	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
+	if err != nil {
+		log.Error(err)
+		o.cancel(err)
+	}
+	o.msgId++
+}
+
+//  SK {SA, Nr, KEr} - ike sa
+func (o *Session) HandleSaRekey(msg interface{}) {
+	m := msg.(*Message)
+	if err := o.handleEncryptedMessage(m); err != nil {
+		log.Error(err)
+		return
+	}
+	if m.IkeHeader.Flags != RESPONSE {
+		return // TODO handle this later
+	}
+	if tsi := m.Payloads.Get(PayloadTypeTSi); tsi != nil {
+		log.V(1).Info("received CREATE_CHILD_SA for child sa")
+		return // TODO
+	}
+	if !EnsurePayloads(m, InitPayloads) {
+		err := errors.New("essential payload is missing from Ike Sa rekey message")
+		log.Error(err)
+		return
+	}
+	// TODO - currently dont support different prfs from original
+	keR := m.Payloads.Get(PayloadTypeKE).(*KePayload)
+	if err := o.newTkm.DhGenerateKey(keR.KeyData); err != nil {
+		log.Error(err)
+		return
+	}
+	// set Nr
+	no := m.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
+	o.newTkm.Nr = no.Nonce
+	// get new IKE spi
+	peerSpi, err := getPeerSpi(m, IKE)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	o.newIkeSpiR = append([]byte{}, peerSpi...)
+	// create rest of ike sa
+	o.newTkm.IsaCreate(o.newIkeSpiI, o.newIkeSpiR, o.tkm.skD)
+	log.Infof("NEW IKE SA Established: [%s]%#x<=>%#x[%s]",
+		o.conn.LocalAddr(),
+		o.newIkeSpiI,
+		o.newIkeSpiR,
+		o.conn.RemoteAddr())
+	// save Data
+	o.initRb = m.Data
+	o.fsm.PostEvent(state.IkeEvent{Id: state.CREATE_CHILD_SA_SUCCESS})
+}
+
 func runReader(o *Initiator, remoteAddr net.Addr) {
+done:
 	for {
-		b, _, err := ReadPacket(o.conn, remoteAddr, true)
-		if err != nil {
-			log.Error(err)
-			break
+		select {
+		case <-o.Done():
+			break done
+		default:
+			b, _, err := ReadPacket(o.conn, remoteAddr, true)
+			if err != nil {
+				log.Error(err)
+				break done
+			}
+			if o.Err() != nil {
+				break done
+			}
+			// if o.remote != nil && o.remote.String() != from.String() {
+			// 	log.Errorf("from different address: %s", from)
+			// 	continue
+			// }
+			msg := &Message{}
+			if err := msg.DecodeHeader(b); err != nil {
+				o.Notify(ERR_INVALID_SYNTAX)
+				continue
+			}
+			if len(b) < int(msg.IkeHeader.MsgLength) {
+				log.V(LOG_CODEC).Info("")
+				o.Notify(ERR_INVALID_SYNTAX)
+				continue
+			}
+			if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
+				log.Errorf("different initiator Spi %s", spi)
+				o.Notify(ERR_INVALID_SYNTAX)
+				continue
+			}
+			msg.Payloads = MakePayloads()
+			if err = msg.DecodePayloads(b[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+				o.Notify(ERR_INVALID_SYNTAX)
+				continue
+			}
+			// decrypt later
+			msg.Data = b
+			o.messages <- msg
 		}
-		// if o.remote != nil && o.remote.String() != from.String() {
-		// 	log.Errorf("from different address: %s", from)
-		// 	continue
-		// }
-		msg := &Message{}
-		if err := msg.DecodeHeader(b); err != nil {
-			o.Notify(ERR_INVALID_SYNTAX)
-			continue
-		}
-		if len(b) < int(msg.IkeHeader.MsgLength) {
-			log.V(LOG_CODEC).Info("")
-			o.Notify(ERR_INVALID_SYNTAX)
-			continue
-		}
-		if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, o.cfg.IkeSpiI) {
-			log.Errorf("different initiator Spi %s", spi)
-			o.Notify(ERR_INVALID_SYNTAX)
-			continue
-		}
-		msg.Payloads = MakePayloads()
-		if err = msg.DecodePayloads(b[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
-			o.Notify(ERR_INVALID_SYNTAX)
-			continue
-		}
-		// decrypt later
-		msg.Data = b
-		o.messages <- msg
 	}
 }

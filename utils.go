@@ -42,14 +42,14 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func getPeerSpi(m *Message) (peerSpi Spi, err error) {
+func getPeerSpi(m *Message, pid ProtocolId) (peerSpi Spi, err error) {
 	props := m.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
 	for _, p := range props {
 		if !p.isSpiSizeCorrect(len(p.Spi)) {
 			err = fmt.Errorf("weird spi size :%+v", *p)
 			return
 		}
-		if p.ProtocolId == ESP {
+		if p.ProtocolId == pid {
 			peerSpi = p.Spi
 		}
 	}

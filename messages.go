@@ -148,6 +148,12 @@ type infoParams struct {
 }
 
 // INFORMATIONAL
+// b<-a
+//  HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: none, Message ID=m),
+//  SK {...}
+// a<-b
+// 	HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: Initiator | Response, Message ID=m),
+//  SK {}
 func makeInformational(p infoParams) *Message {
 	flags := RESPONSE
 	if p.isInitiator {
@@ -169,4 +175,62 @@ func makeInformational(p infoParams) *Message {
 		info.Payloads.Add(p.payload)
 	}
 	return info
+}
+
+// CREATE_CHILD_SA
+// b<-a
+//  HDR(SPIi=xxx, SPIy=yyy, CREATE_CHILD_SA, Flags: none, Message ID=m),
+//  SK {SA, Ni, KEi} - ike sa
+//  SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr} - for rekey child sa
+//  SK {SA, Ni, [KEi,] TSi, TSr} - for new child sa, different selector perhaps
+// a<-b
+//  HDR(SPIi=xxx, SPIr=yyy, CREATE_CHILD_SA, Flags: Initiator | Response, Message ID=m),
+//  SK {N(NO_ADDITIONAL_SAS} - reject
+//  SK {SA, Nr, KEr} - ike sa
+//  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
+type childSaParams struct {
+	isInitiator bool
+	spiI, spiR  Spi
+
+	proposals []*SaProposal
+
+	nonce         *big.Int
+	dhTransformId DhTransformId
+	dhPublic      *big.Int
+}
+
+func makeIkeChildSa(p childSaParams) *Message {
+	flags := RESPONSE
+	// nonce := tkm.Nr
+	if p.isInitiator {
+		flags = INITIATOR
+		// nonce = tkm.Ni
+	}
+	child := &Message{
+		IkeHeader: &IkeHeader{
+			SpiI:         p.spiI,
+			SpiR:         p.spiR,
+			NextPayload:  PayloadTypeSK,
+			MajorVersion: IKEV2_MAJOR_VERSION,
+			MinorVersion: IKEV2_MINOR_VERSION,
+			ExchangeType: CREATE_CHILD_SA,
+			Flags:        flags,
+		},
+		Payloads: MakePayloads(),
+	}
+	child.Payloads.Add(&SaPayload{
+		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeKE},
+		Proposals:     p.proposals,
+	})
+	child.Payloads.Add(&KePayload{
+		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNonce},
+		DhTransformId: p.dhTransformId,
+		KeyData:       p.dhPublic,
+	})
+	child.Payloads.Add(&NoncePayload{
+		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+		Nonce:         p.nonce,
+	})
+	return child
+
 }

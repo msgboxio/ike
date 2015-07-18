@@ -8,10 +8,6 @@ import (
 type ClientCfg struct {
 	IkeTransforms, EspTransforms []*SaTransform
 
-	IkeSpiI, IkeSpiR Spi
-
-	EspSpiI, EspSpiR Spi
-
 	ProposalIke, ProposalEsp *SaProposal
 
 	TsI, TsR []*Selector
@@ -20,25 +16,19 @@ type ClientCfg struct {
 }
 
 func TransportCfg(from, to net.IP) *ClientCfg {
-	ikeSpiI := MakeSpi()
-	espSpi := MakeSpi()
 	return &ClientCfg{
-		IkeSpiI:       ikeSpiI,
-		EspSpiI:       espSpi[:4],
 		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
 		EspTransforms: ESP_AES_CBC_SHA1_96,
 		ProposalIke: &SaProposal{
 			IsLast:     true,
 			Number:     1,
 			ProtocolId: IKE,
-			Spi:        []byte{}, // zero for ike sa init
 			Transforms: IKE_AES_CBC_SHA1_96_DH_1024,
 		},
 		ProposalEsp: &SaProposal{
 			IsLast:     true,
 			Number:     2,
 			ProtocolId: ESP,
-			Spi:        espSpi[:4],
 			Transforms: ESP_AES_CBC_SHA1_96,
 		},
 		TsI: []*Selector{&Selector{
@@ -77,10 +67,6 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	if ikeProp == nil {
 		return nil, errors.New("acceptable IKE proposals are missing")
 	}
-	// espSpiI := append([]byte{}, espProp.Spi...)
-	espSpiR := MakeSpi()[:4]
-	ikeSpiI := append([]byte{}, initI.IkeHeader.SpiI...)
-	ikeSpiR := MakeSpi()
 
 	// get selectors
 	// tsI := initI.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
@@ -89,24 +75,18 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	// 	return nil, errors.New("acceptable selectors are missing")
 	// }
 	return &ClientCfg{
-		IkeSpiI: ikeSpiI,
-		IkeSpiR: ikeSpiR,
-		// EspSpiI:       espSpiI,
-		EspSpiR:       espSpiR,
 		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
 		EspTransforms: ESP_AES_CBC_SHA1_96,
 		ProposalIke: &SaProposal{
 			IsLast:     true,
 			Number:     1,
 			ProtocolId: IKE,
-			Spi:        ikeSpiR,
 			Transforms: IKE_AES_CBC_SHA1_96_DH_1024,
 		},
 		ProposalEsp: &SaProposal{
 			IsLast:     true,
 			Number:     2,
 			ProtocolId: ESP,
-			Spi:        espSpiR,
 			Transforms: ESP_AES_CBC_SHA1_96,
 		},
 		TsI: []*Selector{&Selector{

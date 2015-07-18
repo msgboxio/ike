@@ -27,6 +27,12 @@ type Session struct {
 	conn          net.Conn
 	remote, local net.IP
 
+	IkeSpiI, IkeSpiR Spi
+	EspSpiI, EspSpiR Spi
+
+	newIkeSpiI, newIkeSpiR Spi
+	newTkm                 *Tkm
+
 	initIb, initRb []byte
 
 	events   chan stateEvents
@@ -43,11 +49,17 @@ done:
 		select {
 		case <-o.Done():
 			break done
-		case evt := <-o.events:
+		case evt, ok := <-o.events:
+			if !ok {
+				break done
+			}
 			if err := o.handleSaEvent(evt); err != nil {
 				o.cancel(err)
 			}
-		case msg := <-o.messages:
+		case msg, ok := <-o.messages:
+			if !ok {
+				break done
+			}
 			evt := state.IkeEvent{Message: msg}
 			// make sure they are responses - TODO
 			switch msg.IkeHeader.ExchangeType {
@@ -81,18 +93,20 @@ done:
 			} // ExchangeType
 		} // select
 	} // for
-	o.conn.Close()
-	close(o.events)
-	close(o.messages)
+}
+
+func (o *Session) Close() {
+	log.Info("close")
+	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
 }
 
 func (o *Session) InstallChildSa() { o.events <- installChildSa }
 func (o *Session) RemoveSa()       { o.events <- removeChildSa }
 func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 	// sa processing
-	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
-	SpiI, _ := packets.ReadB32(o.cfg.EspSpiI, 0)
-	SpiR, _ := packets.ReadB32(o.cfg.EspSpiR, 0)
+	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.IkeSpiI, o.IkeSpiR)
+	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
+	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
 	sa := &platform.SaParams{
 		Src:             o.local,
 		Dst:             o.remote,
@@ -122,7 +136,7 @@ func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 		} else {
 			log.Info("Removed child SA")
 		}
-		o.fsm.PostEvent(state.IkeEvent{Id: state.DELETE_IKE_SA})
+		o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
 	}
 	return
 }
@@ -131,20 +145,23 @@ func (o *Session) DownloadCrl() {}
 
 // close session
 func (o *Session) HandleSaDead() {
-	log.Info("close session")
+	o.conn.Close()
+	close(o.events)
+	close(o.messages)
+	log.Info("cancel context")
 	o.cancel(context.Canceled)
 }
 
 func (o *Session) Notify(ie IkeError) {
-	spi := o.cfg.IkeSpiI
+	spi := o.IkeSpiI
 	if o.tkm.isInitiator {
-		spi = o.cfg.IkeSpiR
+		spi = o.IkeSpiR
 	}
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
 		isInitiator: o.tkm.isInitiator,
-		spiI:        o.cfg.IkeSpiI,
-		spiR:        o.cfg.IkeSpiR,
+		spiI:        o.IkeSpiI,
+		spiR:        o.IkeSpiR,
 		payload: &NotifyPayload{
 			PayloadHeader:    &PayloadHeader{NextPayload: PayloadTypeNone},
 			ProtocolId:       IKE,
@@ -159,20 +176,16 @@ func (o *Session) Notify(ie IkeError) {
 	o.msgId++
 }
 
-func (o *Session) SendSaDelete() {
-	spi := o.cfg.IkeSpiI
-	if o.tkm.isInitiator {
-		spi = o.cfg.IkeSpiR
-	}
+func (o *Session) SendIkeSaDelete() {
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
 		isInitiator: o.tkm.isInitiator,
-		spiI:        o.cfg.IkeSpiI,
-		spiR:        o.cfg.IkeSpiR,
+		spiI:        o.IkeSpiI,
+		spiR:        o.IkeSpiR,
 		payload: &DeletePayload{
 			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
 			ProtocolId:    IKE,
-			Spis:          []Spi{spi},
+			Spis:          []Spi{},
 		},
 	})
 	info.IkeHeader.MsgId = o.msgId
@@ -180,19 +193,6 @@ func (o *Session) SendSaDelete() {
 		log.Error(err)
 	}
 	o.msgId++
-}
-
-func (o *Session) SendSaRekey() {
-	o.Notify(ERR_NO_ADDITIONAL_SAS)
-}
-
-func (o *Session) HandleSaRekey(msg interface{}) {
-	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		log.Error(err)
-		return
-	}
-	// TODO - reject
 }
 
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {

@@ -4,10 +4,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math/big"
 	"net"
 	"time"
-
-	"math/big"
 
 	"msgbox.io/log"
 	"msgbox.io/packets"
@@ -17,24 +16,6 @@ const (
 	IKE_PORT      = 500
 	IKE_NATT_PORT = 4500
 )
-
-// mimimal impl
-
-// IKE_SA_INIT
-// generate SKEYSEED, IKE sa is encrypted
-
-// IKE_AUTH
-// to create IKE SA and the first child SA.
-// authenticate peer & create child SA
-
-// understand CREATE_CHILD_SA request so it can
-// reply with CREATE_CHILD_SA error response saying NO_ADDITIONAL_SAS
-
-// understand INFORMATIONAL request
-// so it can reply with empty INFORMATIONAL response
-
-// dont keep message ids, only 1 & 2
-// dont need to protect against replay attacks
 
 const (
 	LOG_PACKET_JS = 3
@@ -1316,25 +1297,7 @@ func (s *EapPayload) Decode(b []byte) (err error) {
 	return
 }
 
-// INFORMATIONAL
-// b<-a
-//  HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: none, Message ID=m),
-//  SK {...}
-// a<-b
-// 	HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: Initiator | Response, Message ID=m),
-//  SK {}
-
-// CREATE_CHILD_SA
-// b<-a
-//  HDR(SPIi=xxx, SPIy=yyy, CREATE_CHILD_SA, Flags: none, Message ID=m),
-//  SK {SA, Ni, KEi} - for rekey ike sa
-//  SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr} - for rekey child sa
-// a<-b
-//  HDR(SPIi=xxx, SPIr=yyy, CREATE_CHILD_SA, Flags: Initiator | Response, Message ID=m),
-//  SK {N(NO_ADDITIONAL_SAS} - reject
-//  SK {SA, Nr, KEr} - ike sa
-//  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
-
+// Payloads
 type Payloads struct {
 	Array []Payload
 }
@@ -1342,7 +1305,6 @@ type Payloads struct {
 func MakePayloads() *Payloads {
 	return &Payloads{}
 }
-
 func (p *Payloads) Get(t PayloadType) Payload {
 	for _, pl := range p.Array {
 		if pl.Type() == t {

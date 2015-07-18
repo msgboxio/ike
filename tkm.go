@@ -53,8 +53,10 @@ func NewTkmInitiator(suite *cipherSuite, ids Identities) (tkm *Tkm, err error) {
 		ids:         ids,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
-	if err := tkm.NcCreate(suite.prfLen * 8); err != nil {
+	if ni, err := tkm.NcCreate(suite.prfLen * 8); err != nil {
 		return nil, err
+	} else {
+		tkm.Ni = ni
 	}
 	// for sending public key
 	if _, err := tkm.DhCreate(); err != nil {
@@ -70,8 +72,10 @@ func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int, ids Identitie
 		ids:   ids,
 	}
 	// at least 128 bits & at least half the key size of the negotiated prf
-	if err := tkm.NcCreate(no.BitLen()); err != nil {
+	if nr, err := tkm.NcCreate(no.BitLen()); err != nil {
 		return nil, err
+	} else {
+		tkm.Nr = nr
 	}
 	if _, err := tkm.DhCreate(); err != nil {
 		return nil, err
@@ -84,15 +88,8 @@ func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int, ids Identitie
 
 // 4.1.2 creation of ike sa
 
-// The client gets the Nr
-func (t *Tkm) NcCreate(bits int) (err error) {
-	no, err := rand.Prime(rand.Reader, bits)
-	if t.isInitiator {
-		t.Ni = no
-	} else {
-		t.Nr = no
-	}
-	return
+func (t *Tkm) NcCreate(bits int) (no *big.Int, err error) {
+	return rand.Prime(rand.Reader, bits)
 }
 
 // the client get the dh public value
@@ -123,13 +120,27 @@ func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 	return ret[:bits]
 }
 
+func (t *Tkm) SkeySeedInitial() []byte {
+	// SKEYSEED = prf(Ni | Nr, g^ir)
+	return t.suite.prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
+}
+
+func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
+	// SKEYSEED = prf(SK_d (old), g^ir (new) | Ni | Nr)
+	return t.suite.prf(old_SK_D, append(t.DhShared.Bytes(), append(t.Ni.Bytes(), t.Nr.Bytes()...)...))
+}
+
 // create ike sa
-func (t *Tkm) IsaCreate(spiI, spiR Spi) {
+func (t *Tkm) IsaCreate(spiI, spiR Spi, old_SK_D []byte) {
 	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
 	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
 	// 	hex.Dump(spiI), hex.Dump(spiR))
-	// SKEYSEED = prf(Ni | Nr, g^ir)
-	SKEYSEED := t.suite.prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
+	SKEYSEED := []byte{}
+	if len(old_SK_D) == 0 {
+		SKEYSEED = t.SkeySeedInitial()
+	} else {
+		SKEYSEED = t.SkeySeedRekey(old_SK_D)
+	}
 	kmLen := 3*t.suite.prfLen + 2*t.suite.keyLen + 2*t.suite.macKeyLen
 	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
 	KEYMAT := t.prfplus(SKEYSEED,

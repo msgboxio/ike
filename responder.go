@@ -32,6 +32,11 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 		cancel(err)
 		return nil, err
 	}
+	spiI, err := getPeerSpi(initI, IKE)
+	if err != nil {
+		cancel(err)
+		return nil, err
+	}
 	o := &Responder{
 		Session: Session{
 			Context:  cxt,
@@ -41,6 +46,9 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 			local:    local,
 			tkm:      tkm,
 			cfg:      cfg,
+			IkeSpiI:  spiI,
+			IkeSpiR:  MakeSpi(),
+			EspSpiR:  MakeSpi()[:4],
 			events:   make(chan stateEvents, 10),
 			messages: make(chan *Message, 10),
 		},
@@ -58,8 +66,8 @@ func (o *Responder) SendIkeSaInit() {
 	// make response message
 	initR := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
-		spiI:          o.cfg.IkeSpiI,
-		spiR:          o.cfg.IkeSpiR,
+		spiI:          o.IkeSpiI,
+		spiR:          o.IkeSpiR,
 		proposals:     []*SaProposal{o.cfg.ProposalIke},
 		nonce:         o.tkm.Nr,
 		dhTransformId: o.tkm.suite.dhGroup.DhTransformId,
@@ -74,11 +82,11 @@ func (o *Responder) SendIkeSaInit() {
 		return
 	}
 	o.msgId++
-	o.tkm.IsaCreate(o.cfg.IkeSpiI, o.cfg.IkeSpiR)
+	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
 		o.remoteAddr,
-		o.cfg.IkeSpiI,
-		o.cfg.IkeSpiR,
+		o.IkeSpiI,
+		o.IkeSpiR,
 		o.conn.LocalAddr())
 }
 
@@ -86,15 +94,16 @@ func (o *Responder) SendIkeAuth() {
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
+	o.cfg.ProposalEsp.Spi = o.EspSpiR
 	prop := []*SaProposal{o.cfg.ProposalEsp}
-	authR := makeAuth(o.cfg.IkeSpiI, o.cfg.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
 	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
 	if err != nil {
 		log.Error(err)
 		o.cancel(err)
 		return
 	}
-	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.cfg.EspSpiI, o.cfg.EspSpiR, o.cfg.TsI, o.cfg.TsR)
+	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, o.cfg.TsI, o.cfg.TsR)
 }
 
 func (o *Responder) HandleSaInit(m interface{}) {
@@ -121,12 +130,12 @@ func (o *Responder) HandleSaAuth(m interface{}) {
 		return
 	}
 	// get peer spi
-	peerSpi, err := getPeerSpi(msg)
+	peerSpi, err := getPeerSpi(msg, ESP)
 	if err != nil {
 		log.Error(err)
 		return
 	}
-	o.cfg.EspSpiI = append([]byte{}, peerSpi...)
+	o.EspSpiI = append([]byte{}, peerSpi...)
 
 	// props := msg.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
 	// tsI := msg.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
