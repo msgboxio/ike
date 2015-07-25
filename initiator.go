@@ -177,6 +177,7 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 				// o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
 			})
 		case USE_TRANSPORT_MODE:
+			log.Info("using Transport Mode")
 			o.cfg.IsTransportMode = true
 		}
 	}

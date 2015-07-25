@@ -273,7 +273,8 @@ func SmMature(s *Fsm, evt IkeEvent) {
 		s.RemoveSa()
 		s.stateChange(SmDying)
 	case MSG_DELETE_IKE_SA:
-		s.SendIkeSaDelete() // after we deleted the sa
+		s.SendIkeSaDelete() // send with sa in place
+		s.RemoveSa()
 		// dont wait for response,
 		s.stateChange(SmDead)
 	case CREATE_CHILD_SA:

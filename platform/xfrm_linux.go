@@ -9,7 +9,7 @@ import (
 	"msgbox.io/netlink"
 )
 
-func getPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
+func makeSaPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
 	out := netlink.XfrmPolicy{
 		Src:      sa.SrcNet,
 		Dst:      sa.DstNet,
@@ -68,7 +68,7 @@ func sel(src, dst *net.IPNet) (sel netlink.XfrmSelector) {
 	return
 }
 
-func getStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
+func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 	mode := netlink.XFRM_MODE_TUNNEL
 	if sa.IsTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
@@ -143,7 +143,7 @@ func InstallChildSa(sa *SaParams) error {
 	}
 	defer ns.Close()
 
-	for _, policy := range getPolicies(256, sa) {
+	for _, policy := range makeSaPolicies(256, sa) {
 		log.Infof("adding Policy: %+v", policy)
 		// create xfrm policy rules
 		err = netlink.XfrmPolicyAdd(ns, &policy)
@@ -157,7 +157,7 @@ func InstallChildSa(sa *SaParams) error {
 			}
 		}
 	}
-	for _, state := range getStates(256, sa) {
+	for _, state := range makeSaStates(256, sa) {
 		log.Infof("adding State: %+v", state)
 		// crate xfrm state rules
 		err = netlink.XfrmStateAdd(ns, &state)
@@ -180,7 +180,7 @@ func RemoveChildSa(sa *SaParams) error {
 		return err
 	}
 	defer ns.Close()
-	for _, policy := range getPolicies(256, sa) {
+	for _, policy := range makeSaPolicies(256, sa) {
 		log.Infof("removing Policy: %+v", policy)
 		// create xfrm policy rules
 		err = netlink.XfrmPolicyDel(ns, &policy)
@@ -194,7 +194,7 @@ func RemoveChildSa(sa *SaParams) error {
 			}
 		}
 	}
-	for _, state := range getStates(256, sa) {
+	for _, state := range makeSaStates(256, sa) {
 		log.Infof("removing State: %+v", state)
 		// crate xfrm state rules
 		err = netlink.XfrmStateDel(ns, &state)

@@ -15,6 +15,41 @@ type ClientCfg struct {
 	IsTransportMode bool
 }
 
+func TunnelConfig() *ClientCfg {
+	return &ClientCfg{
+		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
+		EspTransforms: ESP_AES_CBC_SHA1_96,
+		ProposalIke: &SaProposal{
+			IsLast:     true,
+			Number:     1,
+			ProtocolId: IKE,
+			Transforms: IKE_AES_CBC_SHA1_96_DH_1024,
+		},
+		ProposalEsp: &SaProposal{
+			IsLast:     true,
+			Number:     1,
+			ProtocolId: ESP,
+			Transforms: ESP_AES_CBC_SHA1_96,
+		},
+		TsI: []*Selector{&Selector{
+			Type:         TS_IPV4_ADDR_RANGE,
+			IpProtocolId: 0,
+			StartPort:    0,
+			Endport:      65535,
+			StartAddress: net.IPv4(0, 0, 0, 0).To4(),
+			EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
+		}},
+		TsR: []*Selector{&Selector{
+			Type:         TS_IPV4_ADDR_RANGE,
+			IpProtocolId: 0,
+			StartPort:    0,
+			Endport:      65535,
+			StartAddress: net.IPv4(0, 0, 0, 0).To4(),
+			EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
+		}},
+	}
+}
+
 func TransportCfg(from, to net.IP) *ClientCfg {
 	return &ClientCfg{
 		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
@@ -27,7 +62,7 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 		},
 		ProposalEsp: &SaProposal{
 			IsLast:     true,
-			Number:     2,
+			Number:     1,
 			ProtocolId: ESP,
 			Transforms: ESP_AES_CBC_SHA1_96,
 		},

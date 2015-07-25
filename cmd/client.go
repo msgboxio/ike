@@ -23,8 +23,10 @@ func waitForSignal(cancel context.CancelFunc) {
 
 func main() {
 	var remote string
-	// 0.0.0.0 is for listening
 	flag.StringVar(&remote, "remote", "127.0.0.1:5000", "address to connect to")
+	var isTunnelMode bool
+	flag.BoolVar(&isTunnelMode, "tunnel", false, "use tunnel mode?")
+
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
@@ -48,14 +50,19 @@ done:
 			Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 		}
 
-		transportMode := ike.TransportCfg(localU.IP.To4(), remoteU.IP.To4())
-		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, transportMode)
+		var config *ike.ClientCfg
+		if isTunnelMode {
+			config = ike.TunnelConfig()
+		} else {
+			config = ike.TransportCfg(localU.IP.To4(), remoteU.IP.To4())
+		}
+		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, config)
 		select {
 		case <-cxt.Done():
 			cli.Close()
-			// wait it colint is doen
+			// wait until client is done
 			<-cli.Done()
-			fmt.Printf("client finished: %v\n", cli.Err())
+			fmt.Printf("shutdown client: %v\n", cli.Err())
 			break done
 		case <-cli.Done():
 			fmt.Printf("client finished: %v\n", cli.Err())

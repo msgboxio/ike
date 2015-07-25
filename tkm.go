@@ -41,7 +41,7 @@ type Tkm struct {
 	SKEYSEED, KEYMAT []byte
 
 	skD        []byte // further keying material for child sa
-	skPi, skPr []byte
+	skPi, skPr []byte // used when generating an AUTH
 	skAi, skAr []byte // integrity protection keys
 	skEi, skEr []byte // encryption keys
 }
