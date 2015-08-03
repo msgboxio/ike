@@ -30,7 +30,6 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 			IkeSpiI:  MakeSpi(),
 			EspSpiI:  MakeSpi()[:4],
 			local:    local,
-			events:   make(chan stateEvents, 10),
 			messages: make(chan *Message, 10),
 		},
 	}

@@ -66,9 +66,10 @@ done:
 			break done
 		case <-cli.Done():
 			fmt.Printf("client finished: %v\n", cli.Err())
-			if _, ok := cli.Err().(ike.IkeError); ok {
-				break done
-			}
+			// if _, ok := cli.Err().(ike.IkeError); ok {
+			// 	break done
+			// }
+			break done
 		}
 	}
 }

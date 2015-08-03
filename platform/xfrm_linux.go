@@ -10,6 +10,7 @@ import (
 )
 
 func makeSaPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
+	// out
 	out := netlink.XfrmPolicy{
 		Src:      sa.SrcNet,
 		Dst:      sa.DstNet,
@@ -29,7 +30,7 @@ func makeSaPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
 	}
 	out.Tmpls = append(out.Tmpls, otmpl)
 	policies = append(policies, out)
-
+	// in
 	in := netlink.XfrmPolicy{
 		Src:      sa.DstNet,
 		Dst:      sa.SrcNet,
@@ -45,7 +46,7 @@ func makeSaPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
 	}
 	in.Tmpls = append(in.Tmpls, itmpl)
 	policies = append(policies, in)
-
+	// fwd ??
 	fwd := netlink.XfrmPolicy{
 		Src:      sa.DstNet,
 		Dst:      sa.SrcNet,
@@ -57,7 +58,8 @@ func makeSaPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
 	return policies
 }
 
-func sel(src, dst *net.IPNet) (sel netlink.XfrmSelector) {
+func makeSelector(src, dst *net.IPNet) (sel *netlink.XfrmSelector) {
+	sel = &netlink.XfrmSelector{}
 	sel.Family = uint16(netlink.GetIPFamily(dst.IP))
 	sel.Daddr.FromIP(dst.IP)
 	sel.Saddr.FromIP(src.IP)
@@ -70,11 +72,17 @@ func sel(src, dst *net.IPNet) (sel netlink.XfrmSelector) {
 
 func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 	mode := netlink.XFRM_MODE_TUNNEL
+	flag := netlink.XFRM_STATE_AF_UNSPEC
+	var selIn, selOut *netlink.XfrmSelector
 	if sa.IsTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
+		flag = 0
+		// selectors
+		selOut = makeSelector(sa.SrcNet, sa.DstNet)
+		selIn = makeSelector(sa.DstNet, sa.SrcNet)
 	}
 	out := netlink.XfrmState{
-		Sel:          sel(sa.SrcNet, sa.DstNet),
+		Sel:          selOut,
 		Src:          sa.Src,
 		Dst:          sa.Dst,
 		Proto:        netlink.XFRM_PROTO_ESP,
@@ -82,6 +90,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 		Spi:          sa.SpiR,
 		Reqid:        reqid,
 		ReplayWindow: 32,
+		Flags:        flag,
 		Auth: &netlink.XfrmStateAlgo{
 			Name: "hmac(sha1)",
 			Key:  sa.EspAi,
@@ -104,7 +113,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 	}
 	states = append(states, out)
 	in := netlink.XfrmState{
-		Sel:          sel(sa.DstNet, sa.SrcNet),
+		Sel:          selIn,
 		Src:          sa.Dst,
 		Dst:          sa.Src,
 		Proto:        netlink.XFRM_PROTO_ESP,
@@ -112,6 +121,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 		Spi:          sa.SpiI, // not sure why
 		Reqid:        reqid,
 		ReplayWindow: 32,
+		Flags:        flag,
 		Auth: &netlink.XfrmStateAlgo{
 			Name: "hmac(sha1)",
 			Key:  sa.EspAr,
@@ -185,13 +195,8 @@ func RemoveChildSa(sa *SaParams) error {
 		// create xfrm policy rules
 		err = netlink.XfrmPolicyDel(ns, &policy)
 		if err != nil {
-			if err == syscall.EEXIST {
-				err = fmt.Errorf("Skipped remove policy %v because it already exists", policy)
-				return err
-			} else {
-				err = fmt.Errorf("Failed to remove policy %v: %v", policy, err)
-				return err
-			}
+			err = fmt.Errorf("Failed to remove policy %v: %v", policy, err)
+			return err
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
@@ -199,13 +204,8 @@ func RemoveChildSa(sa *SaParams) error {
 		// crate xfrm state rules
 		err = netlink.XfrmStateDel(ns, &state)
 		if err != nil {
-			if err == syscall.EEXIST {
-				err = fmt.Errorf("Skipped removing state %v because it already exists", state)
-				return err
-			} else {
-				err = fmt.Errorf("Failed to remove state %+v: %v", state, err)
-				return err
-			}
+			err = fmt.Errorf("Failed to remove state %+v: %v", state, err)
+			return err
 		}
 	}
 	return nil

@@ -35,7 +35,6 @@ type Session struct {
 
 	initIb, initRb []byte
 
-	events   chan stateEvents
 	messages chan *Message
 
 	fsm *state.Fsm
@@ -49,13 +48,6 @@ done:
 		select {
 		case <-o.Done():
 			break done
-		case evt, ok := <-o.events:
-			if !ok {
-				break done
-			}
-			if err := o.handleSaEvent(evt); err != nil {
-				o.cancel(err)
-			}
 		case msg, ok := <-o.messages:
 			if !ok {
 				break done
@@ -100,8 +92,13 @@ func (o *Session) Close() {
 	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
 }
 
-func (o *Session) InstallChildSa() { o.events <- installChildSa }
-func (o *Session) RemoveSa()       { o.events <- removeChildSa }
+func (o *Session) InstallChildSa() {
+	if err := o.handleSaEvent(installChildSa); err != nil {
+		o.cancel(err)
+	}
+}
+func (o *Session) RemoveSa() { o.handleSaEvent(removeChildSa) }
+
 func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 	// sa processing
 	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.IkeSpiI, o.IkeSpiR)
@@ -136,7 +133,6 @@ func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 		} else {
 			log.Info("Removed child SA")
 		}
-		o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
 	}
 	return
 }
@@ -146,7 +142,6 @@ func (o *Session) DownloadCrl() {}
 // close session
 func (o *Session) HandleSaDead() {
 	o.conn.Close()
-	close(o.events)
 	close(o.messages)
 	log.Info("cancel context")
 	o.cancel(context.Canceled)

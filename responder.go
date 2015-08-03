@@ -49,7 +49,6 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 			IkeSpiI:  spiI,
 			IkeSpiR:  MakeSpi(),
 			EspSpiR:  MakeSpi()[:4],
-			events:   make(chan stateEvents, 10),
 			messages: make(chan *Message, 10),
 		},
 		remoteAddr: remoteAddr,
