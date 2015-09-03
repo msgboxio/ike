@@ -10,6 +10,7 @@ import (
 
 	"msgbox.io/context"
 	"msgbox.io/ike"
+	"msgbox.io/ike/ike_error"
 	"msgbox.io/log"
 )
 
@@ -66,6 +67,9 @@ done:
 			break done
 		case <-cli.Done():
 			fmt.Printf("client finished: %v\n", cli.Err())
+			if cli.Err() == ike_error.PeerDeletedSa {
+				continue
+			}
 			// if _, ok := cli.Err().(ike.IkeError); ok {
 			// 	break done
 			// }

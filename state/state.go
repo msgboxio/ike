@@ -2,6 +2,7 @@ package state
 
 import (
 	"msgbox.io/context"
+	"msgbox.io/ike/ike_error"
 	"msgbox.io/log"
 )
 
@@ -98,6 +99,7 @@ type FsmHandler interface {
 	SendIkeAuth()
 	SendIkeSaRekey()
 	SendIkeSaDelete()
+	SendEmptyInformational()
 
 	HandleSaInit(interface{})
 	HandleSaAuth(interface{})
@@ -106,7 +108,7 @@ type FsmHandler interface {
 	InstallChildSa()
 	RemoveSa()
 
-	HandleSaDead()
+	HandleSaDead(error)
 
 	DownloadCrl()
 }
@@ -121,6 +123,8 @@ type Fsm struct {
 
 	StateFunc
 	State IkeSaState
+
+	DeadReason error
 }
 
 func MakeFsm(h FsmHandler, initial StateFunc, parent context.Context) (s *Fsm) {
@@ -270,12 +274,22 @@ func SmMature(s *Fsm, evt IkeEvent) {
 		s.State = SM_MATURE
 		s.InstallChildSa()
 	case DELETE_IKE_SA:
+		// close child sas
 		s.RemoveSa()
-		s.stateChange(SmDying)
+		// The response to a request that deletes the IKE SA is an empty INFORMATIONAL response.
+		s.SendEmptyInformational()
+		// set reason
+		s.DeadReason = ike_error.PeerDeletedSa
+		// try and restart asap
+		s.stateChange(SmDead)
 	case MSG_DELETE_IKE_SA:
-		s.SendIkeSaDelete() // send with sa in place
+		// close child sa
 		s.RemoveSa()
-		// dont wait for response,
+		//
+		s.SendIkeSaDelete()
+		// set reason
+		s.DeadReason = ike_error.DeletedSa
+		// dont wait for response, restart
 		s.stateChange(SmDead)
 	case CREATE_CHILD_SA:
 		s.HandleSaRekey(evt.Message)
@@ -296,9 +310,23 @@ func SmRekey(s *Fsm, evt IkeEvent) {
 	case CREATE_CHILD_SA_SUCCESS:
 		s.SendIkeSaDelete()
 		// wait for delete IKE
-	case MSG_DELETE_IKE_SA:
+	case DELETE_IKE_SA:
+		// close child sas
 		s.RemoveSa()
+		// The response to a request that deletes the IKE SA is an empty INFORMATIONAL response.
+		s.SendEmptyInformational()
+		// set reason
+		s.DeadReason = ike_error.PeerDeletedSa
+		// try and restart asap
+		s.stateChange(SmDead)
+	case MSG_DELETE_IKE_SA:
+		// close child sa
+		s.RemoveSa()
+		//
 		s.SendIkeSaDelete()
+		// set reason
+		s.DeadReason = ike_error.DeletedSa
+		// dont wait for response, restart
 		s.stateChange(SmDead)
 	}
 	return
@@ -318,26 +346,11 @@ func SmTerminate(s *Fsm, evt IkeEvent) {
 	return
 }
 
-//
-func SmDying(s *Fsm, evt IkeEvent) {
-	switch evt.Id {
-	case StateEntry:
-		s.State = SM_DYING
-	case MSG_DELETE_IKE_SA:
-		s.SendIkeSaDelete() // after we deleted the sa
-		// try and restart asap
-		s.stateChange(SmDead)
-	case MSG_IKE_TERMINATE:
-		s.stateChange(SmDead)
-	}
-	return
-}
-
 func SmDead(s *Fsm, evt IkeEvent) {
 	switch evt.Id {
 	case StateEntry:
 		s.State = SM_DEAD
-		s.HandleSaDead()
+		s.HandleSaDead(s.DeadReason)
 	}
 	return
 }

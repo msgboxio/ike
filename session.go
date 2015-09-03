@@ -30,9 +30,6 @@ type Session struct {
 	IkeSpiI, IkeSpiR Spi
 	EspSpiI, EspSpiR Spi
 
-	newIkeSpiI, newIkeSpiR Spi
-	newTkm                 *Tkm
-
 	initIb, initRb []byte
 
 	messages chan *Message
@@ -65,6 +62,7 @@ done:
 				evt.Id = state.CREATE_CHILD_SA
 				o.fsm.PostEvent(evt)
 			case INFORMATIONAL:
+				// TODO - ti can be an error
 				// handle in all states ?
 				if err := o.handleEncryptedMessage(msg); err != nil {
 					log.Error(err)
@@ -82,6 +80,7 @@ done:
 						}
 					}
 				} // del
+				// TODO - notification & cp
 			} // ExchangeType
 		} // select
 	} // for
@@ -140,11 +139,14 @@ func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 func (o *Session) DownloadCrl() {}
 
 // close session
-func (o *Session) HandleSaDead() {
+func (o *Session) HandleSaDead(reason error) {
 	o.conn.Close()
 	close(o.messages)
 	log.Info("cancel context")
-	o.cancel(context.Canceled)
+	if reason == nil {
+		reason = context.Canceled
+	}
+	o.cancel(reason)
 }
 
 func (o *Session) Notify(ie IkeError) {
@@ -188,6 +190,27 @@ func (o *Session) SendIkeSaDelete() {
 		log.Error(err)
 	}
 	o.msgId++
+}
+
+func (o *Session) SendEmptyInformational() {
+	// INFORMATIONAL
+	info := makeInformational(infoParams{
+		isInitiator: o.tkm.isInitiator,
+		spiI:        o.IkeSpiI,
+		spiR:        o.IkeSpiR,
+	})
+	info.IkeHeader.MsgId = o.msgId
+	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+		log.Error(err)
+	}
+	o.msgId++
+}
+
+func (o *Session) HandleSaRekey(msg interface{}) {
+	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
+}
+func (o *Session) SendIkeSaRekey() {
+	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
 }
 
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {
