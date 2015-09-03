@@ -1,3 +1,5 @@
+// +build linux
+
 package platform
 
 import (
@@ -5,6 +7,7 @@ import (
 	"net"
 	"syscall"
 
+	"msgbox.io/context"
 	"msgbox.io/log"
 	"msgbox.io/netlink"
 )
@@ -209,4 +212,53 @@ func RemoveChildSa(sa *SaParams) error {
 		}
 	}
 	return nil
+}
+
+func Listen(parent context.Context) context.Context {
+	cxt, cancel := context.WithCancel(context.Background())
+	nsock, err := netlink.Subscribe(syscall.NETLINK_XFRM, []uint32{
+	// XFRMNLGRP(ACQUIRE),
+	// XFRMNLGRP(EXPIRE),
+	// XFRMNLGRP(MIGRATE),
+	// XFRMNLGRP(MAPPING),
+	})
+	if err != nil {
+		cancel(err)
+		return cxt
+	}
+	go runReader(cxt, cancel, nsock)
+	go waitForCancel(parent, cxt, nsock)
+	return cxt
+}
+
+func waitForCancel(parent, cxt context.Context, nsock *netlink.NetlinkSocket) {
+	select {
+	case <-parent.Done():
+	case <-cxt.Done():
+	}
+	nsock.Close()
+}
+
+func runReader(cxt context.Context, cancel context.CancelFunc, nsock *netlink.NetlinkSocket) {
+	for {
+		if msg, err := nsock.Recvmsg(); err != nil {
+			log.Error("xfrm Error: %v", err)
+			cancel(err)
+			return
+		} else {
+			switch msg.Header.Type {
+			case netlink.XFRM_MSG_ACQUIRE:
+				log.Infof("acquire: %v", msg.Header)
+			case netlink.XFRM_MSG_EXPIRE:
+				log.Infof("expire: %v", msg.Header)
+			case netlink.XFRM_MSG_MIGRATE:
+				log.Infof("migrate: %v", msg.Header)
+			case netlink.XFRM_MSG_MAPPING:
+				log.Infof("mapping: %v", msg.Header)
+			default:
+				log.Infof("unknown type: 0x%x\n", msg.Header.Type)
+			}
+		}
+	}
+
 }
