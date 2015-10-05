@@ -11,7 +11,9 @@ import (
 
 type Responder struct {
 	Session
-	remoteAddr net.Addr
+
+	initIb, initRb []byte
+	remoteAddr     net.Addr
 }
 
 func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteAddr net.Addr, remote, local net.IP, initI *Message) (*Responder, error) {

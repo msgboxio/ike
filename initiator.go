@@ -16,20 +16,22 @@ import (
 // or when it gives up due to failure
 type Initiator struct {
 	Session
+
+	initIb, initRb []byte
 }
 
 func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{
-		Session{
+		Session: Session{
 			Context:  cxt,
 			cancel:   cancel,
 			conn:     conn,
 			remote:   remote,
+			local:    local,
 			IkeSpiI:  MakeSpi(),
 			EspSpiI:  MakeSpi()[:4],
-			local:    local,
 			messages: make(chan *Message, 10),
 		},
 	}
@@ -37,7 +39,12 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	var err error
 
 	o.cfg = cfg
-	suite := NewCipherSuite(o.cfg.IkeTransforms)
+	suite, err := NewCipherSuite(o.cfg.IkeTransforms)
+	if err != nil {
+		log.Error(err)
+		cancel(err)
+		return
+	}
 	if o.tkm, err = NewTkmInitiator(suite, ids); err != nil {
 		log.Error(err)
 		cancel(err)

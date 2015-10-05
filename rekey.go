@@ -12,6 +12,7 @@ import (
 type ReKeySession struct {
 	Session
 
+	initIb, initRb         []byte
 	newIkeSpiI, newIkeSpiR Spi
 	newTkm                 *Tkm
 }

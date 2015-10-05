@@ -30,8 +30,6 @@ type Session struct {
 	IkeSpiI, IkeSpiR Spi
 	EspSpiI, EspSpiR Spi
 
-	initIb, initRb []byte
-
 	messages chan *Message
 
 	fsm *state.Fsm

@@ -108,8 +108,9 @@ func TestDecode(t *testing.T) {
 		&SaTransform{Transform: _MODP_2048},
 		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
 	}
+	suite, _ := NewCipherSuite(transforms)
 	tkm := &Tkm{
-		suite:       NewCipherSuite(transforms),
+		suite:       suite,
 		isInitiator: false,
 		Ni:          no.Nonce,
 		Nr:          no.Nonce,

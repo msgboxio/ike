@@ -97,18 +97,3 @@ var (
 		&SaTransform{Transform: _ESN, IsLast: true},
 	}
 )
-
-// mutualCipherSuite returns a cipherSuite given
-// a list requested by the peer.
-func mutualTransform(want [][]*SaTransform) *cipherSuite {
-	for _, w := range want {
-		for _, t := range w {
-			if _, ok := transforms[t.Transform]; !ok {
-				break
-			}
-			// have all
-			return NewCipherSuite(w)
-		}
-	}
-	return nil
-}
