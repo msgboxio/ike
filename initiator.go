@@ -92,7 +92,7 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	// find traffic selectors
 	// send IKE_AUTH req
-	if !EnsurePayloads(m, InitPayloads) {
+	if !m.EnsurePayloads(InitPayloads) {
 		err := errors.New("essential payload is missing from init message")
 		log.Error(err)
 		return
@@ -143,7 +143,7 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 		log.Error(err)
 		return
 	}
-	if !EnsurePayloads(m, AuthRPayloads) {
+	if !m.EnsurePayloads(AuthRPayloads) {
 		for _, n := range m.Payloads.GetNotifications() {
 			if err, ok := protocol.GetIkeError(n.NotificationType); ok {
 				o.cancel(err)

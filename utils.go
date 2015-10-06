@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net"
 
 	"msgbox.io/ike/crypto"
 	"msgbox.io/ike/protocol"
@@ -16,39 +15,6 @@ import (
 func MakeSpi() (ret protocol.Spi) {
 	spi, _ := rand.Prime(rand.Reader, 8*8)
 	return spi.Bytes()
-}
-
-var (
-	InitPayloads = []protocol.PayloadType{
-		protocol.PayloadTypeSA,
-		protocol.PayloadTypeKE,
-		protocol.PayloadTypeNonce,
-	}
-
-	AuthIPayloads = []protocol.PayloadType{
-		protocol.PayloadTypeIDi,
-		protocol.PayloadTypeAUTH,
-		protocol.PayloadTypeSA,
-		protocol.PayloadTypeTSi,
-		protocol.PayloadTypeTSr,
-	}
-	AuthRPayloads = []protocol.PayloadType{
-		protocol.PayloadTypeIDr,
-		protocol.PayloadTypeAUTH,
-		protocol.PayloadTypeSA,
-		protocol.PayloadTypeTSi,
-		protocol.PayloadTypeTSr,
-	}
-)
-
-func EnsurePayloads(msg *Message, payloadTypes []protocol.PayloadType) bool {
-	mp := msg.Payloads
-	for _, pt := range payloadTypes {
-		if mp.Get(pt) == nil {
-			return false
-		}
-	}
-	return true
 }
 
 func getTransforms(pr []*protocol.SaProposal, proto protocol.ProtocolId) []*protocol.SaTransform {
@@ -76,25 +42,6 @@ func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err 
 		return
 	}
 	return
-}
-
-func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
-	b = make([]byte, 1500)
-	n := 0
-	if isConnected {
-		n, err = conn.Read(b)
-		from = remote
-	} else {
-		udp := conn.(*net.UDPConn)
-		n, from, err = udp.ReadFromUDP(b)
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	b = b[:n]
-	log.Infof("%d from %s", n, from)
-	log.V(4).Info("\n" + hex.Dump(b))
-	return b, from, nil
 }
 
 func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
@@ -128,44 +75,6 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 	return msg, nil
 }
 
-func RxDecode(tkm *Tkm, udp *net.UDPConn, remote *net.UDPAddr) (*Message, []byte, *net.UDPAddr, error) {
-	b, fr, err := ReadPacket(udp, remote, false)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	from := fr.(*net.UDPAddr)
-	if remote != nil && remote.String() != from.String() {
-		return nil, nil, from, fmt.Errorf("from different address: %s", from)
-	}
-	msg, err := DecodeMessage(b, tkm)
-	if err != nil {
-		return nil, nil, from, err
-	}
-	return msg, b, from, nil
-}
-
-func EncodeTx(msg *Message, tkm *Tkm, conn net.Conn, remote net.Addr, isConnected bool) (msgB []byte, err error) {
-	if msgB, err = msg.Encode(tkm); err != nil {
-		return
-	} else {
-		var n int
-		if isConnected {
-			n, err = conn.Write(msgB)
-		} else {
-			udp := conn.(*net.UDPConn)
-			addr := remote.(*net.UDPAddr)
-			n, err = udp.WriteToUDP(msgB, addr)
-		}
-		if err != nil {
-			return
-		} else {
-			log.Infof("%d to %s", n, remote)
-			log.V(4).Info("\n" + hex.Dump(msgB))
-		}
-		return msgB, nil
-	}
-}
-
 func newTkmFromInit(initI *Message, ids Identities) (tkm *Tkm, err error) {
 	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
@@ -196,8 +105,10 @@ func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 	authIp := authI.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	// expected auth
 	auth := tkm.Auth(signed1, idI, authIp.AuthMethod, protocol.INITIATOR)
-	// compare
-	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authIp.Data))
+	if log.V(3) {
+		// compare
+		log.Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authIp.Data))
+	}
 	return bytes.Equal(auth, authIp.Data)
 }
 
@@ -214,6 +125,8 @@ func authenticateR(authR *Message, initRb []byte, tkm *Tkm) bool {
 	// expected auth
 	auth := tkm.Auth(signed1, idR, authRp.AuthMethod, protocol.RESPONSE)
 	// compare
-	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authRp.Data))
+	if log.V(3) {
+		log.Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authRp.Data))
+	}
 	return bytes.Equal(auth, authRp.Data)
 }

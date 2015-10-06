@@ -36,7 +36,7 @@ type Tkm struct {
 
 	Nr, Ni *big.Int
 
-	DhPrivate, DhPublic *big.Int
+	dhPrivate, DhPublic *big.Int
 	DhShared            *big.Int
 
 	// for debug
@@ -55,13 +55,13 @@ func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities) (tkm *Tkm, err e
 		ids:         ids,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
-	if ni, err := tkm.NcCreate(suite.PrfLen * 8); err != nil {
+	if ni, err := tkm.ncCreate(suite.PrfLen * 8); err != nil {
 		return nil, err
 	} else {
 		tkm.Ni = ni
 	}
 	// for sending public key
-	if _, err := tkm.DhCreate(); err != nil {
+	if _, err := tkm.dhCreate(); err != nil {
 		return nil, err
 	}
 	return tkm, nil
@@ -74,12 +74,12 @@ func NewTkmResponder(suite *crypto.CipherSuite, theirPublic, no *big.Int, ids Id
 		ids:   ids,
 	}
 	// at least 128 bits & at least half the key size of the negotiated prf
-	if nr, err := tkm.NcCreate(no.BitLen()); err != nil {
+	if nr, err := tkm.ncCreate(no.BitLen()); err != nil {
 		return nil, err
 	} else {
 		tkm.Nr = nr
 	}
-	if _, err := tkm.DhCreate(); err != nil {
+	if _, err := tkm.dhCreate(); err != nil {
 		return nil, err
 	}
 	if err := tkm.DhGenerateKey(theirPublic); err != nil {
@@ -90,24 +90,24 @@ func NewTkmResponder(suite *crypto.CipherSuite, theirPublic, no *big.Int, ids Id
 
 // 4.1.2 creation of ike sa
 
-func (t *Tkm) NcCreate(bits int) (no *big.Int, err error) {
+func (t *Tkm) ncCreate(bits int) (no *big.Int, err error) {
 	return rand.Prime(rand.Reader, bits)
 }
 
 // the client get the dh public value
-func (t *Tkm) DhCreate() (n *big.Int, err error) {
-	t.DhPrivate, err = t.suite.DhGroup.Private(rand.Reader)
+func (t *Tkm) dhCreate() (n *big.Int, err error) {
+	t.dhPrivate, err = t.suite.DhGroup.Private(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
-	t.DhPublic = t.suite.DhGroup.Public(t.DhPrivate)
+	t.DhPublic = t.suite.DhGroup.Public(t.dhPrivate)
 	return t.DhPublic, nil
 }
 
 // upon receipt of peers resp, a dh shared secret can be calculated
 // client creates & stores the dh key
 func (t *Tkm) DhGenerateKey(theirPublic *big.Int) (err error) {
-	t.DhShared, err = t.suite.DhGroup.DiffieHellman(theirPublic, t.DhPrivate)
+	t.DhShared, err = t.suite.DhGroup.DiffieHellman(theirPublic, t.dhPrivate)
 	return
 }
 
@@ -179,7 +179,7 @@ func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 }
 
 // verify message appended with mac
-func (t *Tkm) VerifyMac(b []byte) (err error) {
+func (t *Tkm) verifyMac(b []byte) (err error) {
 	key := t.skAi
 	if t.isInitiator {
 		key = t.skAr
@@ -195,7 +195,7 @@ func (t *Tkm) VerifyMac(b []byte) (err error) {
 	return
 }
 
-func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
+func (t *Tkm) decrypt(b []byte) (dec []byte, err error) {
 	key := t.skEi
 	if t.isInitiator {
 		key = t.skEr
@@ -222,20 +222,23 @@ func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	log.V(4).Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
+	if log.V(4) {
+		log.Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
+	}
 	return
 }
 
+// MAC-then-decrypt
 func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
 	b := ike[protocol.IKE_HEADER_LEN:]
-	if err = t.VerifyMac(ike); err != nil {
+	if err = t.verifyMac(ike); err != nil {
 		return
 	}
-	dec, err = t.Decrypt(b[protocol.PAYLOAD_HEADER_LENGTH : len(b)-t.suite.MacLen])
+	dec, err = t.decrypt(b[protocol.PAYLOAD_HEADER_LENGTH : len(b)-t.suite.MacLen])
 	return
 }
 
-func (t *Tkm) Encrypt(clear []byte) (b []byte, err error) {
+func (t *Tkm) encrypt(clear []byte) (b []byte, err error) {
 	key := t.skEr
 	if t.isInitiator {
 		key = t.skEi
@@ -262,7 +265,9 @@ func (t *Tkm) Encrypt(clear []byte) (b []byte, err error) {
 	cyp := make([]byte, len(clear))
 	block.CryptBlocks(cyp, clear)
 	b = append(iv.Bytes(), cyp...)
-	log.V(4).Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", pl, hex.Dump(clear), hex.Dump(cyp), hex.Dump(iv.Bytes()))
+	if log.V(4) {
+		log.Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", pl, hex.Dump(clear), hex.Dump(cyp), hex.Dump(iv.Bytes()))
+	}
 	return
 }
 
@@ -274,9 +279,10 @@ func (t *Tkm) mac(b []byte) []byte {
 	return t.suite.Mac(macKey, b)
 }
 
+// encrypt-then-MAC
 func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
 	// encrypt the remaining payloads
-	encr, err := t.Encrypt(protocol.EncodePayloads(s.Payloads))
+	encr, err := t.encrypt(protocol.EncodePayloads(s.Payloads))
 	if err != nil {
 		return
 	}

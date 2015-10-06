@@ -10,6 +10,29 @@ import (
 	"msgbox.io/log"
 )
 
+var (
+	InitPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeKE,
+		protocol.PayloadTypeNonce,
+	}
+
+	AuthIPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeIDi,
+		protocol.PayloadTypeAUTH,
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+	AuthRPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeIDr,
+		protocol.PayloadTypeAUTH,
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+)
+
 type Message struct {
 	IkeHeader *protocol.IkeHeader
 	Payloads  *protocol.Payloads
@@ -52,6 +75,16 @@ func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
 		b = append(s.IkeHeader.Encode(), b...)
 	}
 	return
+}
+
+func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) bool {
+	mp := msg.Payloads
+	for _, pt := range payloadTypes {
+		if mp.Get(pt) == nil {
+			return false
+		}
+	}
+	return true
 }
 
 type initParams struct {

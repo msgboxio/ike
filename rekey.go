@@ -68,7 +68,7 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		log.V(1).Info("received CREATE_CHILD_SA for child sa")
 		return // TODO
 	}
-	if !EnsurePayloads(m, InitPayloads) {
+	if !m.EnsurePayloads(InitPayloads) {
 		err := errors.New("essential payload is missing from Ike Sa rekey message")
 		log.Error(err)
 		return

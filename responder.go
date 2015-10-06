@@ -20,7 +20,7 @@ type Responder struct {
 func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteAddr net.Addr, remote, local net.IP, initI *Message) (*Responder, error) {
 	cxt, cancel := context.WithCancel(parent)
 
-	if !EnsurePayloads(initI, InitPayloads) {
+	if !initI.EnsurePayloads(InitPayloads) {
 		err := errors.New("essential payload is missing from init message")
 		cancel(err)
 		return nil, err
@@ -120,7 +120,7 @@ func (o *Responder) HandleSaAuth(m interface{}) {
 		log.Error(err)
 		return
 	}
-	if !EnsurePayloads(msg, AuthIPayloads) {
+	if !msg.EnsurePayloads(AuthIPayloads) {
 		err := errors.New("essential payload is missing from auth message")
 		log.Error(err)
 		return
