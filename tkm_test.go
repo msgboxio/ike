@@ -6,6 +6,8 @@ import (
 	"math/big"
 	"testing"
 
+	"msgbox.io/ike/crypto"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/packets"
 )
 
@@ -26,14 +28,14 @@ func TestTkm(t *testing.T) {
 		t.Fatal(3)
 	}
 
-	transforms := []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC},
-		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&SaTransform{Transform: _MODP_2048},
-		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
+	transforms := []*protocol.SaTransform{
+		&protocol.SaTransform{Transform: _ENCR_CAMELLIA_CBC},
+		&protocol.SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		&protocol.SaTransform{Transform: _MODP_2048},
+		&protocol.SaTransform{Transform: _PRF_HMAC_SHA2_256},
 	}
 	tkm := &Tkm{
-		suite:       NewCipherSuite(transforms),
+		suite:       crypto.NewCipherSuite(transforms),
 		isInitiator: false,
 		Ni:          Nonce,
 		Nr:          NonceO,

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"msgbox.io/context"
+	"msgbox.io/ike/crypto"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
 )
@@ -39,7 +41,7 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	var err error
 
 	o.cfg = cfg
-	suite, err := NewCipherSuite(o.cfg.IkeTransforms)
+	suite, err := crypto.NewCipherSuite(o.cfg.IkeTransforms)
 	if err != nil {
 		log.Error(err)
 		cancel(err)
@@ -65,9 +67,9 @@ func (o *Initiator) SendIkeSaInit() {
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          make([]byte, 8),
-		proposals:     []*SaProposal{o.cfg.ProposalIke},
+		proposals:     []*protocol.SaProposal{o.cfg.ProposalIke},
 		nonce:         o.tkm.Ni,
-		dhTransformId: o.tkm.suite.dhGroup.DhTransformId,
+		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.tkm.DhPublic,
 	})
 	init.IkeHeader.MsgId = o.msgId
@@ -97,13 +99,13 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 	}
 	// TODO - ensure sa parameters are same
 	// initialize dh shared with their public key
-	keR := m.Payloads.Get(PayloadTypeKE).(*KePayload)
+	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
 		log.Error(err)
 		return
 	}
 	// set Nr
-	no := m.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
+	no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	o.tkm.Nr = no.Nonce
 	// set spiR
 	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
@@ -123,7 +125,7 @@ func (o *Initiator) SendIkeAuth() {
 	// IKE_AUTH
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	o.cfg.ProposalEsp.Spi = o.EspSpiI
-	porp := []*SaProposal{o.cfg.ProposalEsp}
+	porp := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
 	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
 	authI.IkeHeader.MsgId = o.msgId
@@ -143,7 +145,7 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 	}
 	if !EnsurePayloads(m, AuthRPayloads) {
 		for _, n := range m.Payloads.GetNotifications() {
-			if err, ok := GetIkeError(n.NotificationType); ok {
+			if err, ok := protocol.GetIkeError(n.NotificationType); ok {
 				o.cancel(err)
 				return
 			}
@@ -155,23 +157,23 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 	}
 	// authenticate peer
 	if !authenticateR(m, o.initRb, o.tkm) {
-		log.Error(AUTHENTICATION_FAILED)
+		log.Error(protocol.AUTHENTICATION_FAILED)
 		return
 	}
 	// get peer spi
-	peerSpi, err := getPeerSpi(m, ESP)
+	peerSpi, err := getPeerSpi(m, protocol.ESP)
 	if err != nil {
 		log.Error(err)
 		return
 	}
 	o.EspSpiR = append([]byte{}, peerSpi...)
 
-	tsi := m.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload)
-	tsr := m.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload)
+	tsi := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload)
+	tsr := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload)
 	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, tsi.Selectors, tsr.Selectors)
 	for _, ns := range m.Payloads.GetNotifications() {
 		switch ns.NotificationType {
-		case AUTH_LIFETIME:
+		case protocol.AUTH_LIFETIME:
 			lft := ns.NotificationMessage.(time.Duration)
 			reauth := lft - 2*time.Second
 			if lft <= 2*time.Second {
@@ -182,7 +184,7 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
 				// o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
 			})
-		case USE_TRANSPORT_MODE:
+		case protocol.USE_TRANSPORT_MODE:
 			log.Info("using Transport Mode")
 			o.cfg.IsTransportMode = true
 		}
@@ -211,22 +213,22 @@ done:
 			// }
 			msg := &Message{}
 			if err := msg.DecodeHeader(b); err != nil {
-				o.Notify(ERR_INVALID_SYNTAX)
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
 				continue
 			}
 			if len(b) < int(msg.IkeHeader.MsgLength) {
-				log.V(LOG_CODEC).Info("")
-				o.Notify(ERR_INVALID_SYNTAX)
+				log.V(protocol.LOG_CODEC).Info("")
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
 				continue
 			}
 			if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
 				log.Errorf("different initiator Spi %s", spi)
-				o.Notify(ERR_INVALID_SYNTAX)
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
 				continue
 			}
-			msg.Payloads = MakePayloads()
-			if err = msg.DecodePayloads(b[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
-				o.Notify(ERR_INVALID_SYNTAX)
+			pld := b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength]
+			if err = msg.DecodePayloads(pld, msg.IkeHeader.NextPayload); err != nil {
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
 				continue
 			}
 			// decrypt later

@@ -2,16 +2,65 @@ package ike
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"math/big"
+
+	"msgbox.io/ike/protocol"
+	"msgbox.io/log"
 )
+
+type Message struct {
+	IkeHeader *protocol.IkeHeader
+	Payloads  *protocol.Payloads
+	Data      []byte // used to carry raw bytes
+}
+
+func (s *Message) DecodeHeader(b []byte) (err error) {
+	s.IkeHeader, err = protocol.DecodeIkeHeader(b[:protocol.IKE_HEADER_LEN])
+	return
+}
+
+func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType) (err error) {
+	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload); err != nil {
+		return
+	}
+	log.V(1).Infof("Received %s: payloads %s", s.IkeHeader.ExchangeType, *s.Payloads)
+	if log.V(protocol.LOG_PACKET_JS) {
+		js, _ := json.MarshalIndent(s, " ", " ")
+		log.Info("Rx:\n" + string(js))
+	}
+	return
+}
+
+func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
+	log.V(1).Infof("Sending %s: payloads %s", s.IkeHeader.ExchangeType, s.Payloads)
+	if log.V(protocol.LOG_PACKET_JS) {
+		js, _ := json.MarshalIndent(s, " ", " ")
+		log.Info("Tx:\n" + string(js))
+	}
+	nextPayload := s.IkeHeader.NextPayload
+	if nextPayload == protocol.PayloadTypeSK {
+		if tkm == nil {
+			err = errors.New("cant encrypt, no tkm found")
+			return
+		}
+		b, err = tkm.EncryptMac(s)
+	} else {
+		b = protocol.EncodePayloads(s.Payloads)
+		s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)
+		b = append(s.IkeHeader.Encode(), b...)
+	}
+	return
+}
 
 type initParams struct {
 	isInitiator bool
-	spiI, spiR  Spi
-	proposals   []*SaProposal
+	spiI, spiR  protocol.Spi
+	proposals   []*protocol.SaProposal
 
 	nonce         *big.Int
-	dhTransformId DhTransformId
+	dhTransformId protocol.DhTransformId
 	dhPublic      *big.Int
 }
 
@@ -23,35 +72,35 @@ type initParams struct {
 //	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
 // 	SAr1, KEr, Nr, [CERTREQ]
 func makeInit(p initParams) *Message {
-	flags := RESPONSE
+	flags := protocol.RESPONSE
 	// nonce := tkm.Nr
 	if p.isInitiator {
-		flags = INITIATOR
+		flags = protocol.INITIATOR
 		// nonce = tkm.Ni
 	}
 	init := &Message{
-		IkeHeader: &IkeHeader{
+		IkeHeader: &protocol.IkeHeader{
 			SpiI:         p.spiI,
 			SpiR:         p.spiR,
-			NextPayload:  PayloadTypeSA,
-			MajorVersion: IKEV2_MAJOR_VERSION,
-			MinorVersion: IKEV2_MINOR_VERSION,
-			ExchangeType: IKE_SA_INIT,
+			NextPayload:  protocol.PayloadTypeSA,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        flags,
 		},
-		Payloads: MakePayloads(),
+		Payloads: protocol.MakePayloads(),
 	}
-	init.Payloads.Add(&SaPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeKE},
+	init.Payloads.Add(&protocol.SaPayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeKE},
 		Proposals:     p.proposals,
 	})
-	init.Payloads.Add(&KePayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNonce},
+	init.Payloads.Add(&protocol.KePayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNonce},
 		DhTransformId: p.dhTransformId,
 		KeyData:       p.dhPublic,
 	})
-	init.Payloads.Add(&NoncePayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+	init.Payloads.Add(&protocol.NoncePayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
 		Nonce:         p.nonce,
 	})
 	return init
@@ -59,10 +108,10 @@ func makeInit(p initParams) *Message {
 
 type authParams struct {
 	isInitiator bool
-	spiI, spiR  Spi
-	proposals   []*SaProposal
+	spiI, spiR  protocol.Spi
+	proposals   []*protocol.SaProposal
 
-	tsI, tsR []*Selector
+	tsI, tsR []*protocol.Selector
 }
 
 // IKE_AUTH
@@ -72,70 +121,70 @@ type authParams struct {
 // b->a
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func makeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, signed1 []byte, tkm *Tkm) *Message {
-	flags := RESPONSE
-	idPayloadType := PayloadTypeIDr
+func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, signed1 []byte, tkm *Tkm) *Message {
+	flags := protocol.RESPONSE
+	idPayloadType := protocol.PayloadTypeIDr
 	if tkm.isInitiator {
-		flags = INITIATOR
-		idPayloadType = PayloadTypeIDi
+		flags = protocol.INITIATOR
+		idPayloadType = protocol.PayloadTypeIDi
 	}
 	auth := &Message{
-		IkeHeader: &IkeHeader{
+		IkeHeader: &protocol.IkeHeader{
 			SpiI:         spiI,
 			SpiR:         spiR,
-			NextPayload:  PayloadTypeSK,
-			MajorVersion: IKEV2_MAJOR_VERSION,
-			MinorVersion: IKEV2_MINOR_VERSION,
-			ExchangeType: IKE_AUTH,
+			NextPayload:  protocol.PayloadTypeSK,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.IKE_AUTH,
 			Flags:        flags,
 		},
-		Payloads: MakePayloads(),
+		Payloads: protocol.MakePayloads(),
 	}
-	id := &IdPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeAUTH},
-		idPayloadType: idPayloadType,
-		IdType:        ID_RFC822_ADDR,
-		Data:          tkm.AuthId(ID_RFC822_ADDR),
+	id := &protocol.IdPayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeAUTH},
+		IdPayloadType: idPayloadType,
+		IdType:        protocol.ID_RFC822_ADDR,
+		Data:          tkm.AuthId(protocol.ID_RFC822_ADDR),
 	}
 	auth.Payloads.Add(id)
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
-	auth.Payloads.Add(&AuthPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeSA},
-		AuthMethod:    SHARED_KEY_MESSAGE_INTEGRITY_CODE,
-		Data:          tkm.Auth(signed1, id, SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
+	auth.Payloads.Add(&protocol.AuthPayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeSA},
+		AuthMethod:    protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE,
+		Data:          tkm.Auth(signed1, id, protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
 	})
-	auth.Payloads.Add(&SaPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeTSi},
+	auth.Payloads.Add(&protocol.SaPayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeTSi},
 		Proposals:     proposals,
 	})
-	auth.Payloads.Add(&TrafficSelectorPayload{
-		PayloadHeader:              &PayloadHeader{NextPayload: PayloadTypeTSr},
-		trafficSelectorPayloadType: PayloadTypeTSi,
+	auth.Payloads.Add(&protocol.TrafficSelectorPayload{
+		PayloadHeader:              &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeTSr},
+		TrafficSelectorPayloadType: protocol.PayloadTypeTSi,
 		Selectors:                  tsI,
 	})
-	next := PayloadTypeNone
+	next := protocol.PayloadTypeNone
 	if tkm.isInitiator {
-		next = PayloadTypeN
+		next = protocol.PayloadTypeN
 	}
-	auth.Payloads.Add(&TrafficSelectorPayload{
-		PayloadHeader:              &PayloadHeader{NextPayload: next},
-		trafficSelectorPayloadType: PayloadTypeTSr,
+	auth.Payloads.Add(&protocol.TrafficSelectorPayload{
+		PayloadHeader:              &protocol.PayloadHeader{NextPayload: next},
+		TrafficSelectorPayloadType: protocol.PayloadTypeTSr,
 		Selectors:                  tsR,
 	})
 	// check for transport mode config
 	if bytes.Equal(tsI[0].StartAddress, tsI[0].EndAddress) {
-		auth.Payloads.Add(&NotifyPayload{
-			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeN},
+		auth.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeN},
 			// ProtocolId:       IKE,
-			NotificationType: USE_TRANSPORT_MODE,
+			NotificationType: protocol.USE_TRANSPORT_MODE,
 		})
 	}
 	if tkm.isInitiator {
-		auth.Payloads.Add(&NotifyPayload{
-			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+		auth.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
 			// ProtocolId:       IKE,
-			NotificationType: INITIAL_CONTACT,
+			NotificationType: protocol.INITIAL_CONTACT,
 		})
 	}
 	return auth
@@ -143,8 +192,8 @@ func makeAuth(spiI, spiR Spi, proposals []*SaProposal, tsI, tsR []*Selector, sig
 
 type infoParams struct {
 	isInitiator bool
-	spiI, spiR  Spi
-	payload     Payload
+	spiI, spiR  protocol.Spi
+	payload     protocol.Payload
 }
 
 // INFORMATIONAL
@@ -155,21 +204,21 @@ type infoParams struct {
 // 	HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: Initiator | Response, Message ID=m),
 //  SK {}
 func makeInformational(p infoParams) *Message {
-	flags := RESPONSE
+	flags := protocol.RESPONSE
 	if p.isInitiator {
-		flags = INITIATOR
+		flags = protocol.INITIATOR
 	}
 	info := &Message{
-		IkeHeader: &IkeHeader{
+		IkeHeader: &protocol.IkeHeader{
 			SpiI:         p.spiI,
 			SpiR:         p.spiR,
-			NextPayload:  PayloadTypeSK,
-			MajorVersion: IKEV2_MAJOR_VERSION,
-			MinorVersion: IKEV2_MINOR_VERSION,
-			ExchangeType: INFORMATIONAL,
+			NextPayload:  protocol.PayloadTypeSK,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.INFORMATIONAL,
 			Flags:        flags,
 		},
-		Payloads: MakePayloads(),
+		Payloads: protocol.MakePayloads(),
 	}
 	if p.payload != nil {
 		info.Payloads.Add(p.payload)
@@ -190,45 +239,45 @@ func makeInformational(p infoParams) *Message {
 //  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
 type childSaParams struct {
 	isInitiator bool
-	spiI, spiR  Spi
+	spiI, spiR  protocol.Spi
 
-	proposals []*SaProposal
+	proposals []*protocol.SaProposal
 
 	nonce         *big.Int
-	dhTransformId DhTransformId
+	dhTransformId protocol.DhTransformId
 	dhPublic      *big.Int
 }
 
 func makeIkeChildSa(p childSaParams) *Message {
-	flags := RESPONSE
+	flags := protocol.RESPONSE
 	// nonce := tkm.Nr
 	if p.isInitiator {
-		flags = INITIATOR
+		flags = protocol.INITIATOR
 		// nonce = tkm.Ni
 	}
 	child := &Message{
-		IkeHeader: &IkeHeader{
+		IkeHeader: &protocol.IkeHeader{
 			SpiI:         p.spiI,
 			SpiR:         p.spiR,
-			NextPayload:  PayloadTypeSK,
-			MajorVersion: IKEV2_MAJOR_VERSION,
-			MinorVersion: IKEV2_MINOR_VERSION,
-			ExchangeType: CREATE_CHILD_SA,
+			NextPayload:  protocol.PayloadTypeSK,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.CREATE_CHILD_SA,
 			Flags:        flags,
 		},
-		Payloads: MakePayloads(),
+		Payloads: protocol.MakePayloads(),
 	}
-	child.Payloads.Add(&SaPayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeKE},
+	child.Payloads.Add(&protocol.SaPayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeKE},
 		Proposals:     p.proposals,
 	})
-	child.Payloads.Add(&KePayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNonce},
+	child.Payloads.Add(&protocol.KePayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNonce},
 		DhTransformId: p.dhTransformId,
 		KeyData:       p.dhPublic,
 	})
-	child.Payloads.Add(&NoncePayload{
-		PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
+	child.Payloads.Add(&protocol.NoncePayload{
+		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
 		Nonce:         p.nonce,
 	})
 	return child

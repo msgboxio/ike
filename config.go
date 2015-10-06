@@ -3,44 +3,46 @@ package ike
 import (
 	"errors"
 	"net"
+
+	"msgbox.io/ike/protocol"
 )
 
 type ClientCfg struct {
-	IkeTransforms, EspTransforms []*SaTransform
+	IkeTransforms, EspTransforms []*protocol.SaTransform
 
-	ProposalIke, ProposalEsp *SaProposal
+	ProposalIke, ProposalEsp *protocol.SaProposal
 
-	TsI, TsR []*Selector
+	TsI, TsR []*protocol.Selector
 
 	IsTransportMode bool
 }
 
 func TunnelConfig() *ClientCfg {
 	return &ClientCfg{
-		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
-		EspTransforms: ESP_AES_CBC_SHA1_96,
-		ProposalIke: &SaProposal{
+		IkeTransforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+		EspTransforms: protocol.ESP_AES_CBC_SHA1_96,
+		ProposalIke: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
-			ProtocolId: IKE,
-			Transforms: IKE_AES_CBC_SHA1_96_DH_1024,
+			ProtocolId: protocol.IKE,
+			Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
 		},
-		ProposalEsp: &SaProposal{
+		ProposalEsp: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
-			ProtocolId: ESP,
-			Transforms: ESP_AES_CBC_SHA1_96,
+			ProtocolId: protocol.ESP,
+			Transforms: protocol.ESP_AES_CBC_SHA1_96,
 		},
-		TsI: []*Selector{&Selector{
-			Type:         TS_IPV4_ADDR_RANGE,
+		TsI: []*protocol.Selector{&protocol.Selector{
+			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
 			StartAddress: net.IPv4(0, 0, 0, 0).To4(),
 			EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
-		TsR: []*Selector{&Selector{
-			Type:         TS_IPV4_ADDR_RANGE,
+		TsR: []*protocol.Selector{&protocol.Selector{
+			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
@@ -52,22 +54,22 @@ func TunnelConfig() *ClientCfg {
 
 func TransportCfg(from, to net.IP) *ClientCfg {
 	return &ClientCfg{
-		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
-		EspTransforms: ESP_AES_CBC_SHA1_96,
-		ProposalIke: &SaProposal{
+		IkeTransforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+		EspTransforms: protocol.ESP_AES_CBC_SHA1_96,
+		ProposalIke: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
-			ProtocolId: IKE,
-			Transforms: IKE_AES_CBC_SHA1_96_DH_1024,
+			ProtocolId: protocol.IKE,
+			Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
 		},
-		ProposalEsp: &SaProposal{
+		ProposalEsp: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
-			ProtocolId: ESP,
-			Transforms: ESP_AES_CBC_SHA1_96,
+			ProtocolId: protocol.ESP,
+			Transforms: protocol.ESP_AES_CBC_SHA1_96,
 		},
-		TsI: []*Selector{&Selector{
-			Type:         TS_IPV4_ADDR_RANGE,
+		TsI: []*protocol.Selector{&protocol.Selector{
+			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
@@ -76,8 +78,8 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 			// StartAddress: net.IPv4(0, 0, 0, 0).To4(),
 			// EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
-		TsR: []*Selector{&Selector{
-			Type:         TS_IPV4_ADDR_RANGE,
+		TsR: []*protocol.Selector{&protocol.Selector{
+			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
@@ -91,11 +93,11 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 
 func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	// get proposals
-	var ikeProp *SaProposal
-	ikeSa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
+	var ikeProp *protocol.SaProposal
+	ikeSa := initI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 	for _, prop := range ikeSa.Proposals {
 		switch prop.ProtocolId {
-		case IKE:
+		case protocol.IKE:
 			ikeProp = prop
 		}
 	}
@@ -110,30 +112,30 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	// 	return nil, errors.New("acceptable selectors are missing")
 	// }
 	return &ClientCfg{
-		IkeTransforms: IKE_AES_CBC_SHA1_96_DH_1024,
-		EspTransforms: ESP_AES_CBC_SHA1_96,
-		ProposalIke: &SaProposal{
+		IkeTransforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+		EspTransforms: protocol.ESP_AES_CBC_SHA1_96,
+		ProposalIke: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
-			ProtocolId: IKE,
-			Transforms: IKE_AES_CBC_SHA1_96_DH_1024,
+			ProtocolId: protocol.IKE,
+			Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
 		},
-		ProposalEsp: &SaProposal{
+		ProposalEsp: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     2,
-			ProtocolId: ESP,
-			Transforms: ESP_AES_CBC_SHA1_96,
+			ProtocolId: protocol.ESP,
+			Transforms: protocol.ESP_AES_CBC_SHA1_96,
 		},
-		TsI: []*Selector{&Selector{
-			Type:         TS_IPV4_ADDR_RANGE,
+		TsI: []*protocol.Selector{&protocol.Selector{
+			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,
 			StartAddress: net.IPv4(0, 0, 0, 0).To4(),
 			EndAddress:   net.IPv4(255, 255, 255, 255).To4(),
 		}},
-		TsR: []*Selector{&Selector{
-			Type:         TS_IPV4_ADDR_RANGE,
+		TsR: []*protocol.Selector{&protocol.Selector{
+			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
 			StartPort:    0,
 			Endport:      65535,

@@ -1,8 +1,8 @@
-package ike
+package protocol
 
 var (
-	_ENCR_AES_CBC      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CBC)}
 	_ENCR_AES_CTR      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CTR)}
+	_ENCR_AES_CBC      = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_AES_CBC)}
 	_ENCR_CAMELLIA_CBC = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CBC)}
 	_ENCR_CAMELLIA_CTR = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CTR)}
 	_ENCR_NULL         = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_NULL)}
@@ -97,3 +97,21 @@ var (
 		&SaTransform{Transform: _ESN, IsLast: true},
 	}
 )
+
+// mutualTransform returns a cipherSuite given
+// a list requested by the peer.
+func mutualTransform(want [][]*SaTransform) bool {
+	for _, w := range want {
+	next:
+		for {
+			for _, t := range w {
+				if _, ok := transforms[t.Transform]; !ok {
+					break next
+				}
+			}
+			// have all
+			return true
+		}
+	}
+	return false
+}

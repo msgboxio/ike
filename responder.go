@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"msgbox.io/context"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
 )
@@ -34,7 +35,7 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 		cancel(err)
 		return nil, err
 	}
-	spiI, err := getPeerSpi(initI, IKE)
+	spiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		cancel(err)
 		return nil, err
@@ -69,9 +70,9 @@ func (o *Responder) SendIkeSaInit() {
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
-		proposals:     []*SaProposal{o.cfg.ProposalIke},
+		proposals:     []*protocol.SaProposal{o.cfg.ProposalIke},
 		nonce:         o.tkm.Nr,
-		dhTransformId: o.tkm.suite.dhGroup.DhTransformId,
+		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.tkm.DhPublic,
 	})
 	// encode & send
@@ -96,7 +97,7 @@ func (o *Responder) SendIkeAuth() {
 	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
 	o.cfg.ProposalEsp.Spi = o.EspSpiR
-	prop := []*SaProposal{o.cfg.ProposalEsp}
+	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
 	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
 	if err != nil {
@@ -131,7 +132,7 @@ func (o *Responder) HandleSaAuth(m interface{}) {
 		return
 	}
 	// get peer spi
-	peerSpi, err := getPeerSpi(msg, ESP)
+	peerSpi, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {
 		log.Error(err)
 		return

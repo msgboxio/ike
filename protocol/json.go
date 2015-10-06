@@ -1,4 +1,4 @@
-package ike
+package protocol
 
 import (
 	"encoding/json"

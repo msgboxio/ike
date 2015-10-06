@@ -3,6 +3,8 @@ package ike
 import (
 	"errors"
 
+	"msgbox.io/ike/crypto"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
 )
@@ -13,14 +15,19 @@ type ReKeySession struct {
 	Session
 
 	initIb, initRb         []byte
-	newIkeSpiI, newIkeSpiR Spi
+	newIkeSpiI, newIkeSpiR protocol.Spi
 	newTkm                 *Tkm
 }
 
 //  SK {SA, Ni, KEi} - ike sa
 func (o *ReKeySession) SendIkeSaRekey() {
 	var err error
-	suite := NewCipherSuite(o.cfg.IkeTransforms)
+	suite, err := crypto.NewCipherSuite(o.cfg.IkeTransforms)
+	if err != nil {
+		log.Error(err)
+		o.cancel(err)
+		return
+	}
 	if o.newTkm, err = NewTkmInitiator(suite, o.tkm.ids); err != nil {
 		log.Error(err)
 		o.cancel(err)
@@ -32,9 +39,9 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
-		proposals:     []*SaProposal{o.cfg.ProposalIke},
+		proposals:     []*protocol.SaProposal{o.cfg.ProposalIke},
 		nonce:         o.newTkm.Ni,
-		dhTransformId: o.newTkm.suite.dhGroup.DhTransformId,
+		dhTransformId: o.newTkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.newTkm.DhPublic,
 	})
 	init.IkeHeader.MsgId = o.msgId
@@ -54,10 +61,10 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		log.Error(err)
 		return
 	}
-	if m.IkeHeader.Flags != RESPONSE {
+	if m.IkeHeader.Flags != protocol.RESPONSE {
 		return // TODO handle this later
 	}
-	if tsi := m.Payloads.Get(PayloadTypeTSi); tsi != nil {
+	if tsi := m.Payloads.Get(protocol.PayloadTypeTSi); tsi != nil {
 		log.V(1).Info("received CREATE_CHILD_SA for child sa")
 		return // TODO
 	}
@@ -67,16 +74,16 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		return
 	}
 	// TODO - currently dont support different prfs from original
-	keR := m.Payloads.Get(PayloadTypeKE).(*KePayload)
+	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.newTkm.DhGenerateKey(keR.KeyData); err != nil {
 		log.Error(err)
 		return
 	}
 	// set Nr
-	no := m.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
+	no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	o.newTkm.Nr = no.Nonce
 	// get new IKE spi
-	peerSpi, err := getPeerSpi(m, IKE)
+	peerSpi, err := getPeerSpi(m, protocol.IKE)
 	if err != nil {
 		log.Error(err)
 		return

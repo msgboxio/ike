@@ -1,8 +1,10 @@
 package ike
 
+import "msgbox.io/ike/protocol"
+
 type Identities interface {
-	ForAuthentication(IdType) []byte
-	AuthData(id []byte, method AuthMethod) []byte
+	ForAuthentication(protocol.IdType) []byte
+	AuthData(id []byte, method protocol.AuthMethod) []byte
 }
 
 type PskIdentities struct {
@@ -10,15 +12,15 @@ type PskIdentities struct {
 	Primary string
 }
 
-func (psk PskIdentities) ForAuthentication(idType IdType) []byte {
-	if idType != ID_RFC822_ADDR {
+func (psk PskIdentities) ForAuthentication(idType protocol.IdType) []byte {
+	if idType != protocol.ID_RFC822_ADDR {
 		return nil
 	}
 	return []byte(psk.Primary)
 }
 
-func (psk PskIdentities) AuthData(id []byte, method AuthMethod) []byte {
-	if method != SHARED_KEY_MESSAGE_INTEGRITY_CODE {
+func (psk PskIdentities) AuthData(id []byte, method protocol.AuthMethod) []byte {
+	if method != protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE {
 		return nil
 	}
 	if d, ok := psk.Ids[string(id)]; ok {

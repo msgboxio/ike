@@ -5,6 +5,7 @@ import (
 
 	"msgbox.io/context"
 	"msgbox.io/ike/platform"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/ike/state"
 	"msgbox.io/log"
 	"msgbox.io/packets"
@@ -27,8 +28,8 @@ type Session struct {
 	conn          net.Conn
 	remote, local net.IP
 
-	IkeSpiI, IkeSpiR Spi
-	EspSpiI, EspSpiR Spi
+	IkeSpiI, IkeSpiR protocol.Spi
+	EspSpiI, EspSpiR protocol.Spi
 
 	messages chan *Message
 
@@ -50,29 +51,29 @@ done:
 			evt := state.IkeEvent{Message: msg}
 			// make sure they are responses - TODO
 			switch msg.IkeHeader.ExchangeType {
-			case IKE_SA_INIT:
+			case protocol.IKE_SA_INIT:
 				evt.Id = state.IKE_SA_INIT
 				o.fsm.PostEvent(evt)
-			case IKE_AUTH:
+			case protocol.IKE_AUTH:
 				evt.Id = state.IKE_AUTH
 				o.fsm.PostEvent(evt)
-			case CREATE_CHILD_SA:
+			case protocol.CREATE_CHILD_SA:
 				evt.Id = state.CREATE_CHILD_SA
 				o.fsm.PostEvent(evt)
-			case INFORMATIONAL:
-				// TODO - ti can be an error
+			case protocol.INFORMATIONAL:
+				// TODO - it can be an error
 				// handle in all states ?
 				if err := o.handleEncryptedMessage(msg); err != nil {
 					log.Error(err)
 				}
-				if del := msg.Payloads.Get(PayloadTypeD); del != nil {
-					dp := del.(*DeletePayload)
-					if dp.ProtocolId == IKE {
+				if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
+					dp := del.(*protocol.DeletePayload)
+					if dp.ProtocolId == protocol.IKE {
 						log.Infof("Peer removed IKE SA : %#x", msg.IkeHeader.SpiI)
 						o.fsm.PostEvent(state.IkeEvent{Id: state.DELETE_IKE_SA})
 					}
 					for _, spi := range dp.Spis {
-						if dp.ProtocolId == ESP {
+						if dp.ProtocolId == protocol.ESP {
 							log.Info("removed ESP SA : %#x", spi)
 							// TODO
 						}
@@ -147,7 +148,7 @@ func (o *Session) HandleSaDead(reason error) {
 	o.cancel(reason)
 }
 
-func (o *Session) Notify(ie IkeError) {
+func (o *Session) Notify(ie protocol.IkeError) {
 	spi := o.IkeSpiI
 	if o.tkm.isInitiator {
 		spi = o.IkeSpiR
@@ -157,10 +158,10 @@ func (o *Session) Notify(ie IkeError) {
 		isInitiator: o.tkm.isInitiator,
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
-		payload: &NotifyPayload{
-			PayloadHeader:    &PayloadHeader{NextPayload: PayloadTypeNone},
-			ProtocolId:       IKE,
-			NotificationType: NotificationType(ie),
+		payload: &protocol.NotifyPayload{
+			PayloadHeader:    &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+			ProtocolId:       protocol.IKE,
+			NotificationType: protocol.NotificationType(ie),
 			Spi:              spi,
 		},
 	})
@@ -177,10 +178,10 @@ func (o *Session) SendIkeSaDelete() {
 		isInitiator: o.tkm.isInitiator,
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
-		payload: &DeletePayload{
-			PayloadHeader: &PayloadHeader{NextPayload: PayloadTypeNone},
-			ProtocolId:    IKE,
-			Spis:          []Spi{},
+		payload: &protocol.DeletePayload{
+			PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+			ProtocolId:    protocol.IKE,
+			Spis:          []protocol.Spi{},
 		},
 	})
 	info.IkeHeader.MsgId = o.msgId
@@ -212,12 +213,12 @@ func (o *Session) SendIkeSaRekey() {
 }
 
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {
-	if m.IkeHeader.NextPayload == PayloadTypeSK {
+	if m.IkeHeader.NextPayload == protocol.PayloadTypeSK {
 		var b []byte
 		if b, err = o.tkm.VerifyDecrypt(m.Data); err != nil {
 			return err
 		}
-		sk := m.Payloads.Get(PayloadTypeSK)
+		sk := m.Payloads.Get(protocol.PayloadTypeSK)
 		if err = m.DecodePayloads(b, sk.NextPayloadType()); err != nil {
 			return err
 		}

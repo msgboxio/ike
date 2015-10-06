@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"msgbox.io/ike/crypto"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/log"
 )
 
@@ -27,7 +29,7 @@ import (
 // tkm creates SK, Ni, [KEi]
 
 type Tkm struct {
-	suite       *cipherSuite
+	suite       *crypto.CipherSuite
 	isInitiator bool
 
 	ids Identities
@@ -46,14 +48,14 @@ type Tkm struct {
 	skEi, skEr []byte // encryption keys
 }
 
-func NewTkmInitiator(suite *cipherSuite, ids Identities) (tkm *Tkm, err error) {
+func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite:       suite,
 		isInitiator: true,
 		ids:         ids,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
-	if ni, err := tkm.NcCreate(suite.prfLen * 8); err != nil {
+	if ni, err := tkm.NcCreate(suite.PrfLen * 8); err != nil {
 		return nil, err
 	} else {
 		tkm.Ni = ni
@@ -65,7 +67,7 @@ func NewTkmInitiator(suite *cipherSuite, ids Identities) (tkm *Tkm, err error) {
 	return tkm, nil
 }
 
-func NewTkmResponder(suite *cipherSuite, theirPublic, no *big.Int, ids Identities) (tkm *Tkm, err error) {
+func NewTkmResponder(suite *crypto.CipherSuite, theirPublic, no *big.Int, ids Identities) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite: suite,
 		Ni:    no,
@@ -94,18 +96,18 @@ func (t *Tkm) NcCreate(bits int) (no *big.Int, err error) {
 
 // the client get the dh public value
 func (t *Tkm) DhCreate() (n *big.Int, err error) {
-	t.DhPrivate, err = t.suite.dhGroup.private(rand.Reader)
+	t.DhPrivate, err = t.suite.DhGroup.Private(rand.Reader)
 	if err != nil {
 		return nil, err
 	}
-	t.DhPublic = t.suite.dhGroup.public(t.DhPrivate)
+	t.DhPublic = t.suite.DhGroup.Public(t.DhPrivate)
 	return t.DhPublic, nil
 }
 
 // upon receipt of peers resp, a dh shared secret can be calculated
 // client creates & stores the dh key
 func (t *Tkm) DhGenerateKey(theirPublic *big.Int) (err error) {
-	t.DhShared, err = t.suite.dhGroup.diffieHellman(theirPublic, t.DhPrivate)
+	t.DhShared, err = t.suite.DhGroup.DiffieHellman(theirPublic, t.DhPrivate)
 	return
 }
 
@@ -113,7 +115,7 @@ func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 	var ret, prev []byte
 	var round int = 1
 	for len(ret) < bits {
-		prev = t.suite.prf(key, append(append(prev, data...), byte(round)))
+		prev = t.suite.Prf(key, append(append(prev, data...), byte(round)))
 		ret = append(ret, prev...)
 		round += 1
 	}
@@ -122,16 +124,16 @@ func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 
 func (t *Tkm) SkeySeedInitial() []byte {
 	// SKEYSEED = prf(Ni | Nr, g^ir)
-	return t.suite.prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
+	return t.suite.Prf(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
 }
 
 func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
 	// SKEYSEED = prf(SK_d (old), g^ir (new) | Ni | Nr)
-	return t.suite.prf(old_SK_D, append(t.DhShared.Bytes(), append(t.Ni.Bytes(), t.Nr.Bytes()...)...))
+	return t.suite.Prf(old_SK_D, append(t.DhShared.Bytes(), append(t.Ni.Bytes(), t.Nr.Bytes()...)...))
 }
 
 // create ike sa
-func (t *Tkm) IsaCreate(spiI, spiR Spi, old_SK_D []byte) {
+func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
 	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
 	// 	hex.Dump(spiI), hex.Dump(spiR))
@@ -141,26 +143,26 @@ func (t *Tkm) IsaCreate(spiI, spiR Spi, old_SK_D []byte) {
 	} else {
 		SKEYSEED = t.SkeySeedRekey(old_SK_D)
 	}
-	kmLen := 3*t.suite.prfLen + 2*t.suite.keyLen + 2*t.suite.macKeyLen
+	kmLen := 3*t.suite.PrfLen + 2*t.suite.KeyLen + 2*t.suite.MacKeyLen
 	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
 	KEYMAT := t.prfplus(SKEYSEED,
 		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
 		kmLen)
 
 	// SK_d, SK_pi, and SK_pr MUST be prfLength
-	offset := t.suite.prfLen
+	offset := t.suite.PrfLen
 	t.skD = KEYMAT[0:offset]
-	t.skAi = KEYMAT[offset : offset+t.suite.macKeyLen]
-	offset += t.suite.macKeyLen
-	t.skAr = KEYMAT[offset : offset+t.suite.macKeyLen]
-	offset += t.suite.macKeyLen
-	t.skEi = KEYMAT[offset : offset+t.suite.keyLen]
-	offset += t.suite.keyLen
-	t.skEr = KEYMAT[offset : offset+t.suite.keyLen]
-	offset += t.suite.keyLen
-	t.skPi = KEYMAT[offset : offset+t.suite.prfLen]
-	offset += t.suite.prfLen
-	t.skPr = KEYMAT[offset : offset+t.suite.prfLen]
+	t.skAi = KEYMAT[offset : offset+t.suite.MacKeyLen]
+	offset += t.suite.MacKeyLen
+	t.skAr = KEYMAT[offset : offset+t.suite.MacKeyLen]
+	offset += t.suite.MacKeyLen
+	t.skEi = KEYMAT[offset : offset+t.suite.KeyLen]
+	offset += t.suite.KeyLen
+	t.skEr = KEYMAT[offset : offset+t.suite.KeyLen]
+	offset += t.suite.KeyLen
+	t.skPi = KEYMAT[offset : offset+t.suite.PrfLen]
+	offset += t.suite.PrfLen
+	t.skPr = KEYMAT[offset : offset+t.suite.PrfLen]
 
 	// for test
 	t.KEYMAT = KEYMAT
@@ -183,9 +185,9 @@ func (t *Tkm) VerifyMac(b []byte) (err error) {
 		key = t.skAr
 	}
 	l := len(b)
-	msg := b[:l-t.suite.macLen]
-	msgMAC := b[l-t.suite.macLen:]
-	expectedMAC := t.suite.mac(key, msg)[:t.suite.macLen]
+	msg := b[:l-t.suite.MacLen]
+	msgMAC := b[l-t.suite.MacLen:]
+	expectedMAC := t.suite.Mac(key, msg)[:t.suite.MacLen]
 	if !hmac.Equal(msgMAC, expectedMAC) {
 		return fmt.Errorf("HMAC verify failed: \n%s\nvs\n%s",
 			hex.Dump(msgMAC), hex.Dump(expectedMAC))
@@ -198,10 +200,10 @@ func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
 	if t.isInitiator {
 		key = t.skEr
 	}
-	iv := b[0:t.suite.ivLen]
-	ciphertext := b[t.suite.ivLen:]
+	iv := b[0:t.suite.IvLen]
+	ciphertext := b[t.suite.IvLen:]
 	// block ciphers only yet
-	mode := t.suite.cipher(key, iv, true)
+	mode := t.suite.Cipher(key, iv, true)
 	if mode == nil {
 		// null transform
 		return b, nil
@@ -225,11 +227,11 @@ func (t *Tkm) Decrypt(b []byte) (dec []byte, err error) {
 }
 
 func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
-	b := ike[IKE_HEADER_LEN:]
+	b := ike[protocol.IKE_HEADER_LEN:]
 	if err = t.VerifyMac(ike); err != nil {
 		return
 	}
-	dec, err = t.Decrypt(b[PAYLOAD_HEADER_LENGTH : len(b)-t.suite.macLen])
+	dec, err = t.Decrypt(b[protocol.PAYLOAD_HEADER_LENGTH : len(b)-t.suite.MacLen])
 	return
 }
 
@@ -238,11 +240,11 @@ func (t *Tkm) Encrypt(clear []byte) (b []byte, err error) {
 	if t.isInitiator {
 		key = t.skEi
 	}
-	iv, err := rand.Prime(rand.Reader, t.suite.ivLen*8) // bits
+	iv, err := rand.Prime(rand.Reader, t.suite.IvLen*8) // bits
 	if err != nil {
 		return
 	}
-	mode := t.suite.cipher(key, iv.Bytes(), false)
+	mode := t.suite.Cipher(key, iv.Bytes(), false)
 	if mode == nil {
 		// null transform
 		return clear, nil
@@ -269,27 +271,27 @@ func (t *Tkm) mac(b []byte) []byte {
 	if t.isInitiator {
 		macKey = t.skAi
 	}
-	return t.suite.mac(macKey, b)
+	return t.suite.Mac(macKey, b)
 }
 
 func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
 	// encrypt the remaining payloads
-	encr, err := t.Encrypt(encodePayloads(s.Payloads))
+	encr, err := t.Encrypt(protocol.EncodePayloads(s.Payloads))
 	if err != nil {
 		return
 	}
-	firstPayload := PayloadTypeNone // no payloads are one possibility
+	firstPayload := protocol.PayloadTypeNone // no payloads are one possibility
 	if len(s.Payloads.Array) > 0 {
 		firstPayload = s.Payloads.Array[0].Type()
 	}
 	// append to new secure payload
-	h := PayloadHeader{
+	h := protocol.PayloadHeader{
 		NextPayload:   firstPayload,
-		PayloadLength: uint16(len(encr) + t.suite.macLen),
+		PayloadLength: uint16(len(encr) + t.suite.MacLen),
 	}
 	b = append(h.Encode(), encr...)
 	// prepare proper ike header
-	s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN + t.suite.macLen)
+	s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN + t.suite.MacLen)
 	// encode and append ike header
 	b = append(s.IkeHeader.Encode(), b...)
 	// finally attach mac
@@ -297,7 +299,7 @@ func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
 	return
 }
 
-func (t *Tkm) AuthId(idType IdType) []byte {
+func (t *Tkm) AuthId(idType protocol.IdType) []byte {
 	return t.ids.ForAuthentication(idType)
 }
 
@@ -305,30 +307,30 @@ func (t *Tkm) AuthId(idType IdType) []byte {
 //  intiator:  signed1 | prf(sk_pi | IDi )
 //  responder: signed1 | prf(sk_pr | IDr )
 // AUTH = prf( prf(Shared Secret, "Key Pad for IKEv2"), signed)
-func (t *Tkm) Auth(signed1 []byte, id *IdPayload, method AuthMethod, flag IkeFlags) []byte {
+func (t *Tkm) Auth(signed1 []byte, id *protocol.IdPayload, method protocol.AuthMethod, flag protocol.IkeFlags) []byte {
 	key := t.skPr
 	if flag.IsInitiator() {
 		key = t.skPi
 	}
-	signed := append(signed1, t.suite.prf(key, id.Encode())...)
+	signed := append(signed1, t.suite.Prf(key, id.Encode())...)
 	secret := t.ids.AuthData(id.Data, method)
-	secret = t.suite.prf(secret, []byte("Key Pad for IKEv2"))
-	return t.suite.prf(secret, signed)[:t.suite.prfLen]
+	secret = t.suite.Prf(secret, []byte("Key Pad for IKEv2"))
+	return t.suite.Prf(secret, signed)[:t.suite.PrfLen]
 }
 
-func (t *Tkm) IpsecSaCreate(spiI, spiR Spi) (espEi, espAi, espEr, espAr []byte) {
-	kmLen := 2*t.suite.keyLen + 2*t.suite.macKeyLen
+func (t *Tkm) IpsecSaCreate(spiI, spiR protocol.Spi) (espEi, espAi, espEr, espAr []byte) {
+	kmLen := 2*t.suite.KeyLen + 2*t.suite.MacKeyLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(t.Ni.Bytes(), t.Nr.Bytes()...),
 		kmLen)
 
-	offset := t.suite.keyLen
+	offset := t.suite.KeyLen
 	espEi = KEYMAT[0:offset]
-	espAi = KEYMAT[offset : offset+t.suite.macKeyLen]
-	offset += t.suite.macKeyLen
-	espEr = KEYMAT[offset : offset+t.suite.keyLen]
-	offset += t.suite.keyLen
-	espAr = KEYMAT[offset : offset+t.suite.macKeyLen]
+	espAi = KEYMAT[offset : offset+t.suite.MacKeyLen]
+	offset += t.suite.MacKeyLen
+	espEr = KEYMAT[offset : offset+t.suite.KeyLen]
+	offset += t.suite.KeyLen
+	espAr = KEYMAT[offset : offset+t.suite.MacKeyLen]
 	// fmt.Printf("ESP keys : \n%s\n%s\n%s\n%s\n",
 	// 	hex.Dump(espEi),
 	// 	hex.Dump(espAi),

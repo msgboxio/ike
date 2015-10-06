@@ -8,22 +8,40 @@ import (
 	"fmt"
 	"net"
 
+	"msgbox.io/ike/crypto"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/log"
 )
 
-func MakeSpi() (ret Spi) {
+func MakeSpi() (ret protocol.Spi) {
 	spi, _ := rand.Prime(rand.Reader, 8*8)
 	return spi.Bytes()
 }
 
 var (
-	InitPayloads = []PayloadType{PayloadTypeSA, PayloadTypeKE, PayloadTypeNonce}
+	InitPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeKE,
+		protocol.PayloadTypeNonce,
+	}
 
-	AuthIPayloads = []PayloadType{PayloadTypeIDi, PayloadTypeAUTH, PayloadTypeSA, PayloadTypeTSi, PayloadTypeTSr}
-	AuthRPayloads = []PayloadType{PayloadTypeIDr, PayloadTypeAUTH, PayloadTypeSA, PayloadTypeTSi, PayloadTypeTSr}
+	AuthIPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeIDi,
+		protocol.PayloadTypeAUTH,
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+	AuthRPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeIDr,
+		protocol.PayloadTypeAUTH,
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
 )
 
-func EnsurePayloads(msg *Message, payloadTypes []PayloadType) bool {
+func EnsurePayloads(msg *Message, payloadTypes []protocol.PayloadType) bool {
 	mp := msg.Payloads
 	for _, pt := range payloadTypes {
 		if mp.Get(pt) == nil {
@@ -33,7 +51,7 @@ func EnsurePayloads(msg *Message, payloadTypes []PayloadType) bool {
 	return true
 }
 
-func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
+func getTransforms(pr []*protocol.SaProposal, proto protocol.ProtocolId) []*protocol.SaTransform {
 	for _, p := range pr {
 		if p.ProtocolId == proto {
 			return p.Transforms
@@ -42,10 +60,10 @@ func getTransforms(pr []*SaProposal, proto ProtocolId) []*SaTransform {
 	return nil
 }
 
-func getPeerSpi(m *Message, pid ProtocolId) (peerSpi Spi, err error) {
-	props := m.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
+func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err error) {
+	props := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload).Proposals
 	for _, p := range props {
-		if !p.isSpiSizeCorrect(len(p.Spi)) {
+		if !p.IsSpiSizeCorrect(len(p.Spi)) {
 			err = fmt.Errorf("weird spi size :%+v", *p)
 			return
 		}
@@ -86,15 +104,14 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 		return nil, err
 	}
 	if len(dec) < int(msg.IkeHeader.MsgLength) {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		log.V(protocol.LOG_CODEC_ERR).Info("")
+		err = protocol.ERR_INVALID_SYNTAX
 		return nil, err
 	}
-	msg.Payloads = MakePayloads()
-	if err = msg.DecodePayloads(dec[IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+	if err = msg.DecodePayloads(dec[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
 		return nil, err
 	}
-	if msg.IkeHeader.NextPayload == PayloadTypeSK {
+	if msg.IkeHeader.NextPayload == protocol.PayloadTypeSK {
 		if tkm == nil {
 			err = errors.New("cant decrypt, no tkm found")
 			return nil, err
@@ -103,7 +120,7 @@ func DecodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 		if err != nil {
 			return nil, err
 		}
-		sk := msg.Payloads.Get(PayloadTypeSK)
+		sk := msg.Payloads.Get(protocol.PayloadTypeSK)
 		if err = msg.DecodePayloads(b, sk.NextPayloadType()); err != nil {
 			return nil, err
 		}
@@ -150,17 +167,16 @@ func EncodeTx(msg *Message, tkm *Tkm, conn net.Conn, remote net.Addr, isConnecte
 }
 
 func newTkmFromInit(initI *Message, ids Identities) (tkm *Tkm, err error) {
-	keI := initI.Payloads.Get(PayloadTypeKE).(*KePayload)
-	noI := initI.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
-	ikeSa := initI.Payloads.Get(PayloadTypeSA).(*SaPayload)
-	cs := NewCipherSuite(getTransforms(ikeSa.Proposals, IKE))
-	if cs == nil {
-		err = errors.New("no appropriate ciphersuite")
+	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	ikeSa := initI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	cs, err := crypto.NewCipherSuite(getTransforms(ikeSa.Proposals, protocol.IKE))
+	if err != nil {
 		return
 	}
 	// make sure dh tranform id is the one that was accepted
-	if keI.DhTransformId != cs.dhGroup.DhTransformId {
-		err = ERR_INVALID_KE_PAYLOAD
+	if keI.DhTransformId != cs.DhGroup.DhTransformId {
+		err = protocol.ERR_INVALID_KE_PAYLOAD
 		return
 	}
 	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce, ids) // TODO
@@ -169,7 +185,7 @@ func newTkmFromInit(initI *Message, ids Identities) (tkm *Tkm, err error) {
 
 func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 	// id payload
-	idI := authI.Payloads.Get(PayloadTypeIDi).(*IdPayload)
+	idI := authI.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	// id used to authenticate peer
 	log.V(2).Infof("Initiator ID:%s", string(idI.Data))
 	// intiators's signed octet
@@ -177,9 +193,9 @@ func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 	// first part of signed bytes
 	signed1 := append(initIb, tkm.Nr.Bytes()...)
 	// auth payload
-	authIp := authI.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
+	authIp := authI.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	// expected auth
-	auth := tkm.Auth(signed1, idI, authIp.AuthMethod, INITIATOR)
+	auth := tkm.Auth(signed1, idI, authIp.AuthMethod, protocol.INITIATOR)
 	// compare
 	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authIp.Data))
 	return bytes.Equal(auth, authIp.Data)
@@ -187,16 +203,16 @@ func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 
 func authenticateR(authR *Message, initRb []byte, tkm *Tkm) bool {
 	// id payload
-	idR := authR.Payloads.Get(PayloadTypeIDr).(*IdPayload)
+	idR := authR.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	// id used to authenticate peer
 	log.V(2).Infof("Responder ID:%s", string(idR.Data))
 	// responders's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(initRb, tkm.Ni.Bytes()...)
 	// auth payload
-	authRp := authR.Payloads.Get(PayloadTypeAUTH).(*AuthPayload)
+	authRp := authR.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	// expected auth
-	auth := tkm.Auth(signed1, idR, authRp.AuthMethod, RESPONSE)
+	auth := tkm.Auth(signed1, idR, authRp.AuthMethod, protocol.RESPONSE)
 	// compare
 	log.V(3).Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authRp.Data))
 	return bytes.Equal(auth, authRp.Data)

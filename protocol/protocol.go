@@ -1,9 +1,8 @@
-package ike
+package protocol
 
 import (
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"math/big"
 	"net"
 	"time"
@@ -516,7 +515,7 @@ const (
 	MIN_LEN_PROPOSAL = 8
 )
 
-func (prop *SaProposal) isSpiSizeCorrect(spiSize int) bool {
+func (prop *SaProposal) IsSpiSizeCorrect(spiSize int) bool {
 	switch prop.ProtocolId {
 	case IKE:
 		if spiSize == 8 {
@@ -716,13 +715,13 @@ const (
 */
 type IdPayload struct {
 	*PayloadHeader
-	idPayloadType PayloadType
+	IdPayloadType PayloadType
 	IdType        IdType
 	Data          []byte
 }
 
 func (s *IdPayload) Type() PayloadType {
-	return s.idPayloadType
+	return s.IdPayloadType
 }
 func (s *IdPayload) Encode() (b []byte) {
 	b = []byte{uint8(s.IdType), 0, 0, 0}
@@ -1187,12 +1186,12 @@ const (
 
 type TrafficSelectorPayload struct {
 	*PayloadHeader
-	trafficSelectorPayloadType PayloadType
+	TrafficSelectorPayloadType PayloadType
 	Selectors                  []*Selector
 }
 
 func (s *TrafficSelectorPayload) Type() PayloadType {
-	return s.trafficSelectorPayloadType
+	return s.TrafficSelectorPayloadType
 }
 func (s *TrafficSelectorPayload) Encode() (b []byte) {
 	b = []byte{uint8(len(s.Selectors)), 0, 0, 0}
@@ -1325,18 +1324,8 @@ func (p *Payloads) GetNotifications() (ns []*NotifyPayload) {
 	return
 }
 
-type Message struct {
-	IkeHeader *IkeHeader
-	Payloads  *Payloads
-	Data      []byte // used to carry raw bytes
-}
-
-func (s *Message) DecodeHeader(b []byte) (err error) {
-	s.IkeHeader, err = DecodeIkeHeader(b[:IKE_HEADER_LEN])
-	return
-}
-
-func (s *Message) DecodePayloads(b []byte, nextPayload PayloadType) (err error) {
+func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err error) {
+	payloads = MakePayloads()
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
 			log.V(LOG_CODEC_ERR).Info("")
@@ -1359,9 +1348,9 @@ func (s *Message) DecodePayloads(b []byte, nextPayload PayloadType) (err error) 
 		case PayloadTypeKE:
 			payload = &KePayload{PayloadHeader: pHeader}
 		case PayloadTypeIDi:
-			payload = &IdPayload{PayloadHeader: pHeader, idPayloadType: PayloadTypeIDi}
+			payload = &IdPayload{PayloadHeader: pHeader, IdPayloadType: PayloadTypeIDi}
 		case PayloadTypeIDr:
-			payload = &IdPayload{PayloadHeader: pHeader, idPayloadType: PayloadTypeIDr}
+			payload = &IdPayload{PayloadHeader: pHeader, IdPayloadType: PayloadTypeIDr}
 		case PayloadTypeCERT:
 			payload = &CertPayload{PayloadHeader: pHeader}
 		case PayloadTypeCERTREQ:
@@ -1377,9 +1366,9 @@ func (s *Message) DecodePayloads(b []byte, nextPayload PayloadType) (err error) 
 		case PayloadTypeV:
 			payload = &VendorIdPayload{PayloadHeader: pHeader}
 		case PayloadTypeTSi:
-			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, trafficSelectorPayloadType: PayloadTypeTSi}
+			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, TrafficSelectorPayloadType: PayloadTypeTSi}
 		case PayloadTypeTSr:
-			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, trafficSelectorPayloadType: PayloadTypeTSr}
+			payload = &TrafficSelectorPayload{PayloadHeader: pHeader, TrafficSelectorPayloadType: PayloadTypeTSr}
 		case PayloadTypeSK:
 			payload = &EncryptedPayload{PayloadHeader: pHeader}
 		case PayloadTypeCP:
@@ -1395,9 +1384,9 @@ func (s *Message) DecodePayloads(b []byte, nextPayload PayloadType) (err error) 
 			js, _ := json.Marshal(payload)
 			log.Infof("Payload %s: %s from:\n%s", payload.Type(), js, hex.Dump(pbuf))
 		}
-		s.Payloads.Add(payload)
+		payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
-			log.V(1).Infof("Received %s: encrypted payloads %s", s.IkeHeader.ExchangeType, *(s.Payloads))
+			// log.V(1).Infof("Received %s: encrypted payloads %s", s.IkeHeader.ExchangeType, *payloads)
 			return
 		}
 		nextPayload = pHeader.NextPayload
@@ -1405,16 +1394,12 @@ func (s *Message) DecodePayloads(b []byte, nextPayload PayloadType) (err error) 
 	}
 	if len(b) > 0 {
 		log.V(LOG_CODEC_ERR).Infof("remaining %d\n%s", len(b), hex.Dump(b))
-	}
-	log.V(1).Infof("Received %s: payloads %s", s.IkeHeader.ExchangeType, *(s.Payloads))
-	if log.V(LOG_PACKET_JS) {
-		js, _ := json.MarshalIndent(s, " ", " ")
-		log.Info("Rx:\n" + string(js))
+		err = ERR_INVALID_SYNTAX
 	}
 	return
 }
 
-func encodePayloads(payloads *Payloads) (b []byte) {
+func EncodePayloads(payloads *Payloads) (b []byte) {
 	for _, pl := range payloads.Array {
 		body := pl.Encode()
 		pl.Header().PayloadLength = uint16(len(body))
@@ -1424,27 +1409,6 @@ func encodePayloads(payloads *Payloads) (b []byte) {
 			log.Infof("Payload %s: %s to:\n%s", pl.Type(), js, hex.Dump(body))
 		}
 		b = append(b, body...)
-	}
-	return
-}
-
-func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
-	log.V(1).Infof("Sending %s: payloads %s", s.IkeHeader.ExchangeType, s.Payloads)
-	if log.V(LOG_PACKET_JS) {
-		js, _ := json.MarshalIndent(s, " ", " ")
-		log.Info("Tx:\n" + string(js))
-	}
-	nextPayload := s.IkeHeader.NextPayload
-	if nextPayload == PayloadTypeSK {
-		if tkm == nil {
-			err = errors.New("cant encrypt, no tkm found")
-			return
-		}
-		b, err = tkm.EncryptMac(s)
-	} else {
-		b = encodePayloads(s.Payloads)
-		s.IkeHeader.MsgLength = uint32(len(b) + IKE_HEADER_LEN)
-		b = append(s.IkeHeader.Encode(), b...)
 	}
 	return
 }
