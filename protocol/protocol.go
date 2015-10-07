@@ -122,9 +122,9 @@ const (
 type EncrTransformId uint16
 
 const (
-	// Name - ESP ref - IKE ref
+	// Name -                               ESP ref - IKE ref
 	// Reserved	[RFC7296]	-0	//
-	ENCR_DES_IV64 EncrTransformId = 1 // [RFC1827]	-
+	ENCR_DES_IV64 EncrTransformId = 1 //    [RFC1827]	-
 	ENCR_DES      EncrTransformId = 2 //	[RFC2405]	[RFC7296]
 	ENCR_3DES     EncrTransformId = 3 //	[RFC2451]	[RFC7296]
 	ENCR_RC5      EncrTransformId = 4 //	[RFC2451]	[RFC7296]
@@ -133,7 +133,7 @@ const (
 	ENCR_BLOWFISH EncrTransformId = 7 //	[RFC2451]	[RFC7296]
 	ENCR_3IDEA    EncrTransformId = 8 //	[RFC2451]	[RFC7296]
 	ENCR_DES_IV32 EncrTransformId = 9 //	[RFC7296]	-
-	// Reserved        EncrTransformId = 10 //	[RFC7296]	-
+	// Reserved                       //	[RFC7296]	-
 	ENCR_NULL       EncrTransformId = 11 //	[RFC2410]	Not allowed
 	ENCR_AES_CBC    EncrTransformId = 12 //	[RFC3602]	[RFC7296]
 	ENCR_AES_CTR    EncrTransformId = 13 //	[RFC3686]	[RFC5930]
@@ -141,18 +141,18 @@ const (
 	ENCR_AES_CCM_12 EncrTransformId = 15 //	[RFC4309]	[RFC5282]
 	ENCR_AES_CCM_16 EncrTransformId = 16 //	[RFC4309]	[RFC5282]
 	// Unassigned
-	AES_GCM_8_ICV           EncrTransformId = 18 //[RFC4106]	[RFC5282]
-	AES_GCM_12_ICV          EncrTransformId = 19 //[RFC4106]	[RFC5282]
-	AES_GCM_16_ICV          EncrTransformId = 20 //[RFC4106]	[RFC5282]
+	ENCR_AES_GCM_8          EncrTransformId = 18 //[RFC4106]	[RFC5282]
+	ENCR_AES_GCM_12         EncrTransformId = 19 //[RFC4106]	[RFC5282]
+	ENCR_AES_GCM_16         EncrTransformId = 20 //[RFC4106]	[RFC5282]
 	ENCR_NULL_AUTH_AES_GMAC EncrTransformId = 21 //[RFC4543]	Not allowed
-	// Reserved for IEEE P1619 XTS-AES			EncrTransformId = 22	//[Matt_Ball]	-
+	// Reserved for IEEE P1619 XTS-AES
 	ENCR_CAMELLIA_CBC        EncrTransformId = 23 //[RFC5529]	[RFC5529]
 	ENCR_CAMELLIA_CTR        EncrTransformId = 24 //[RFC5529]	-
 	ENCR_CAMELLIA_CCM_8_ICV  EncrTransformId = 25 //[RFC5529]	-
 	ENCR_CAMELLIA_CCM_12_ICV EncrTransformId = 26 //[RFC5529]	-
 	ENCR_CAMELLIA_CCM_16_ICV EncrTransformId = 27 //[RFC5529]	-
 	// 28-1023	Unassigned
-	// 1024-65535	Private use	[RFC7296]	[RFC7296]
+	// 1024-65535	Private use	                  //[RFC7296]	[RFC7296]
 )
 
 type PrfTransformId uint16
