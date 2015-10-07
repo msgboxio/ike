@@ -1,5 +1,12 @@
 package crypto
 
+import (
+	"crypto/aes"
+	"crypto/cipher"
+
+	"msgbox.io/ike/protocol"
+)
+
 /*
 
 AES-GCM :
@@ -56,4 +63,23 @@ K 192 bits is not recommended
 length of SK_ai and SK_ar is 0
 SK_ei and SK_er include salt bytes
 if keylen is 128, then 20 bytes (16B + 4B salt)
+
 */
+
+type aeadFunc func(key []byte) (cipher.AEAD, error)
+
+func aeadTransform(cipherId uint16) (aeadFunc, bool) {
+	switch protocol.EncrTransformId(cipherId) {
+	case protocol.ENCR_AES_GCM_8:
+	case protocol.ENCR_AES_GCM_16:
+		return func(key []byte) (cipher.AEAD, error) {
+			block, err := aes.NewCipher(key)
+			if err != nil {
+				return nil, err
+			}
+			return cipher.NewGCM(block)
+		}, true
+	default:
+	}
+	return nil, false
+}

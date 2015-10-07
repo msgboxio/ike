@@ -1,17 +1,11 @@
 package ike
 
 import (
-	"crypto/cipher"
-	"crypto/hmac"
 	"crypto/rand"
-	"encoding/hex"
-	"errors"
-	"fmt"
 	"math/big"
 
 	"msgbox.io/ike/crypto"
 	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
 )
 
 // ike-seperation.pdf
@@ -178,130 +172,38 @@ func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 	// 	hex.Dump(t.skPr))
 }
 
-// verify message appended with mac
-func (t *Tkm) verifyMac(b []byte) (err error) {
-	key := t.skAi
-	if t.isInitiator {
-		key = t.skAr
-	}
-	l := len(b)
-	msg := b[:l-t.suite.MacLen]
-	msgMAC := b[l-t.suite.MacLen:]
-	expectedMAC := t.suite.Mac(key, msg)[:t.suite.MacLen]
-	if !hmac.Equal(msgMAC, expectedMAC) {
-		return fmt.Errorf("HMAC verify failed: \n%s\nvs\n%s",
-			hex.Dump(msgMAC), hex.Dump(expectedMAC))
-	}
-	return
-}
-
-func (t *Tkm) decrypt(b []byte) (dec []byte, err error) {
-	key := t.skEi
-	if t.isInitiator {
-		key = t.skEr
-	}
-	iv := b[0:t.suite.IvLen]
-	ciphertext := b[t.suite.IvLen:]
-	// block ciphers only yet
-	mode := t.suite.Cipher(key, iv, true)
-	if mode == nil {
-		// null transform
-		return b, nil
-	}
-	block := mode.(cipher.BlockMode)
-	// CBC mode always works in whole blocks.
-	if len(ciphertext)%block.BlockSize() != 0 {
-		err = errors.New("ciphertext is not a multiple of the block size")
-		return
-	}
-	clear := make([]byte, len(ciphertext))
-	block.CryptBlocks(clear, ciphertext)
-	padlen := clear[len(clear)-1] + 1 // padlen byte itself
-	if int(padlen) > block.BlockSize() {
-		err = errors.New("pad length is larger than block size")
-		return
-	}
-	dec = clear[:len(clear)-int(padlen)]
-	if log.V(4) {
-		log.Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
-	}
-	return
-}
-
 // MAC-then-decrypt
 func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
-	b := ike[protocol.IKE_HEADER_LEN:]
-	if err = t.verifyMac(ike); err != nil {
-		return
-	}
-	dec, err = t.decrypt(b[protocol.PAYLOAD_HEADER_LENGTH : len(b)-t.suite.MacLen])
-	return
-}
-
-func (t *Tkm) encrypt(clear []byte) (b []byte, err error) {
-	key := t.skEr
+	skA, skE := t.skAi, t.skEi
 	if t.isInitiator {
-		key = t.skEi
+		skA, skE = t.skAr, t.skEr
 	}
-	iv, err := rand.Prime(rand.Reader, t.suite.IvLen*8) // bits
-	if err != nil {
-		return
-	}
-	mode := t.suite.Cipher(key, iv.Bytes(), false)
-	if mode == nil {
-		// null transform
-		return clear, nil
-	}
-	block := mode.(cipher.BlockMode)
-	// CBC mode always works in whole blocks.
-	// (b - (length % b)) % b
-	// pl := (block.BlockSize() - (len(clear) % block.BlockSize())) % block.BlockSize()
-	pl := block.BlockSize() - len(clear)%block.BlockSize()
-	if pl != 0 {
-		pad := make([]byte, pl)
-		pad[pl-1] = byte(pl - 1)
-		clear = append(clear, pad...)
-	}
-	cyp := make([]byte, len(clear))
-	block.CryptBlocks(cyp, clear)
-	b = append(iv.Bytes(), cyp...)
-	if log.V(4) {
-		log.Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", pl, hex.Dump(clear), hex.Dump(cyp), hex.Dump(iv.Bytes()))
-	}
+	dec, err = t.suite.VerifyDecrypt(ike, skA, skE)
 	return
-}
-
-func (t *Tkm) mac(b []byte) []byte {
-	macKey := t.skAr
-	if t.isInitiator {
-		macKey = t.skAi
-	}
-	return t.suite.Mac(macKey, b)
 }
 
 // encrypt-then-MAC
 func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
-	// encrypt the remaining payloads
-	encr, err := t.encrypt(protocol.EncodePayloads(s.Payloads))
-	if err != nil {
-		return
+	skA, skE := t.skAr, t.skEr
+	if t.isInitiator {
+		skA, skE = t.skAi, t.skEi
 	}
+	payload := protocol.EncodePayloads(s.Payloads)
+	plen := len(payload) + t.suite.Overhead(payload)
+	// payload header
 	firstPayload := protocol.PayloadTypeNone // no payloads are one possibility
 	if len(s.Payloads.Array) > 0 {
 		firstPayload = s.Payloads.Array[0].Type()
 	}
-	// append to new secure payload
-	h := protocol.PayloadHeader{
+	ph := protocol.PayloadHeader{
 		NextPayload:   firstPayload,
-		PayloadLength: uint16(len(encr) + t.suite.MacLen),
-	}
-	b = append(h.Encode(), encr...)
+		PayloadLength: uint16(plen),
+	}.Encode()
 	// prepare proper ike header
-	s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN + t.suite.MacLen)
-	// encode and append ike header
-	b = append(s.IkeHeader.Encode(), b...)
-	// finally attach mac
-	b = append(b, t.mac(b)...)
+	s.IkeHeader.MsgLength = uint32(protocol.IKE_HEADER_LEN + len(ph) + plen)
+	// encode ike header
+	headers := append(s.IkeHeader.Encode(), ph...)
+	b, err = t.suite.EncryptMac(headers, payload, skA, skE)
 	return
 }
 

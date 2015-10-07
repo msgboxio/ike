@@ -4,6 +4,8 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"hash"
 
 	"msgbox.io/ike/protocol"
@@ -28,4 +30,16 @@ func hashMac(h func() hash.Hash, macLen int) macFunc {
 		mac.Write(data)
 		return mac.Sum(nil)[:macLen]
 	}
+}
+
+func verifyMac(b, key []byte, macLen int, macFn macFunc) error {
+	l := len(b)
+	msg := b[:l-macLen]
+	msgMAC := b[l-macLen:]
+	expectedMAC := macFn(key, msg)[:macLen]
+	if !hmac.Equal(msgMAC, expectedMAC) {
+		return fmt.Errorf("HMAC verify failed: \n%s\nvs\n%s",
+			hex.Dump(msgMAC), hex.Dump(expectedMAC))
+	}
+	return nil
 }
