@@ -95,9 +95,9 @@ func (o *Responder) SendIkeSaInit() {
 func (o *Responder) SendIkeAuth() {
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
-	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
 	o.cfg.ProposalEsp.Spi = o.EspSpiR
 	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
+	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
 	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
 	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
 	if err != nil {

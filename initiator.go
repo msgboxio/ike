@@ -123,10 +123,11 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 
 func (o *Initiator) SendIkeAuth() {
 	// IKE_AUTH
-	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	o.cfg.ProposalEsp.Spi = o.EspSpiI
 	porp := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
+	// tkm.Auth  needs to be called for both initiator & responder from the initator. so
+	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
 	authI.IkeHeader.MsgId = o.msgId
 	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
@@ -202,8 +203,11 @@ done:
 			b, _, err := ReadPacket(o.conn, remoteAddr, true)
 			if err != nil {
 				log.Error(err)
+				o.fsm.PostEvent(state.IkeEvent{Id: state.CONNECTION_ERROR})
+				o.HandleSaDead(err)
 				break done
 			}
+			// check if client closed the session
 			if o.Err() != nil {
 				break done
 			}

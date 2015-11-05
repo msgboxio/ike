@@ -9,6 +9,10 @@ func (p PayloadType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
 }
 
+func (p NotificationType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
+}
+
 type ts struct {
 	PayloadType PayloadType
 	Payload
@@ -27,4 +31,8 @@ func (t Transform) MarshalJSON() ([]byte, error) {
 		return []byte(fmt.Sprintf("\"%s\"", str)), nil
 	}
 	return json.Marshal(t)
+}
+
+func (p IkeExchangeType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
 }

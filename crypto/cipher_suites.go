@@ -1,12 +1,22 @@
 package crypto
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"msgbox.io/ike/protocol"
+	"msgbox.io/log"
 )
 
+type Cipher interface {
+	Overhead(clear []byte) int
+	VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error)
+	EncryptMac(headers, payload, skA, skE []byte) (b []byte, err error)
+}
+
 type CipherSuite struct {
+	Cipher // aead or nonAead
+
 	PrfLen int
 	Prf    prfFunc
 
@@ -14,13 +24,6 @@ type CipherSuite struct {
 
 	// Lengths, in bytes, of the key material needed for each component.
 	KeyLen, MacKeyLen int
-
-	MacLen, IvLen, BlockLen int
-
-	Cipher cipherFunc
-	Mac    macFunc
-
-	AeadFunc aeadFunc
 }
 
 // assume that transforms are supported
@@ -28,6 +31,10 @@ type CipherSuite struct {
 func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
 	cs := &CipherSuite{}
 	ok := false
+	// empty variables, filled in later
+	var aead *aeadCipher
+	var cipher *simpleCipher
+
 	for _, tr := range trs {
 		switch tr.Transform.Type {
 		case protocol.TRANSFORM_TYPE_DH:
@@ -42,73 +49,37 @@ func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
 				return nil, fmt.Errorf("Unsupported Prf transfom %s", tr.Transform.TransformId)
 			}
 		case protocol.TRANSFORM_TYPE_ENCR:
-			if cs.AeadFunc, ok = aeadTransform(tr.Transform.TransformId); ok {
-				continue
+			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
+			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
+				if ok = aeadTransform(tr.Transform.TransformId, keyLen, &aead); !ok {
+					return nil, fmt.Errorf("Unsupported cipher transfom %s", tr.Transform.TransformId)
+				}
 			}
-			// for block mode ciphers, equal to block length
-			cs.BlockLen, cs.Cipher, ok = cipherTransform(tr.Transform.TransformId)
-			if !ok {
-				return nil, fmt.Errorf("Unsupported cipher transfom %s", tr.Transform.TransformId)
-			}
-			cs.IvLen = cs.BlockLen
-			cs.KeyLen = int(tr.KeyLength) / 8 // from attribute; in bits; 256
+			cs.KeyLen = keyLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_INTEG:
-			cs.MacLen, cs.MacKeyLen, cs.Mac, ok = integrityTransform(tr.Transform.TransformId)
-			if !ok {
+			if cipher, ok = integrityTransform(tr.Transform.TransformId, cipher); !ok {
 				return nil, fmt.Errorf("Unsupported mac transfom %s", tr.Transform.TransformId)
 			}
+			cs.MacKeyLen = cipher.macKeyLen // TODO - 2 places
 		default:
 			return nil, fmt.Errorf("Unsupported transfom type %s", tr.Transform.Type)
-		}
+		} // end switch
+	} // end loop
+	if cipher == nil && aead == nil {
+		return nil, fmt.Errorf("cipher transfoms were not set")
+	}
+	if cipher != nil && aead != nil {
+		return nil, fmt.Errorf("invalid cipher transfoms combination")
+	}
+	if cipher != nil {
+		cs.Cipher = cipher
+	}
+	if aead != nil {
+		cs.Cipher = aead
+	}
+	if log.V(4) {
+		js, _ := json.Marshal(*cs)
+		log.Infof("Using CipherSuite: %s", js)
 	}
 	return cs, nil
-}
-
-func (cs *CipherSuite) Overhead(clear []byte) int {
-	return cs.BlockLen - len(clear)%cs.BlockLen + cs.MacLen
-}
-
-// MAC-then-decrypt
-
-func (cs *CipherSuite) verifyMac(b, key []byte) (err error) {
-	return verifyMac(b, key, cs.MacLen, cs.Mac)
-}
-
-func (cs *CipherSuite) decrypt(b, key []byte) ([]byte, error) {
-	return decrypt(b, key, cs.IvLen, cs.Cipher)
-}
-
-// encrypt-then-MAC
-
-func (cs *CipherSuite) encrypt(b, key []byte) ([]byte, error) {
-	return encrypt(b, key, cs.IvLen, cs.Cipher)
-}
-
-// combined ops
-
-func (cs *CipherSuite) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
-	if cs.AeadFunc != nil {
-		return
-	}
-	// 2 steps
-	if err = cs.verifyMac(ike, skA); err != nil {
-		return
-	}
-	b := ike[protocol.IKE_HEADER_LEN:]
-	dec, err = cs.decrypt(b[protocol.PAYLOAD_HEADER_LENGTH:len(b)-cs.MacLen], skE)
-	return
-}
-
-func (cs *CipherSuite) EncryptMac(headers, payload, skA, skE []byte) (b []byte, err error) {
-	if cs.AeadFunc != nil {
-		return
-	}
-	// 2 steps
-	encr, err := cs.encrypt(payload, skE)
-	if err != nil {
-		return
-	}
-	data := append(headers, encr...)
-	b = append(data, cs.Mac(data, skA)...)
-	return
 }

@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"net"
 	"testing"
 
 	"math/big"
 
+	"msgbox.io/ike/protocol"
+	"msgbox.io/log"
 	"msgbox.io/packets"
 
 	"code.google.com/p/gopacket/bytediff"
@@ -67,8 +70,39 @@ func init() {
 	flag.Parse()
 }
 
+func decodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
+	msg := &Message{}
+	err := msg.DecodeHeader(dec)
+	if err != nil {
+		return nil, err
+	}
+	if len(dec) < int(msg.IkeHeader.MsgLength) {
+		log.V(protocol.LOG_CODEC_ERR).Info("")
+		err = protocol.ERR_INVALID_SYNTAX
+		return nil, err
+	}
+	if err = msg.DecodePayloads(dec[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+		return nil, err
+	}
+	if msg.IkeHeader.NextPayload == protocol.PayloadTypeSK {
+		if tkm == nil {
+			err = errors.New("cant decrypt, no tkm found")
+			return nil, err
+		}
+		b, err := tkm.VerifyDecrypt(dec)
+		if err != nil {
+			return nil, err
+		}
+		sk := msg.Payloads.Get(protocol.PayloadTypeSK)
+		if err = msg.DecodePayloads(b, sk.NextPayloadType()); err != nil {
+			return nil, err
+		}
+	}
+	return msg, nil
+}
+
 func testDecode(dec []byte, tkm *Tkm, t *testing.T) *Message {
-	msg, err := DecodeMessage(dec, tkm)
+	msg, err := decodeMessage(dec, tkm)
 	if err != nil {
 		t.Fatal(err)
 	}

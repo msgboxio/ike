@@ -6,6 +6,7 @@ import (
 
 	"msgbox.io/context"
 	"msgbox.io/ike"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/log"
 	"msgbox.io/packets"
 )
@@ -46,14 +47,13 @@ func main() {
 			continue
 		}
 		// further decode
-		msg.Payloads = ike.MakePayloads()
-		if err = msg.DecodePayloads(b[ike.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+		if err = msg.DecodePayloads(b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
 			// o.Notify(ERR_INVALID_SYNTAX)
 			continue
 		}
 		// decrypt later
 		msg.Data = b
-
+		// convert spi to uint64 for map lookup
 		spi, _ := packets.ReadB64(msg.IkeHeader.SpiI, 0)
 		responder, found := responders[spi]
 		if !found {

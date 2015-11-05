@@ -154,7 +154,7 @@ type authParams struct {
 // b->a
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, signed1 []byte, tkm *Tkm) *Message {
+func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, realMessage []byte, tkm *Tkm) *Message {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
 	if tkm.isInitiator {
@@ -173,19 +173,20 @@ func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, ts
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	id := &protocol.IdPayload{
+	// TODO - handle various other types of ID
+	iDi := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeAUTH},
 		IdPayloadType: idPayloadType,
 		IdType:        protocol.ID_RFC822_ADDR,
 		Data:          tkm.AuthId(protocol.ID_RFC822_ADDR),
 	}
-	auth.Payloads.Add(id)
+	auth.Payloads.Add(iDi)
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeSA},
 		AuthMethod:    protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE,
-		Data:          tkm.Auth(signed1, id, protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
+		Data:          tkm.Auth(realMessage, iDi, protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeTSi},

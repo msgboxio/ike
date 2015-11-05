@@ -32,6 +32,7 @@ const (
 
 	// errors
 	INVALID_KE
+	CONNECTION_ERROR
 
 	// internal state machine messages
 	MSG_IKE_REKEY
@@ -222,7 +223,7 @@ func SmiInitWait(s *Fsm, evt IkeEvent) {
 		s.stateChange(SmDead)
 	case IKE_TIMEOUT:
 		s.stateChange(SmDead)
-	case INVALID_KE:
+	case CONNECTION_ERROR, INVALID_KE:
 		s.stateChange(SmTerminate)
 	}
 	return

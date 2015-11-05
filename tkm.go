@@ -2,6 +2,8 @@ package ike
 
 import (
 	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"math/big"
 
 	"msgbox.io/ike/crypto"
@@ -128,9 +130,9 @@ func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
 
 // create ike sa
 func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
-	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
-	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
-	// 	hex.Dump(spiI), hex.Dump(spiR))
+	fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
+		hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
+		hex.Dump(spiI), hex.Dump(spiR))
 	SKEYSEED := []byte{}
 	if len(old_SK_D) == 0 {
 		SKEYSEED = t.SkeySeedInitial()
@@ -138,7 +140,7 @@ func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 		SKEYSEED = t.SkeySeedRekey(old_SK_D)
 	}
 	kmLen := 3*t.suite.PrfLen + 2*t.suite.KeyLen + 2*t.suite.MacKeyLen
-	// keymat =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
+	// KEYMAT =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
 	KEYMAT := t.prfplus(SKEYSEED,
 		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
 		kmLen)
@@ -161,15 +163,15 @@ func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 	// for test
 	t.KEYMAT = KEYMAT
 	t.SKEYSEED = SKEYSEED
-	// fmt.Printf("keymat length %d\n", len(KEYMAT))
-	// fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
-	// 	hex.Dump(t.skD),
-	// 	hex.Dump(t.skAi),
-	// 	hex.Dump(t.skAr),
-	// 	hex.Dump(t.skEi),
-	// 	hex.Dump(t.skEr),
-	// 	hex.Dump(t.skPi),
-	// 	hex.Dump(t.skPr))
+	fmt.Printf("keymat length %d\n", len(KEYMAT))
+	fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
+		hex.Dump(t.skD),
+		hex.Dump(t.skAi),
+		hex.Dump(t.skAr),
+		hex.Dump(t.skEi),
+		hex.Dump(t.skEr),
+		hex.Dump(t.skPi),
+		hex.Dump(t.skPr))
 }
 
 // MAC-then-decrypt
@@ -215,15 +217,18 @@ func (t *Tkm) AuthId(idType protocol.IdType) []byte {
 //  intiator:  signed1 | prf(sk_pi | IDi )
 //  responder: signed1 | prf(sk_pr | IDr )
 // AUTH = prf( prf(Shared Secret, "Key Pad for IKEv2"), signed)
+// signed1 = RealMessage | NonceData
 func (t *Tkm) Auth(signed1 []byte, id *protocol.IdPayload, method protocol.AuthMethod, flag protocol.IkeFlags) []byte {
+	// ResponderSignedOctets = RealMessage2 | NonceIData | MACedIDForR
+	// InitiatorSignedOctets = RealMessage1 | NonceRData | MACedIDForI
 	key := t.skPr
 	if flag.IsInitiator() {
 		key = t.skPi
 	}
-	signed := append(signed1, t.suite.Prf(key, id.Encode())...)
+	macedID := t.suite.Prf(key, id.Encode())
+	signed := append(signed1, macedID...)
 	secret := t.ids.AuthData(id.Data, method)
-	secret = t.suite.Prf(secret, []byte("Key Pad for IKEv2"))
-	return t.suite.Prf(secret, signed)[:t.suite.PrfLen]
+	return t.suite.Prf(t.suite.Prf(secret, []byte("Key Pad for IKEv2")), signed)[:t.suite.PrfLen]
 }
 
 func (t *Tkm) IpsecSaCreate(spiI, spiR protocol.Spi) (espEi, espAi, espEr, espAr []byte) {

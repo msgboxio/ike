@@ -17,7 +17,24 @@ import (
 // because we can return either cipher.BlockMode or cipher.Stream
 type cipherFunc func(key, iv []byte, isRead bool) interface{}
 
-func cipherTransform(cipherId uint16) (ivLen int, ciperFunc cipherFunc, ok bool) {
+func (cipherFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
+
+func cipherTransform(cipherId uint16, keyLen int, cipher *simpleCipher) (*simpleCipher, bool) {
+	blockSize, cipherFunc, ok := _cipherTransform(cipherId)
+	if !ok {
+		return nil, false
+	}
+	if cipher == nil {
+		cipher = &simpleCipher{}
+	}
+	cipher.keyLen = keyLen
+	cipher.blockLen = blockSize
+	cipher.ivLen = blockSize
+	cipher.cipherFunc = cipherFunc
+	return cipher, true
+}
+
+func _cipherTransform(cipherId uint16) (int, cipherFunc, bool) {
 	switch protocol.EncrTransformId(cipherId) {
 	case protocol.ENCR_CAMELLIA_CBC:
 		return camellia.BlockSize, cipherCamellia, true
@@ -29,6 +46,50 @@ func cipherTransform(cipherId uint16) (ivLen int, ciperFunc cipherFunc, ok bool)
 		return 0, nil, false
 	}
 }
+
+// Cipher interface implementation
+
+type simpleCipher struct {
+	macKeyLen, macLen int
+	macFunc
+
+	keyLen, ivLen, blockLen int
+	cipherFunc
+}
+
+func (cs *simpleCipher) Overhead(clear []byte) int {
+	return cs.blockLen - len(clear)%cs.blockLen + cs.macLen
+}
+func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
+	if log.V(4) {
+		log.Infof("simple verify&decrypt:\n%s\n%s\n%s",
+			hex.Dump(ike), hex.Dump(skA), hex.Dump(skE))
+	}
+	// MAC-then-decrypt
+	if err = verifyMac(skA, ike, cs.macLen, cs.macFunc); err != nil {
+		return
+	}
+	b := ike[protocol.IKE_HEADER_LEN:]
+	dec, err = decrypt(b[protocol.PAYLOAD_HEADER_LENGTH:len(b)-cs.macLen], skE, cs.ivLen, cs.cipherFunc)
+	return
+}
+func (cs *simpleCipher) EncryptMac(headers, payload, skA, skE []byte) (b []byte, err error) {
+	// encrypt-then-MAC
+	encr, err := encrypt(payload, skE, cs.ivLen, cs.cipherFunc)
+	if err != nil {
+		return
+	}
+	data := append(headers, encr...)
+	mac := cs.macFunc(skA, data)
+	b = append(data, mac...)
+	if log.V(4) {
+		log.Infof("simple encrypt&mac:\n%s\n%s\n%s",
+			hex.Dump(mac), hex.Dump(skA), hex.Dump(skE))
+	}
+	return
+}
+
+// cipherFunc Implementations
 
 func cipherAES(key, iv []byte, isRead bool) interface{} {
 	block, _ := aes.NewCipher(key)
@@ -103,8 +164,8 @@ func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc) (b []byte, err e
 	block.CryptBlocks(cyp, clear)
 	b = append(iv.Bytes(), cyp...)
 	if log.V(4) {
-		log.Infof("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", pl, hex.Dump(clear), hex.Dump(cyp), hex.Dump(iv.Bytes()))
+		log.Infof("Pad %d: Clear:\n%sIV:\n%sCyp:\n%s",
+			pl, hex.Dump(clear), hex.Dump(iv.Bytes()), hex.Dump(cyp))
 	}
 	return
-
 }

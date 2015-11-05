@@ -11,6 +11,8 @@ import (
 
 type prfFunc func(key, data []byte) []byte
 
+func (prfFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
+
 func prfTranform(prfId uint16) (prfLen int, prfFunc prfFunc, ok bool) {
 	switch protocol.PrfTransformId(prfId) {
 	case protocol.PRF_HMAC_SHA2_256:
