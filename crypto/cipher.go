@@ -14,7 +14,7 @@ import (
 )
 
 // Must returm an interface
-// because we can return either cipher.BlockMode or cipher.Stream
+// Interface can be either cipher.BlockMode or cipher.Stream
 type cipherFunc func(key, iv []byte, isRead bool) interface{}
 
 func (cipherFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
@@ -107,6 +107,7 @@ func cipherCamellia(key, iv []byte, isRead bool) interface{} {
 	return cipher.NewCBCEncrypter(block, iv)
 }
 
+// TODO - this needs a proper do nothing implementation
 func cipherNull([]byte, []byte, bool) interface{} { return nil }
 
 // decryption & encryption routines

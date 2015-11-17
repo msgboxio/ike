@@ -70,20 +70,20 @@ if keyLen is 128, then 20 bytes (16B + 4B salt)
 
 type aeadFunc func(key []byte) (cipher.AEAD, error)
 
-func aeadTransform(cipherId uint16, keyLen int, cipher **aeadCipher) bool {
+func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher, bool) {
 	blockLen, saltLen, ivLen, aeadFunc := _aeadTransform(cipherId)
 	if aeadFunc == nil {
-		return false
+		return nil, false
 	}
-	if *cipher == nil {
-		*cipher = &aeadCipher{}
+	if cipher == nil {
+		cipher = &aeadCipher{}
 	}
-	(*cipher).blockLen = blockLen
-	(*cipher).keyLen = keyLen
-	(*cipher).saltLen = saltLen
-	(*cipher).ivLen = ivLen
-	(*cipher).saltLen = saltLen
-	return true
+	cipher.blockLen = blockLen
+	cipher.keyLen = keyLen
+	cipher.saltLen = saltLen
+	cipher.ivLen = ivLen
+	cipher.saltLen = saltLen
+	return cipher, true
 }
 
 func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen int, aeadFunc aeadFunc) {

@@ -66,9 +66,9 @@ func newTkmFromInit(initI *Message, ids Identities) (tkm *Tkm, err error) {
 	return
 }
 
-func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
+func authenticateI(msg *Message, initIb []byte, tkm *Tkm) bool {
 	// id payload
-	idI := authI.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
+	idI := msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	// id used to authenticate peer
 	log.V(2).Infof("Initiator ID:%s", string(idI.Data))
 	// intiators's signed octet
@@ -76,31 +76,35 @@ func authenticateI(authI *Message, initIb []byte, tkm *Tkm) bool {
 	// first part of signed bytes
 	signed1 := append(initIb, tkm.Nr.Bytes()...)
 	// auth payload
-	authIp := authI.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	authIp := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	// expected auth
 	auth := tkm.Auth(signed1, idI, authIp.AuthMethod, protocol.INITIATOR)
-	if log.V(3) {
-		// compare
-		log.Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authIp.Data))
+	// compare
+	if bytes.Equal(auth, authIp.Data) {
+		return true
+	} else if log.V(3) {
+		log.Errorf("Ike Auth failed: \n%s vs \n%s", hex.Dump(auth), hex.Dump(authIp.Data))
 	}
-	return bytes.Equal(auth, authIp.Data)
+	return false
 }
 
-func authenticateR(authR *Message, initRb []byte, tkm *Tkm) bool {
+func authenticateR(msg *Message, initRb []byte, tkm *Tkm) bool {
 	// id payload
-	idR := authR.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
+	idR := msg.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	// id used to authenticate peer
 	log.V(2).Infof("Responder ID:%s", string(idR.Data))
 	// responders's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(initRb, tkm.Ni.Bytes()...)
 	// auth payload
-	authRp := authR.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	authRp := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	// expected auth
 	auth := tkm.Auth(signed1, idR, authRp.AuthMethod, protocol.RESPONSE)
 	// compare
-	if log.V(3) {
-		log.Infof("auth compare \n%s vs \n%s", hex.Dump(auth), hex.Dump(authRp.Data))
+	if bytes.Equal(auth, authRp.Data) {
+		return true
+	} else if log.V(3) {
+		log.Errorf("Ike Auth failed: \n%s vs \n%s", hex.Dump(auth), hex.Dump(authRp.Data))
 	}
-	return bytes.Equal(auth, authRp.Data)
+	return false
 }

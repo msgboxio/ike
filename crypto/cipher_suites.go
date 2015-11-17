@@ -26,8 +26,7 @@ type CipherSuite struct {
 	KeyLen, MacKeyLen int
 }
 
-// assume that transforms are supported
-// TODO - check that the entire sute makes sense
+// TODO - check that the entire suite makes sense
 func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
 	cs := &CipherSuite{}
 	ok := false
@@ -51,7 +50,7 @@ func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
 		case protocol.TRANSFORM_TYPE_ENCR:
 			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
 			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
-				if ok = aeadTransform(tr.Transform.TransformId, keyLen, &aead); !ok {
+				if aead, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
 					return nil, fmt.Errorf("Unsupported cipher transfom %s", tr.Transform.TransformId)
 				}
 			}
