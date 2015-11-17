@@ -8,8 +8,6 @@ import (
 )
 
 type ClientCfg struct {
-	IkeTransforms, EspTransforms []*protocol.SaTransform
-
 	ProposalIke, ProposalEsp *protocol.SaProposal
 
 	TsI, TsR []*protocol.Selector
@@ -19,8 +17,6 @@ type ClientCfg struct {
 
 func TunnelConfig() *ClientCfg {
 	return &ClientCfg{
-		IkeTransforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-		EspTransforms: protocol.ESP_AES_CBC_SHA1_96,
 		ProposalIke: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
@@ -54,13 +50,12 @@ func TunnelConfig() *ClientCfg {
 
 func TransportCfg(from, to net.IP) *ClientCfg {
 	return &ClientCfg{
-		IkeTransforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-		EspTransforms: protocol.ESP_AES_CBC_SHA1_96,
 		ProposalIke: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     1,
 			ProtocolId: protocol.IKE,
-			Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+			// Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+			Transforms: protocol.IKE_AES_GCM_16_DH_1024,
 		},
 		ProposalEsp: &protocol.SaProposal{
 			IsLast:     true,
@@ -112,14 +107,7 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	// 	return nil, errors.New("acceptable selectors are missing")
 	// }
 	return &ClientCfg{
-		IkeTransforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-		EspTransforms: protocol.ESP_AES_CBC_SHA1_96,
-		ProposalIke: &protocol.SaProposal{
-			IsLast:     true,
-			Number:     1,
-			ProtocolId: protocol.IKE,
-			Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-		},
+		ProposalIke: ikeProp,
 		ProposalEsp: &protocol.SaProposal{
 			IsLast:     true,
 			Number:     2,

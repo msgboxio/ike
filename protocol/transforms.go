@@ -6,6 +6,7 @@ var (
 	_ENCR_CAMELLIA_CBC = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CBC)}
 	_ENCR_CAMELLIA_CTR = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CTR)}
 	_ENCR_NULL         = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_NULL)}
+	_AEAD_AES_GCM_16   = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(AEAD_AES_GCM_16)}
 
 	_PRF_AES128_XCBC   = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_AES128_XCBC)}
 	_PRF_HMAC_SHA1     = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_HMAC_SHA1)}
@@ -38,6 +39,7 @@ var transforms = map[Transform]string{
 	_ENCR_CAMELLIA_CBC: "ENCR_CAMELLIA_CBC",
 	_ENCR_CAMELLIA_CTR: "ENCR_CAMELLIA_CTR",
 	_ENCR_NULL:         "ENCR_NULL",
+	_AEAD_AES_GCM_16:   "AEAD_AES_GCM_16",
 
 	_PRF_AES128_XCBC:   "PRF_AES128_XCBC",
 	_PRF_HMAC_SHA1:     "PRF_HMAC_SHA1",
@@ -69,6 +71,12 @@ var (
 		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
 		&SaTransform{Transform: _PRF_HMAC_SHA1},
 		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		&SaTransform{Transform: _MODP_1024, IsLast: true},
+	}
+
+	IKE_AES_GCM_16_DH_1024 = []*SaTransform{
+		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128},
+		&SaTransform{Transform: _PRF_HMAC_SHA1},
 		&SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
 

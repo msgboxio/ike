@@ -164,7 +164,7 @@ func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 	t.KEYMAT = KEYMAT
 	t.SKEYSEED = SKEYSEED
 	fmt.Printf("keymat length %d\n", len(KEYMAT))
-	fmt.Printf("\n%s\n%s\n%s\n%s\n%s\n%s\n%s",
+	fmt.Printf("skD:\n%sskAi:\n%sskAr:\n%sskEi:\n%sskEr:\n%sskPi:\n%sskPr:\n%s",
 		hex.Dump(t.skD),
 		hex.Dump(t.skAi),
 		hex.Dump(t.skAr),

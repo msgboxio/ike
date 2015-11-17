@@ -22,7 +22,7 @@ type ReKeySession struct {
 //  SK {SA, Ni, KEi} - ike sa
 func (o *ReKeySession) SendIkeSaRekey() {
 	var err error
-	suite, err := crypto.NewCipherSuite(o.cfg.IkeTransforms)
+	suite, err := crypto.NewCipherSuite(o.cfg.ProposalIke.Transforms)
 	if err != nil {
 		log.Error(err)
 		o.cancel(err)

@@ -50,7 +50,7 @@ func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
 		case protocol.TRANSFORM_TYPE_ENCR:
 			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
 			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
-				if aead, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
+				if aead, keyLen, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
 					return nil, fmt.Errorf("Unsupported cipher transfom %s", tr.Transform.TransformId)
 				}
 			}

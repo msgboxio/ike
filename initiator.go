@@ -41,7 +41,7 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	var err error
 
 	o.cfg = cfg
-	suite, err := crypto.NewCipherSuite(o.cfg.IkeTransforms)
+	suite, err := crypto.NewCipherSuite(o.cfg.ProposalIke.Transforms)
 	if err != nil {
 		log.Error(err)
 		cancel(err)

@@ -4,18 +4,30 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/hex"
 	"errors"
 
 	"msgbox.io/ike/protocol"
+	"msgbox.io/log"
 )
 
 /*
+
+AES-CCM :
 
 AES-GCM :
 cipher - AES block cipher in Counter Mode (AES-CTR).
 MAC-  it uses a universal hash called GHASH, encrypted with AES-CTR.
 
-AES-CCM :
+4 inputs:
+	secret key
+	IV (called nonce in ESP context, to differentiate from IKE IV)
+	plaintext
+	input for additional authenticated data (AAD)
+
+2 inputs:
+	plaintext
+	auth tag
 
 sk payload ->
                         1                   2                   3
@@ -70,27 +82,28 @@ if keyLen is 128, then 20 bytes (16B + 4B salt)
 
 type aeadFunc func(key []byte) (cipher.AEAD, error)
 
-func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher, bool) {
+func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher, int, bool) {
 	blockLen, saltLen, ivLen, aeadFunc := _aeadTransform(cipherId)
 	if aeadFunc == nil {
-		return nil, false
+		return nil, 0, false
 	}
 	if cipher == nil {
-		cipher = &aeadCipher{}
+		cipher = &aeadCipher{aeadFunc: aeadFunc}
 	}
 	cipher.blockLen = blockLen
 	cipher.keyLen = keyLen
 	cipher.saltLen = saltLen
 	cipher.ivLen = ivLen
 	cipher.saltLen = saltLen
-	return cipher, true
+	return cipher, cipher.keyLen + cipher.saltLen, true
 }
 
 func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen int, aeadFunc aeadFunc) {
 	switch protocol.EncrTransformId(cipherId) {
-	case protocol.ENCR_AES_GCM_8:
-	case protocol.ENCR_AES_GCM_16:
+	case protocol.AEAD_AES_GCM_8:
+	case protocol.AEAD_AES_GCM_16:
 		return 16, 4, 8, func(key []byte) (cipher.AEAD, error) {
+			// TODO - make sure key length is same as configured
 			block, err := aes.NewCipher(key)
 			if err != nil {
 				return nil, err
@@ -111,20 +124,24 @@ func (cs *aeadCipher) Overhead(clear []byte) int {
 	return cs.blockLen - len(clear)%cs.blockLen + cs.ivLen
 }
 
-const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH + 8
+const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
 
 func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
-	key := skE[:cs.keyLen-cs.saltLen]
-	salt := skE[cs.keyLen:]
+	key := skE[:cs.keyLen]
+	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
 	aead, err2 := cs.aeadFunc(key)
 	if err2 != nil {
 		err = err2
 		return
 	}
 	ad := ike[:ADLEN]
-	ct := ike[ADLEN+cs.ivLen:]
 	iv := ike[ADLEN : ADLEN+cs.ivLen]
+	ct := ike[ADLEN+cs.ivLen:]
 	nonce := append(salt, iv...) // 12B; 4B salt + 8B iv
+	if log.V(4) {
+		log.Infof("aead Verify&Decrypt: Key:\n%sSalt:\n%sNonce:\n%s",
+			hex.Dump(key), hex.Dump(salt), hex.Dump(nonce))
+	}
 	clear, err2 := aead.Open([]byte{}, nonce, ct, ad)
 	if err2 != nil {
 		err = err2
@@ -137,12 +154,16 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
+	if log.V(4) {
+		log.Infof("aead Verify&Decrypt: Padlen:%d\nClear\n:%s",
+			padlen, hex.Dump(clear))
+	}
 	return
 }
 
 func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte, err error) {
-	key := skE[:cs.keyLen-cs.saltLen]
-	salt := skE[cs.keyLen:]
+	key := skE[:cs.keyLen]
+	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
 	aead, err := cs.aeadFunc(key)
 	if err != nil {
 		return
@@ -151,7 +172,8 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte
 	if err != nil {
 		return
 	}
-	nonce := append(salt, iv.Bytes()...)
+	ivBytes := iv.Bytes()
+	nonce := append(salt, ivBytes...)
 	// pad
 	padlen := cs.blockLen - len(payload)%cs.blockLen
 	if padlen != 0 {
@@ -159,6 +181,10 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte
 		pad[padlen-1] = byte(padlen - 1) // write length
 		payload = append(payload, pad...)
 	}
-	encr = aead.Seal([]byte{}, nonce, payload, headers)
+	encr = append(append(headers, ivBytes...), aead.Seal([]byte{}, nonce, payload, headers)...)
+	if log.V(4) {
+		log.Infof("aead encrypt&mac: Key:\n%sSalt:\n%sNonce:\n%sPadlen:%d",
+			hex.Dump(key), hex.Dump(salt), hex.Dump(nonce), padlen)
+	}
 	return
 }

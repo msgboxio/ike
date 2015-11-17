@@ -134,16 +134,19 @@ const (
 	ENCR_3IDEA    EncrTransformId = 8 //	[RFC2451]	[RFC7296]
 	ENCR_DES_IV32 EncrTransformId = 9 //	[RFC7296]	-
 	// Reserved                       //	[RFC7296]	-
-	ENCR_NULL       EncrTransformId = 11 //	[RFC2410]	Not allowed
-	ENCR_AES_CBC    EncrTransformId = 12 //	[RFC3602]	[RFC7296]
-	ENCR_AES_CTR    EncrTransformId = 13 //	[RFC3686]	[RFC5930]
-	ENCR_AES_CCM_8  EncrTransformId = 14 //	[RFC4309]	[RFC5282]
-	ENCR_AES_CCM_12 EncrTransformId = 15 //	[RFC4309]	[RFC5282]
-	ENCR_AES_CCM_16 EncrTransformId = 16 //	[RFC4309]	[RFC5282]
+	ENCR_NULL    EncrTransformId = 11 //	[RFC2410]	Not allowed
+	ENCR_AES_CBC EncrTransformId = 12 //	[RFC3602]	[RFC7296]
+	ENCR_AES_CTR EncrTransformId = 13 //	[RFC3686]	[RFC5930]
+	// CCM, 8B IV & _*B ICV
+	AEAD_AES_CCM_SHORT_8  EncrTransformId = 14 // 128 & 256b keys [RFC4309]	[RFC5282]
+	AEAD_AES_CCM_SHORT_12 EncrTransformId = 15 // 128 & 256b keys [RFC4309]	[RFC5282]
+	AEAD_AES_CCM_SHORT_16 EncrTransformId = 16 // 128 & 256b keys [RFC4309]	[RFC5282]
 	// Unassigned
-	ENCR_AES_GCM_8          EncrTransformId = 18 //[RFC4106]	[RFC5282]
-	ENCR_AES_GCM_12         EncrTransformId = 19 //[RFC4106]	[RFC5282]
-	ENCR_AES_GCM_16         EncrTransformId = 20 //[RFC4106]	[RFC5282]
+	// GCM, 8B IV & _*B ICV
+	AEAD_AES_GCM_8  EncrTransformId = 18 // 128 & 256b keys [RFC4106] [RFC5282]
+	AEAD_AES_GCM_12 EncrTransformId = 19 // 128 & 256b keys [RFC4106] [RFC5282]
+	AEAD_AES_GCM_16 EncrTransformId = 20 // 128 & 256b keys [RFC4106] [RFC5282]
+	// NULL, not really used
 	ENCR_NULL_AUTH_AES_GMAC EncrTransformId = 21 //[RFC4543]	Not allowed
 	// Reserved for IEEE P1619 XTS-AES
 	ENCR_CAMELLIA_CBC        EncrTransformId = 23 //[RFC5529]	[RFC5529]
