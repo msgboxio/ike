@@ -139,9 +139,9 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 	iv := ike[ADLEN : ADLEN+cs.ivLen]
 	ct := ike[ADLEN+cs.ivLen : len(ike)-16]
 	icv := ike[len(ike)-16:]
-	nonce := append(salt, iv...) // 12B; 4B salt + 8B iv
+	nonce := append(append([]byte{}, salt...), iv...) // 12B; 4B salt + 8B iv
 	if log.V(4) {
-		log.Infof("aead Verify&Decrypt: Key:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
+		log.Infof("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
 			hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(ad), hex.Dump(ct), hex.Dump(icv))
 	}
 	clear, err := aead.Open([]byte{}, nonce, append(ct, icv...), ad)
@@ -156,7 +156,7 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 	}
 	dec = clear[:len(clear)-int(padlen)]
 	if log.V(4) {
-		log.Infof("aead Verify&Decrypt: Padlen:%d\nClear\n:%s",
+		log.Infof("aead Verify&Decrypt:\nPadlen:%d\nClear\n:%s",
 			padlen, hex.Dump(clear))
 	}
 	return
@@ -174,7 +174,7 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte
 		return
 	}
 	ivBytes := iv.Bytes()
-	nonce := append(salt, ivBytes...)
+	nonce := append(append([]byte{}, salt...), ivBytes...)
 	// pad
 	padlen := cs.blockLen - len(payload)%cs.blockLen
 	if padlen != 0 {
@@ -184,7 +184,7 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte
 	}
 	encr = aead.Seal([]byte{}, nonce, payload, headers)
 	if log.V(4) {
-		log.Infof("aead encrypt&mac: Key:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
+		log.Infof("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
 			hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(headers), padlen, hex.Dump(encr[len(payload):]))
 	}
 	encr = append(append(headers, ivBytes...), encr...)
