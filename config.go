@@ -54,8 +54,8 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 			IsLast:     true,
 			Number:     1,
 			ProtocolId: protocol.IKE,
-			// Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-			Transforms: protocol.IKE_AES_GCM_16_DH_1024,
+			Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+			// Transforms: protocol.IKE_AES_GCM_16_DH_1024,
 		},
 		ProposalEsp: &protocol.SaProposal{
 			IsLast:     true,

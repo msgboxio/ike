@@ -58,11 +58,11 @@ type simpleCipher struct {
 }
 
 func (cs *simpleCipher) Overhead(clear []byte) int {
-	return cs.blockLen - len(clear)%cs.blockLen + cs.macLen
+	return cs.blockLen - len(clear)%cs.blockLen + cs.macLen + cs.ivLen
 }
 func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
 	if log.V(4) {
-		log.Infof("simple verify&decrypt:\n%s\n%s\n%s",
+		log.Infof("simple verify&decrypt:Clear:\n%sSkA:\n%sSkE\n%s",
 			hex.Dump(ike), hex.Dump(skA), hex.Dump(skE))
 	}
 	// MAC-then-decrypt
@@ -83,7 +83,7 @@ func (cs *simpleCipher) EncryptMac(headers, payload, skA, skE []byte) (b []byte,
 	mac := cs.macFunc(skA, data)
 	b = append(data, mac...)
 	if log.V(4) {
-		log.Infof("simple encrypt&mac:\n%s\n%s\n%s",
+		log.Infof("simple encrypt&mac:\nMac:\n%sSkA\n%sSkE\n%s",
 			hex.Dump(mac), hex.Dump(skA), hex.Dump(skE))
 	}
 	return
@@ -151,6 +151,7 @@ func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc) (b []byte, err e
 		// null transform
 		return clear, nil
 	}
+	// TODO - block mode supported only
 	block := mode.(cipher.BlockMode)
 	// CBC mode always works in whole blocks.
 	// (b - (length % b)) % b

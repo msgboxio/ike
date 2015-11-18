@@ -244,11 +244,11 @@ func (t *Tkm) IpsecSaCreate(spiI, spiR protocol.Spi) (espEi, espAi, espEr, espAr
 	espEr = KEYMAT[offset : offset+t.suite.KeyLen]
 	offset += t.suite.KeyLen
 	espAr = KEYMAT[offset : offset+t.suite.MacKeyLen]
-	// fmt.Printf("ESP keys : \n%s\n%s\n%s\n%s\n",
-	// 	hex.Dump(espEi),
-	// 	hex.Dump(espAi),
-	// 	hex.Dump(espEr),
-	// 	hex.Dump(espAr))
+	fmt.Printf("ESP keys :\nEi:\n%sAi:\n%sEr:\n%sAr\n%s",
+		hex.Dump(espEi),
+		hex.Dump(espAi),
+		hex.Dump(espEr),
+		hex.Dump(espAr))
 	return
 }
 

@@ -25,7 +25,7 @@ MAC-  it uses a universal hash called GHASH, encrypted with AES-CTR.
 	plaintext
 	input for additional authenticated data (AAD)
 
-2 inputs:
+2 outputs:
 	plaintext
 	auth tag
 
@@ -98,6 +98,7 @@ func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher
 	return cipher, cipher.keyLen + cipher.saltLen, true
 }
 
+// TODO - ICV len needs to be configured too
 func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen int, aeadFunc aeadFunc) {
 	switch protocol.EncrTransformId(cipherId) {
 	case protocol.AEAD_AES_GCM_8:
@@ -121,7 +122,8 @@ type aeadCipher struct {
 }
 
 func (cs *aeadCipher) Overhead(clear []byte) int {
-	return cs.blockLen - len(clear)%cs.blockLen + cs.ivLen
+	// padding + iv + icv
+	return cs.blockLen - len(clear)%cs.blockLen + cs.ivLen + 16
 }
 
 const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
@@ -129,22 +131,21 @@ const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
 func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
-	aead, err2 := cs.aeadFunc(key)
-	if err2 != nil {
-		err = err2
+	aead, err := cs.aeadFunc(key)
+	if err != nil {
 		return
 	}
 	ad := ike[:ADLEN]
 	iv := ike[ADLEN : ADLEN+cs.ivLen]
-	ct := ike[ADLEN+cs.ivLen:]
+	ct := ike[ADLEN+cs.ivLen : len(ike)-16]
+	icv := ike[len(ike)-16:]
 	nonce := append(salt, iv...) // 12B; 4B salt + 8B iv
 	if log.V(4) {
-		log.Infof("aead Verify&Decrypt: Key:\n%sSalt:\n%sNonce:\n%s",
-			hex.Dump(key), hex.Dump(salt), hex.Dump(nonce))
+		log.Infof("aead Verify&Decrypt: Key:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
+			hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(ad), hex.Dump(ct), hex.Dump(icv))
 	}
-	clear, err2 := aead.Open([]byte{}, nonce, ct, ad)
-	if err2 != nil {
-		err = err2
+	clear, err := aead.Open([]byte{}, nonce, append(ct, icv...), ad)
+	if err != nil {
 		return
 	}
 	// remove pad
@@ -181,10 +182,11 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte
 		pad[padlen-1] = byte(padlen - 1) // write length
 		payload = append(payload, pad...)
 	}
-	encr = append(append(headers, ivBytes...), aead.Seal([]byte{}, nonce, payload, headers)...)
+	encr = aead.Seal([]byte{}, nonce, payload, headers)
 	if log.V(4) {
-		log.Infof("aead encrypt&mac: Key:\n%sSalt:\n%sNonce:\n%sPadlen:%d",
-			hex.Dump(key), hex.Dump(salt), hex.Dump(nonce), padlen)
+		log.Infof("aead encrypt&mac: Key:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
+			hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(headers), padlen, hex.Dump(encr[len(payload):]))
 	}
+	encr = append(append(headers, ivBytes...), encr...)
 	return
 }
