@@ -61,7 +61,8 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 			IsLast:     true,
 			Number:     1,
 			ProtocolId: protocol.ESP,
-			Transforms: protocol.ESP_AES_CBC_SHA1_96,
+			// Transforms: protocol.ESP_AES_CBC_SHA1_96,
+			Transforms: protocol.ESP_AES_GCM_16,
 		},
 		TsI: []*protocol.Selector{&protocol.Selector{
 			Type:         protocol.TS_IPV4_ADDR_RANGE,

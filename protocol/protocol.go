@@ -143,9 +143,9 @@ const (
 	AEAD_AES_CCM_SHORT_16 EncrTransformId = 16 // 128 & 256b keys [RFC4309]	[RFC5282]
 	// Unassigned
 	// GCM, 8B IV & _*B ICV
-	AEAD_AES_GCM_8  EncrTransformId = 18 // 128 & 256b keys [RFC4106] [RFC5282]
-	AEAD_AES_GCM_12 EncrTransformId = 19 // 128 & 256b keys [RFC4106] [RFC5282]
-	AEAD_AES_GCM_16 EncrTransformId = 20 // 128 & 256b keys [RFC4106] [RFC5282]
+	AEAD_AES_GCM_8  EncrTransformId = 18 // 128, 196 & 256b keys [RFC4106] [RFC5282]
+	AEAD_AES_GCM_12 EncrTransformId = 19 // 128, 196 & 256b keys [RFC4106] [RFC5282]
+	AEAD_AES_GCM_16 EncrTransformId = 20 // 128, 196 & 256b keys [RFC4106] [RFC5282]
 	// NULL, not really used
 	ENCR_NULL_AUTH_AES_GMAC EncrTransformId = 21 //[RFC4543]	Not allowed
 	// Reserved for IEEE P1619 XTS-AES

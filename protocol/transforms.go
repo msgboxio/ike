@@ -95,6 +95,11 @@ var (
 		&SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 
+	ESP_AES_GCM_16 = []*SaTransform{
+		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128},
+		&SaTransform{Transform: _NO_ESN, IsLast: true},
+	}
+
 	ESP_NULL_SHA1_96 = []*SaTransform{
 		&SaTransform{Transform: _ENCR_NULL},
 		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},

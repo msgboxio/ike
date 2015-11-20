@@ -27,7 +27,7 @@ MAC-  it uses a universal hash called GHASH, encrypted with AES-CTR.
 
 2 outputs:
 	plaintext
-	auth tag
+	auth tag (icv)
 
 sk payload ->
                         1                   2                   3
@@ -64,8 +64,9 @@ A (additional data) ->
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
 K - key; 128, 192 or 256 bit; fn(ks_ex)
+Salt - GCM (4B), CCM (3B)
 N - 12B (11 for CCM), Salt(not in payload) + IV
-IV - 8B
+IV - 8B (GCM & CCM)
 ICV(T, auth tag) - integ check value; 16 B, MAY support 8, 12 B; fn(A,C)
 
 len(C) == len(P) + len(T)
@@ -83,7 +84,7 @@ if keyLen is 128, then 20 bytes (16B + 4B salt)
 type aeadFunc func(key []byte) (cipher.AEAD, error)
 
 func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher, int, bool) {
-	blockLen, saltLen, ivLen, aeadFunc := _aeadTransform(cipherId)
+	blockLen, saltLen, ivLen, icvLen, aeadFunc := _aeadTransform(cipherId)
 	if aeadFunc == nil {
 		return nil, 0, false
 	}
@@ -95,15 +96,16 @@ func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher
 	cipher.saltLen = saltLen
 	cipher.ivLen = ivLen
 	cipher.saltLen = saltLen
+	cipher.icvLen = icvLen
+	// return length of key that needs to be derived
 	return cipher, cipher.keyLen + cipher.saltLen, true
 }
 
-// TODO - ICV len needs to be configured too
-func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen int, aeadFunc aeadFunc) {
+func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen, icvLen int, aeadFunc aeadFunc) {
 	switch protocol.EncrTransformId(cipherId) {
 	case protocol.AEAD_AES_GCM_8:
 	case protocol.AEAD_AES_GCM_16:
-		return 16, 4, 8, func(key []byte) (cipher.AEAD, error) {
+		return 16, 4, 8, 16, func(key []byte) (cipher.AEAD, error) {
 			// TODO - make sure key length is same as configured
 			block, err := aes.NewCipher(key)
 			if err != nil {
@@ -113,22 +115,24 @@ func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen int, aeadFunc aea
 		}
 	default:
 	}
-	return 0, 0, 0, nil
+	return
 }
 
 type aeadCipher struct {
 	aeadFunc
-	blockLen, keyLen, saltLen, ivLen int
+	blockLen, keyLen, saltLen, ivLen, icvLen int
 }
 
 func (cs *aeadCipher) Overhead(clear []byte) int {
 	// padding + iv + icv
-	return cs.blockLen - len(clear)%cs.blockLen + cs.ivLen + 16
+	padlen := cs.blockLen - len(clear)%cs.blockLen
+	return padlen + cs.ivLen + cs.icvLen
 }
 
 const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
 
 func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
+	// Encryption key has salt appended to it
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
 	aead, err := cs.aeadFunc(key)
@@ -137,8 +141,8 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 	}
 	ad := ike[:ADLEN]
 	iv := ike[ADLEN : ADLEN+cs.ivLen]
-	ct := ike[ADLEN+cs.ivLen : len(ike)-16]
-	icv := ike[len(ike)-16:]
+	ct := ike[ADLEN+cs.ivLen : len(ike)-cs.icvLen]
+	icv := ike[len(ike)-cs.icvLen:]
 	nonce := append(append([]byte{}, salt...), iv...) // 12B; 4B salt + 8B iv
 	if log.V(4) {
 		log.Infof("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
