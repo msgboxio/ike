@@ -94,18 +94,18 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 		Reqid:        reqid,
 		ReplayWindow: 32,
 		Flags:        flag,
-		Auth: &netlink.XfrmStateAlgo{
-			Name: "hmac(sha1)",
-			Key:  sa.EspAi,
-		},
-		Crypt: &netlink.XfrmStateAlgo{
-			Name: "cbc(aes)",
+		// Auth: &netlink.XfrmStateAlgo{
+		// 	Name: "hmac(sha1)",
+		// 	Key:  sa.EspAi,
+		// },
+		// Crypt: &netlink.XfrmStateAlgo{
+		// 	Name: "cbc(aes)",
+		// 	Key:  sa.EspEi,
+		// },
+		Aead: &netlink.XfrmStateAlgo{
+			Name: "rfc4106(gcm(aes))",
 			Key:  sa.EspEi,
 		},
-		// Aead: &netlink.XfrmStateAlgo{
-		// 	Name: "rfc4106(gcm(aes))",
-		// 	Key:  encKey,
-		// },
 	}
 	if sa.SrcPort != 0 && sa.DstPort != 0 {
 		out.Encap = &netlink.XfrmStateEncap{
@@ -125,18 +125,18 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 		Reqid:        reqid,
 		ReplayWindow: 32,
 		Flags:        flag,
-		Auth: &netlink.XfrmStateAlgo{
-			Name: "hmac(sha1)",
-			Key:  sa.EspAr,
-		},
-		Crypt: &netlink.XfrmStateAlgo{
-			Name: "cbc(aes)",
+		// Auth: &netlink.XfrmStateAlgo{
+		// 	Name: "hmac(sha1)",
+		// 	Key:  sa.EspAr,
+		// },
+		// Crypt: &netlink.XfrmStateAlgo{
+		// 	Name: "cbc(aes)",
+		// 	Key:  sa.EspEr,
+		// },
+		Aead: &netlink.XfrmStateAlgo{
+			Name: "rfc4106(gcm(aes))",
 			Key:  sa.EspEr,
 		},
-		// Aead: &netlink.XfrmStateAlgo{
-		// 	Name: "rfc4106(gcm(aes))",
-		// 	Key:  encKey,
-		// },
 	}
 	if sa.SrcPort != 0 && sa.DstPort != 0 {
 		in.Encap = &netlink.XfrmStateEncap{

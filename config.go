@@ -89,16 +89,27 @@ func TransportCfg(from, to net.IP) *ClientCfg {
 
 func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	// get proposals
-	var ikeProp *protocol.SaProposal
+	var ikeProp, espProp *protocol.SaProposal
 	ikeSa := initI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	// select first ones
 	for _, prop := range ikeSa.Proposals {
 		switch prop.ProtocolId {
 		case protocol.IKE:
-			ikeProp = prop
+			if ikeProp == nil {
+				ikeProp = prop
+			}
+		case protocol.ESP:
+			if espProp == nil {
+				espProp = prop
+			}
 		}
 	}
+	// TODO - check proposals, make sure they are acceptable
 	if ikeProp == nil {
 		return nil, errors.New("acceptable IKE proposals are missing")
+	}
+	if espProp == nil {
+		return nil, errors.New("acceptable ESP proposals are missing")
 	}
 
 	// get selectors
@@ -109,12 +120,7 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	// }
 	return &ClientCfg{
 		ProposalIke: ikeProp,
-		ProposalEsp: &protocol.SaProposal{
-			IsLast:     true,
-			Number:     2,
-			ProtocolId: protocol.ESP,
-			Transforms: protocol.ESP_AES_CBC_SHA1_96,
-		},
+		ProposalEsp: espProp,
 		TsI: []*protocol.Selector{&protocol.Selector{
 			Type:         protocol.TS_IPV4_ADDR_RANGE,
 			IpProtocolId: 0,
