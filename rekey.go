@@ -98,5 +98,5 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		o.conn.RemoteAddr())
 	// save Data
 	o.initRb = m.Data
-	o.fsm.PostEvent(state.IkeEvent{Id: state.CREATE_CHILD_SA_SUCCESS})
+	o.fsm.Event(state.StateEvent{})
 }

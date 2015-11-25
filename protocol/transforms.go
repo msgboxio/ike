@@ -77,7 +77,7 @@ var (
 	}
 
 	IKE_AES_GCM_16_DH_1024 = []*SaTransform{
-		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
+		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 256}, // AEAD_AES_128_GCM
 		&SaTransform{Transform: _PRF_HMAC_SHA1},
 		&SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
@@ -96,7 +96,7 @@ var (
 	}
 
 	ESP_AES_GCM_16 = []*SaTransform{
-		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128},
+		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 256},
 		&SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 

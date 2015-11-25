@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"errors"
 	"net"
 
 	"msgbox.io/context"
@@ -48,18 +49,18 @@ done:
 			if !ok {
 				break done
 			}
-			evt := state.IkeEvent{Message: msg}
+			evt := state.StateEvent{Data: msg}
 			// make sure they are responses - TODO
 			switch msg.IkeHeader.ExchangeType {
 			case protocol.IKE_SA_INIT:
-				evt.Id = state.IKE_SA_INIT
-				o.fsm.PostEvent(evt)
+				evt.Event = state.MSG_INIT
+				o.fsm.Event(evt)
 			case protocol.IKE_AUTH:
-				evt.Id = state.IKE_AUTH
-				o.fsm.PostEvent(evt)
+				evt.Event = state.MSG_AUTH
+				o.fsm.Event(evt)
 			case protocol.CREATE_CHILD_SA:
-				evt.Id = state.CREATE_CHILD_SA
-				o.fsm.PostEvent(evt)
+				evt.Event = state.MSG_CHILD_SA
+				o.fsm.Event(evt)
 			case protocol.INFORMATIONAL:
 				// TODO - it can be an error
 				// handle in all states ?
@@ -70,7 +71,8 @@ done:
 					dp := del.(*protocol.DeletePayload)
 					if dp.ProtocolId == protocol.IKE {
 						log.Infof("Peer removed IKE SA : %#x", msg.IkeHeader.SpiI)
-						o.fsm.PostEvent(state.IkeEvent{Id: state.DELETE_IKE_SA})
+						evt.Event = state.DELETE_IKE_SA
+						o.fsm.Event(evt)
 					}
 					for _, spi := range dp.Spis {
 						if dp.ProtocolId == protocol.ESP {
@@ -86,16 +88,32 @@ done:
 }
 
 func (o *Session) Close() {
-	log.Info("close")
-	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
+	log.Info("Close Session")
+	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: errors.New("Session Closed")})
 }
 
-func (o *Session) InstallChildSa() {
+func (o *Session) InstallSa() (s state.StateEvent) {
 	if err := o.handleSaEvent(installChildSa); err != nil {
-		o.cancel(err)
+		s.Event = state.FAIL
+		s.Data = err
 	}
+	return
 }
-func (o *Session) RemoveSa() { o.handleSaEvent(removeChildSa) }
+func (o *Session) RemoveSa() (s state.StateEvent) {
+	o.SendIkeSaDelete()
+	o.handleSaEvent(removeChildSa)
+	return
+}
+func (o *Session) StartRetryTimeout() (s state.StateEvent) {
+	return
+}
+func (o *Session) Finished() (s state.StateEvent) {
+	o.conn.Close()
+	close(o.messages)
+	log.Info("Finishing; cancel context")
+	o.cancel(context.Canceled)
+	return // not used
+}
 
 func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 	// sa processing
@@ -136,17 +154,6 @@ func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 }
 
 func (o *Session) DownloadCrl() {}
-
-// close session
-func (o *Session) HandleSaDead(reason error) {
-	o.conn.Close()
-	close(o.messages)
-	log.Info("cancel context")
-	if reason == nil {
-		reason = context.Canceled
-	}
-	o.cancel(reason)
-}
 
 func (o *Session) Notify(ie protocol.IkeError) {
 	spi := o.IkeSpiI
@@ -206,10 +213,10 @@ func (o *Session) SendEmptyInformational() {
 }
 
 func (o *Session) HandleSaRekey(msg interface{}) {
-	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
+	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA})
 }
 func (o *Session) SendIkeSaRekey() {
-	o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_DELETE_IKE_SA})
+	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA})
 }
 
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {

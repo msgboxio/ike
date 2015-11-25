@@ -56,12 +56,13 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	go run(&o.Session)
 	go runReader(o, conn.RemoteAddr())
 
-	o.fsm = state.MakeFsm(o, state.SmiInit, cxt)
-	o.fsm.PostEvent(state.IkeEvent{Id: state.CONNECT})
+	o.fsm = state.NewFsm(state.AddTransitions(state.InitiatorTransitions(o), state.CommonTransitions(o)))
+	go o.fsm.Run()
+	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
 	return
 }
 
-func (o *Initiator) SendIkeSaInit() {
+func (o *Initiator) SendInit() (s state.StateEvent) {
 	// IKE_SA_INIT
 	init := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
@@ -77,12 +78,15 @@ func (o *Initiator) SendIkeSaInit() {
 	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
 	if err != nil {
 		log.Error(err)
-		o.cancel(err)
+		s.Event = state.FAIL
+		s.Data = err
 	}
 	o.msgId++
+	return
 }
 
-func (o *Initiator) HandleSaInit(msg interface{}) {
+func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
+	s.Event = state.INIT_FAIL
 	// response
 	m := msg.(*Message)
 	// we know what cryptographyc algorithms peer selected
@@ -95,6 +99,7 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 	if !m.EnsurePayloads(InitPayloads) {
 		err := errors.New("essential payload is missing from init message")
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	// TODO - ensure sa parameters are same
@@ -102,6 +107,7 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	// set Nr
@@ -118,10 +124,11 @@ func (o *Initiator) HandleSaInit(msg interface{}) {
 		o.conn.RemoteAddr())
 	// save Data
 	o.initRb = m.Data
-	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
+	s.Event = state.SUCCESS
+	return
 }
 
-func (o *Initiator) SendIkeAuth() {
+func (o *Initiator) SendAuth() (s state.StateEvent) {
 	// IKE_AUTH
 	o.cfg.ProposalEsp.Spi = o.EspSpiI
 	porp := []*protocol.SaProposal{o.cfg.ProposalEsp}
@@ -132,39 +139,45 @@ func (o *Initiator) SendIkeAuth() {
 	authI.IkeHeader.MsgId = o.msgId
 	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
 		log.Error(err)
-		o.cancel(err)
+		s.Event = state.FAIL
+		s.Data = err
 	}
 	o.msgId++
+	return
 }
 
-func (o *Initiator) HandleSaAuth(msg interface{}) {
+func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
+	s.Event = state.AUTH_FAIL
 	// response
 	m := msg.(*Message)
 	if err := o.handleEncryptedMessage(m); err != nil {
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	if !m.EnsurePayloads(AuthRPayloads) {
 		for _, n := range m.Payloads.GetNotifications() {
 			if err, ok := protocol.GetIkeError(n.NotificationType); ok {
-				o.cancel(err)
+				s.Data = err
 				return
 			}
 		}
 		err := errors.New("essential payload is missing from auth message")
 		log.Error(err)
-		// wait for timeout
+		s.Data = err
 		return
 	}
 	// authenticate peer
 	if !authenticateR(m, o.initRb, o.tkm) {
 		log.Error(protocol.AUTHENTICATION_FAILED)
+		s.Data = protocol.AUTHENTICATION_FAILED
 		return
 	}
 	// get peer spi
 	peerSpi, err := getPeerSpi(m, protocol.ESP)
 	if err != nil {
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	o.EspSpiR = append([]byte{}, peerSpi...)
@@ -182,15 +195,16 @@ func (o *Initiator) HandleSaAuth(msg interface{}) {
 			}
 			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
-				o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
-				// o.fsm.PostEvent(state.IkeEvent{Id: state.MSG_IKE_REKEY})
+				o.fsm.Event(state.StateEvent{Event: state.REKEY_START})
+				// o.fsm.Event(state.StateEvent{Event: state.MSG_IKE_REKEY})
 			})
 		case protocol.USE_TRANSPORT_MODE:
 			log.Info("using Transport Mode")
 			o.cfg.IsTransportMode = true
 		}
 	}
-	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
+	s.Event = state.SUCCESS
+	return
 }
 
 func runReader(o *Initiator, remoteAddr net.Addr) {
@@ -203,8 +217,7 @@ done:
 			b, _, err := ReadPacket(o.conn, remoteAddr, true)
 			if err != nil {
 				log.Error(err)
-				o.fsm.PostEvent(state.IkeEvent{Id: state.CONNECTION_ERROR})
-				o.HandleSaDead(err)
+				o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
 				break done
 			}
 			// check if client closed the session

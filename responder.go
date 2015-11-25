@@ -58,13 +58,15 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 	}
 	go run(&o.Session)
 
-	o.fsm = state.MakeFsm(o, state.SmrInit, cxt)
+	o.fsm = state.NewFsm(state.AddTransitions(state.ResponderTransitions(o), state.CommonTransitions(o)))
+	go o.fsm.Run()
+
 	return o, nil
 }
 
 func (o *Responder) HandleMessage(m *Message) { o.messages <- m }
 
-func (o *Responder) SendIkeSaInit() {
+func (o *Responder) SendInit() (s state.StateEvent) {
 	// make response message
 	initR := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
@@ -80,7 +82,8 @@ func (o *Responder) SendIkeSaInit() {
 	o.initRb, err = EncodeTx(initR, nil, o.conn, o.remoteAddr, false)
 	if err != nil {
 		log.Error(err)
-		o.cancel(err)
+		s.Event = state.FAIL
+		s.Data = err
 		return
 	}
 	o.msgId++
@@ -90,9 +93,10 @@ func (o *Responder) SendIkeSaInit() {
 		o.IkeSpiI,
 		o.IkeSpiR,
 		o.conn.LocalAddr())
+	return
 }
 
-func (o *Responder) SendIkeAuth() {
+func (o *Responder) SendAuth() (s state.StateEvent) {
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	o.cfg.ProposalEsp.Spi = o.EspSpiR
@@ -102,39 +106,52 @@ func (o *Responder) SendIkeAuth() {
 	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
 	if err != nil {
 		log.Error(err)
-		o.cancel(err)
+		s.Event = state.FAIL
+		s.Data = err
 		return
 	}
 	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, o.cfg.TsI, o.cfg.TsR)
+	return
 }
 
-func (o *Responder) HandleSaInit(m interface{}) {
+func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
+	s.Event = state.INIT_FAIL
 	msg := m.(*Message)
 	o.initIb = msg.Data
-	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_SA_INIT_SUCCESS})
+	// TODO Check message
+	s.Event = state.SUCCESS
+	return
 }
-func (o *Responder) HandleSaAuth(m interface{}) {
+
+func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
+	// initialize return
+	s.Event = state.AUTH_FAIL
+	// get message
 	msg := m.(*Message)
 	// decrypt
 	if err := o.handleEncryptedMessage(msg); err != nil {
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	if !msg.EnsurePayloads(AuthIPayloads) {
 		err := errors.New("essential payload is missing from auth message")
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	// authenticate peer
 	if !authenticateI(msg, o.initIb, o.tkm) {
 		err := errors.New("could not authenticate")
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	// get peer spi
 	peerSpi, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {
 		log.Error(err)
+		s.Data = err
 		return
 	}
 	o.EspSpiI = append([]byte{}, peerSpi...)
@@ -143,5 +160,6 @@ func (o *Responder) HandleSaAuth(m interface{}) {
 	// tsI := msg.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
 	// tsR := msg.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
 	// Todo Check tsi & r
-	o.fsm.PostEvent(state.IkeEvent{Id: state.IKE_AUTH_SUCCESS})
+	s.Event = state.SUCCESS
+	return
 }
