@@ -1,7 +1,6 @@
 package ike
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"math/big"
@@ -124,16 +123,16 @@ func makeInit(p initParams) *Message {
 		Payloads: protocol.MakePayloads(),
 	}
 	init.Payloads.Add(&protocol.SaPayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeKE},
+		PayloadHeader: &protocol.PayloadHeader{},
 		Proposals:     p.proposals,
 	})
 	init.Payloads.Add(&protocol.KePayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNonce},
+		PayloadHeader: &protocol.PayloadHeader{},
 		DhTransformId: p.dhTransformId,
 		KeyData:       p.dhPublic,
 	})
 	init.Payloads.Add(&protocol.NoncePayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+		PayloadHeader: &protocol.PayloadHeader{},
 		Nonce:         p.nonce,
 	})
 	return init
@@ -154,7 +153,7 @@ type authParams struct {
 // b->a
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, realMessage []byte, tkm *Tkm) *Message {
+func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, realMessage []byte, tkm *Tkm, isTransportMode bool) *Message {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
 	if tkm.isInitiator {
@@ -175,7 +174,7 @@ func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, ts
 	}
 	// TODO - handle various other types of ID
 	iDi := &protocol.IdPayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeAUTH},
+		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
 		IdType:        protocol.ID_RFC822_ADDR,
 		Data:          tkm.AuthId(protocol.ID_RFC822_ADDR),
@@ -184,39 +183,35 @@ func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, ts
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	auth.Payloads.Add(&protocol.AuthPayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeSA},
+		PayloadHeader: &protocol.PayloadHeader{},
 		AuthMethod:    protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE,
 		Data:          tkm.Auth(realMessage, iDi, protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeTSi},
+		PayloadHeader: &protocol.PayloadHeader{},
 		Proposals:     proposals,
 	})
 	auth.Payloads.Add(&protocol.TrafficSelectorPayload{
-		PayloadHeader:              &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeTSr},
+		PayloadHeader:              &protocol.PayloadHeader{},
 		TrafficSelectorPayloadType: protocol.PayloadTypeTSi,
 		Selectors:                  tsI,
 	})
-	next := protocol.PayloadTypeNone
-	if tkm.isInitiator {
-		next = protocol.PayloadTypeN
-	}
 	auth.Payloads.Add(&protocol.TrafficSelectorPayload{
-		PayloadHeader:              &protocol.PayloadHeader{NextPayload: next},
+		PayloadHeader:              &protocol.PayloadHeader{},
 		TrafficSelectorPayloadType: protocol.PayloadTypeTSr,
 		Selectors:                  tsR,
 	})
 	// check for transport mode config
-	if bytes.Equal(tsI[0].StartAddress, tsI[0].EndAddress) {
+	if isTransportMode {
 		auth.Payloads.Add(&protocol.NotifyPayload{
-			PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeN},
+			PayloadHeader: &protocol.PayloadHeader{},
 			// ProtocolId:       IKE,
 			NotificationType: protocol.USE_TRANSPORT_MODE,
 		})
 	}
 	if tkm.isInitiator {
 		auth.Payloads.Add(&protocol.NotifyPayload{
-			PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+			PayloadHeader: &protocol.PayloadHeader{},
 			// ProtocolId:       IKE,
 			NotificationType: protocol.INITIAL_CONTACT,
 		})
@@ -302,16 +297,16 @@ func makeIkeChildSa(p childSaParams) *Message {
 		Payloads: protocol.MakePayloads(),
 	}
 	child.Payloads.Add(&protocol.SaPayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeKE},
+		PayloadHeader: &protocol.PayloadHeader{},
 		Proposals:     p.proposals,
 	})
 	child.Payloads.Add(&protocol.KePayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNonce},
+		PayloadHeader: &protocol.PayloadHeader{},
 		DhTransformId: p.dhTransformId,
 		KeyData:       p.dhPublic,
 	})
 	child.Payloads.Add(&protocol.NoncePayload{
-		PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+		PayloadHeader: &protocol.PayloadHeader{},
 		Nonce:         p.nonce,
 	})
 	return child

@@ -160,7 +160,7 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 	}
 	dec = clear[:len(clear)-int(padlen)]
 	if log.V(4) {
-		log.Infof("aead Verify&Decrypt:\nPadlen:%d\nClear\n:%s",
+		log.Infof("Padlen:%d\nClear:\n%s",
 			padlen, hex.Dump(clear))
 	}
 	return

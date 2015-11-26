@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"net"
-	"time"
 
 	"msgbox.io/context"
 	"msgbox.io/ike/crypto"
@@ -135,7 +134,7 @@ func (o *Initiator) SendAuth() (s state.StateEvent) {
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
 	// tkm.Auth  needs to be called for both initiator & responder from the initator. so
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
-	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
 	authI.IkeHeader.MsgId = o.msgId
 	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
 		log.Error(err)
@@ -176,32 +175,14 @@ func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
 	// get peer spi
 	peerSpi, err := getPeerSpi(m, protocol.ESP)
 	if err != nil {
-		log.Error(err)
-		s.Data = err
 		return
 	}
 	o.EspSpiR = append([]byte{}, peerSpi...)
-
-	tsi := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload)
-	tsr := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload)
-	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, tsi.Selectors, tsr.Selectors)
-	for _, ns := range m.Payloads.GetNotifications() {
-		switch ns.NotificationType {
-		case protocol.AUTH_LIFETIME:
-			lft := ns.NotificationMessage.(time.Duration)
-			reauth := lft - 2*time.Second
-			if lft <= 2*time.Second {
-				reauth = 0
-			}
-			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
-			time.AfterFunc(reauth, func() {
-				o.fsm.Event(state.StateEvent{Event: state.REKEY_START})
-				// o.fsm.Event(state.StateEvent{Event: state.MSG_IKE_REKEY})
-			})
-		case protocol.USE_TRANSPORT_MODE:
-			log.Info("using Transport Mode")
-			o.cfg.IsTransportMode = true
-		}
+	// final check
+	if err := o.checkSa(m); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
 	}
 	s.Event = state.SUCCESS
 	return

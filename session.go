@@ -3,6 +3,7 @@ package ike
 import (
 	"errors"
 	"net"
+	"time"
 
 	"msgbox.io/context"
 	"msgbox.io/ike/platform"
@@ -115,6 +116,44 @@ func (o *Session) Finished() (s state.StateEvent) {
 	return // not used
 }
 
+func (o *Session) checkSa(m *Message) (err error) {
+	// check transport mode, and other info payloads
+	wantsTransportMode := false
+	for _, ns := range m.Payloads.GetNotifications() {
+		switch ns.NotificationType {
+		case protocol.AUTH_LIFETIME:
+			lft := ns.NotificationMessage.(time.Duration)
+			reauth := lft - 2*time.Second
+			if lft <= 2*time.Second {
+				reauth = 0
+			}
+			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
+			time.AfterFunc(reauth, func() {
+				o.fsm.Event(state.StateEvent{Event: state.REKEY_START})
+				// o.fsm.Event(state.StateEvent{Event: state.MSG_IKE_REKEY})
+			})
+		case protocol.USE_TRANSPORT_MODE:
+			wantsTransportMode = true
+		}
+	}
+	if wantsTransportMode && o.cfg.IsTransportMode {
+		log.Info("Using Transport Mode")
+	} else {
+		if wantsTransportMode {
+			log.Info("Peer Configured Transport Mode")
+			o.cfg.IsTransportMode = true
+		} else if o.cfg.IsTransportMode {
+			log.Info("Peer Rejected Transport Mode Config")
+			o.cfg.IsTransportMode = false
+		}
+	}
+
+	tsi := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload)
+	tsr := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload)
+	log.Infof("ESP SA Configured: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, tsi.Selectors, tsr.Selectors)
+	return
+}
+
 func (o *Session) addSa() (err error) {
 	// sa processing
 	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.IkeSpiI, o.IkeSpiR)
@@ -178,7 +217,7 @@ func (o *Session) Notify(ie protocol.IkeError) {
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
 		payload: &protocol.NotifyPayload{
-			PayloadHeader:    &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+			PayloadHeader:    &protocol.PayloadHeader{},
 			ProtocolId:       protocol.IKE,
 			NotificationType: protocol.NotificationType(ie),
 			Spi:              spi,
@@ -198,7 +237,7 @@ func (o *Session) SendIkeSaDelete() {
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
 		payload: &protocol.DeletePayload{
-			PayloadHeader: &protocol.PayloadHeader{NextPayload: protocol.PayloadTypeNone},
+			PayloadHeader: &protocol.PayloadHeader{},
 			ProtocolId:    protocol.IKE,
 			Spis:          []protocol.Spi{},
 		},

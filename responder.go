@@ -102,7 +102,7 @@ func (o *Responder) SendAuth() (s state.StateEvent) {
 	o.cfg.ProposalEsp.Spi = o.EspSpiR
 	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
-	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm)
+	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
 	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
 	if err != nil {
 		log.Error(err)
@@ -110,7 +110,7 @@ func (o *Responder) SendAuth() (s state.StateEvent) {
 		s.Data = err
 		return
 	}
-	log.Infof("ESP SA Established: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, o.cfg.TsI, o.cfg.TsR)
+	log.Infof("ESP SA Configured: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, o.cfg.TsI, o.cfg.TsR)
 	return
 }
 
@@ -155,11 +155,19 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 		return
 	}
 	o.EspSpiI = append([]byte{}, peerSpi...)
+	// final check
+	if err := o.checkSa(msg); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	// load additional configs
+	if err = AddClientConfigFromAuth(msg, o.cfg); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
 
-	// props := msg.Payloads.Get(PayloadTypeSA).(*SaPayload).Proposals
-	// tsI := msg.Payloads.Get(PayloadTypeTSi).(*TrafficSelectorPayload).Selectors
-	// tsR := msg.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
-	// Todo Check tsi & r
 	s.Event = state.SUCCESS
 	// move to MATURE state
 	o.fsm.Event(state.StateEvent{Event: state.SUCCESS})

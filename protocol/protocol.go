@@ -1403,10 +1403,16 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err 
 }
 
 func EncodePayloads(payloads *Payloads) (b []byte) {
-	for _, pl := range payloads.Array {
+	for idx, pl := range payloads.Array {
 		body := pl.Encode()
-		pl.Header().PayloadLength = uint16(len(body))
-		body = append(pl.Header().Encode(), body...)
+		hdr := pl.Header()
+		hdr.PayloadLength = uint16(len(body))
+		next := PayloadTypeNone
+		if idx < len(payloads.Array)-1 {
+			next = payloads.Array[idx+1].Type()
+		}
+		hdr.NextPayload = next
+		body = append(hdr.Encode(), body...)
 		if log.V(LOG_CODEC) {
 			js, _ := json.Marshal(pl)
 			log.Infof("Payload %s: %s to:\n%s", pl.Type(), js, hex.Dump(body))
