@@ -161,5 +161,7 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 	// tsR := msg.Payloads.Get(PayloadTypeTSr).(*TrafficSelectorPayload).Selectors
 	// Todo Check tsi & r
 	s.Event = state.SUCCESS
+	// move to MATURE state
+	o.fsm.Event(state.StateEvent{Event: state.SUCCESS})
 	return
 }

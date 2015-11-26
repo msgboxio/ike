@@ -30,12 +30,20 @@ func ResponderTransitions(h FsmHandler) map[Event][]Transition {
 			},
 		},
 		MSG_AUTH: []Transition{
-			// Received INIT reply
+			// Received AUTH
 			Transition{
 				source: STATE_INIT,
-				dest:   STATE_MATURE,
+				dest:   STATE_AUTH,
 				check:  h.CheckAuth,
 				action: h.SendAuth,
+			},
+		},
+		SUCCESS: []Transition{
+			// AUTH SUCCESS
+			Transition{
+				source: STATE_AUTH,
+				dest:   STATE_MATURE,
+				action: h.InstallSa,
 			},
 		},
 		AUTH_FAIL: []Transition{

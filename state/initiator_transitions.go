@@ -10,6 +10,15 @@ func InitiatorTransitions(h FsmHandler) map[Event][]Transition {
 				action: h.SendInit,
 			},
 		},
+		MSG_INIT: []Transition{
+			// Received INIT reply
+			Transition{
+				source: STATE_INIT,
+				dest:   STATE_AUTH,
+				check:  h.CheckInit,
+				action: h.SendAuth,
+			},
+		},
 		INIT_FAIL: []Transition{
 			// Cannot send message or Cannot build message
 			Transition{
@@ -30,17 +39,8 @@ func InitiatorTransitions(h FsmHandler) map[Event][]Transition {
 				action: h.StartRetryTimeout,
 			},
 		},
-		MSG_INIT: []Transition{
-			// Received INIT reply
-			Transition{
-				source: STATE_INIT,
-				dest:   STATE_AUTH,
-				check:  h.CheckInit,
-				action: h.SendAuth,
-			},
-		},
 		MSG_AUTH: []Transition{
-			// Received INIT reply
+			// Received AUTH reply
 			Transition{
 				source: STATE_AUTH,
 				dest:   STATE_MATURE,

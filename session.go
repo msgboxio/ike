@@ -93,7 +93,7 @@ func (o *Session) Close() {
 }
 
 func (o *Session) InstallSa() (s state.StateEvent) {
-	if err := o.handleSaEvent(installChildSa); err != nil {
+	if err := o.addSa(); err != nil {
 		s.Event = state.FAIL
 		s.Data = err
 	}
@@ -101,7 +101,7 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 }
 func (o *Session) RemoveSa() (s state.StateEvent) {
 	o.SendIkeSaDelete()
-	o.handleSaEvent(removeChildSa)
+	o.removeSa()
 	return
 }
 func (o *Session) StartRetryTimeout() (s state.StateEvent) {
@@ -115,7 +115,7 @@ func (o *Session) Finished() (s state.StateEvent) {
 	return // not used
 }
 
-func (o *Session) handleSaEvent(evt stateEvents) (err error) {
+func (o *Session) addSa() (err error) {
 	// sa processing
 	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.IkeSpiI, o.IkeSpiR)
 	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
@@ -135,25 +135,37 @@ func (o *Session) handleSaEvent(evt stateEvents) (err error) {
 		SpiR:            int(SpiR),
 		IsTransportMode: o.cfg.IsTransportMode,
 	}
-	switch evt {
-	case installChildSa:
-		if err := platform.InstallChildSa(sa); err != nil {
-			log.Error("Error installing child SA: %s", err)
-			return err
-		}
-		log.Info("Installed child SA")
-	case removeChildSa:
-		if err := platform.RemoveChildSa(sa); err != nil {
-			log.Error("Error removing child SA: %s", err)
-			return err
-		} else {
-			log.Info("Removed child SA")
-		}
+	if err = platform.InstallChildSa(sa); err != nil {
+		log.Error("Error installing child SA: %s", err)
+		return err
 	}
+	log.Info("Installed child SA")
 	return
 }
 
-func (o *Session) DownloadCrl() {}
+func (o *Session) removeSa() (err error) {
+	// sa processing
+	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
+	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
+	sa := &platform.SaParams{
+		Src:             o.local,
+		Dst:             o.remote,
+		SrcPort:         0,
+		DstPort:         0,
+		SrcNet:          &net.IPNet{o.local, net.CIDRMask(32, 32)},
+		DstNet:          &net.IPNet{o.remote, net.CIDRMask(32, 32)},
+		SpiI:            int(SpiI),
+		SpiR:            int(SpiR),
+		IsTransportMode: o.cfg.IsTransportMode,
+	}
+	if err = platform.RemoveChildSa(sa); err != nil {
+		log.Error("Error removing child SA: %s", err)
+		return err
+	} else {
+		log.Info("Removed child SA")
+	}
+	return
+}
 
 func (o *Session) Notify(ie protocol.IkeError) {
 	spi := o.IkeSpiI

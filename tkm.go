@@ -2,8 +2,6 @@ package ike
 
 import (
 	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"math/big"
 
 	"msgbox.io/ike/crypto"
@@ -130,9 +128,9 @@ func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
 
 // create ike sa
 func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
-	fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
-		hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
-		hex.Dump(spiI), hex.Dump(spiR))
+	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
+	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
+	// 	hex.Dump(spiI), hex.Dump(spiR))
 	SKEYSEED := []byte{}
 	if len(old_SK_D) == 0 {
 		SKEYSEED = t.SkeySeedInitial()
@@ -163,15 +161,15 @@ func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
 	// for test
 	t.KEYMAT = KEYMAT
 	t.SKEYSEED = SKEYSEED
-	fmt.Printf("keymat length %d\n", len(KEYMAT))
-	fmt.Printf("skD:\n%sskAi:\n%sskAr:\n%sskEi:\n%sskEr:\n%sskPi:\n%sskPr:\n%s",
-		hex.Dump(t.skD),
-		hex.Dump(t.skAi),
-		hex.Dump(t.skAr),
-		hex.Dump(t.skEi),
-		hex.Dump(t.skEr),
-		hex.Dump(t.skPi),
-		hex.Dump(t.skPr))
+	// fmt.Printf("keymat length %d\n", len(KEYMAT))
+	// fmt.Printf("skD:\n%sskAi:\n%sskAr:\n%sskEi:\n%sskEr:\n%sskPi:\n%sskPr:\n%s",
+	// 	hex.Dump(t.skD),
+	// 	hex.Dump(t.skAi),
+	// 	hex.Dump(t.skAr),
+	// 	hex.Dump(t.skEi),
+	// 	hex.Dump(t.skEr),
+	// 	hex.Dump(t.skPi),
+	// 	hex.Dump(t.skPr))
 }
 
 // MAC-then-decrypt
@@ -244,11 +242,11 @@ func (t *Tkm) IpsecSaCreate(spiI, spiR protocol.Spi) (espEi, espAi, espEr, espAr
 	espEr = KEYMAT[offset : offset+t.suite.KeyLen]
 	offset += t.suite.KeyLen
 	espAr = KEYMAT[offset : offset+t.suite.MacKeyLen]
-	fmt.Printf("ESP keys :\nEi:\n%sAi:\n%sEr:\n%sAr\n%s",
-		hex.Dump(espEi),
-		hex.Dump(espAi),
-		hex.Dump(espEr),
-		hex.Dump(espAr))
+	// fmt.Printf("ESP keys :\nEi:\n%sAi:\n%sEr:\n%sAr\n%s",
+	// 	hex.Dump(espEi),
+	// 	hex.Dump(espAi),
+	// 	hex.Dump(espEr),
+	// 	hex.Dump(espAr))
 	return
 }
 
