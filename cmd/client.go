@@ -36,21 +36,20 @@ func main() {
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel)
 
-done:
+	// use random local address
+	udp, err := net.DialUDP("udp4", nil, remoteU)
+	if err != nil {
+		panic(err)
+	}
+	localU := udp.LocalAddr().(*net.UDPAddr)
+	log.Infof("socket connected: %s<=>%s", localU, remoteU)
+
+	ids := ike.PskIdentities{
+		Primary: "ak@msgbox.io",
+		Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+	}
+
 	for {
-		// use random local address
-		udp, err := net.DialUDP("udp4", nil, remoteU)
-		if err != nil {
-			panic(err)
-		}
-		localU := udp.LocalAddr().(*net.UDPAddr)
-		log.Infof("socket connected: %s<=>%s", localU, remoteU)
-
-		ids := ike.PskIdentities{
-			Primary: "ak@msgbox.io",
-			Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-		}
-
 		config := ike.NewClientConfig()
 		config.AddSelector(
 			&net.IPNet{IP: localU.IP.To4(), Mask: net.CIDRMask(32, 32)},
@@ -59,22 +58,37 @@ done:
 			config.IsTransportMode = true
 		}
 		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, config)
-		select {
-		case <-cxt.Done():
-			cli.Close()
-			// wait until client is done
-			<-cli.Done()
-			fmt.Printf("shutdown client: %v\n", cli.Err())
-			break done
-		case <-cli.Done():
-			fmt.Printf("client finished: %v\n", cli.Err())
-			if cli.Err() == ike_error.PeerDeletedSa {
-				continue
+	loop:
+		for {
+			select {
+			case reply := <-cli.Replies():
+				if err = ike.WritePacket(reply, udp, remoteU, true); err != nil {
+					log.Error(err)
+					break loop
+				}
+			case <-cli.Done():
+				fmt.Printf("client finished: %v\n", cli.Err())
+				// if _, ok := cli.Err().(ike.IkeError); ok {
+				// 	break done
+				// }
+				break loop
+			case <-cxt.Done():
+				cli.Close()
+				// drain replies
+				for reply := range cli.Replies() {
+					if err = ike.WritePacket(reply, udp, remoteU, true); err != nil {
+						log.Error(err)
+					}
+				}
+				// wait until client is done
+				<-cli.Done()
+				fmt.Printf("shutdown client: %v\n", cli.Err())
+				break loop
 			}
-			// if _, ok := cli.Err().(ike.IkeError); ok {
-			// 	break done
-			// }
-			break done
 		}
+		if cli.Err() == ike_error.PeerDeletedSa {
+			continue
+		}
+		break
 	}
 }

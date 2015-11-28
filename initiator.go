@@ -19,6 +19,7 @@ type Initiator struct {
 	Session
 
 	initIb, initRb []byte
+	conn           net.Conn
 }
 
 func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
@@ -28,13 +29,14 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 		Session: Session{
 			Context:  cxt,
 			cancel:   cancel,
-			conn:     conn,
 			remote:   remote,
 			local:    local,
 			IkeSpiI:  MakeSpi(),
 			EspSpiI:  MakeSpi()[:4],
-			messages: make(chan *Message, 10),
+			incoming: make(chan *Message, 10),
+			outgoing: make(chan []byte, 10),
 		},
+		conn: conn,
 	}
 
 	var err error
@@ -61,8 +63,6 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	return
 }
 
-func (o *Initiator) HandleMessage(m *Message) { o.messages <- m }
-
 func (o *Initiator) SendInit() (s state.StateEvent) {
 	// IKE_SA_INIT
 	init := makeInit(initParams{
@@ -75,13 +75,16 @@ func (o *Initiator) SendInit() (s state.StateEvent) {
 		dhPublic:      o.tkm.DhPublic,
 	})
 	init.IkeHeader.MsgId = o.msgId
+	// encode & send
 	var err error
-	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
+	o.initIb, err = init.Encode(o.tkm)
 	if err != nil {
 		log.Error(err)
 		s.Event = state.FAIL
 		s.Data = err
+		return
 	}
+	o.outgoing <- o.initIb
 	o.msgId++
 	return
 }
@@ -138,11 +141,15 @@ func (o *Initiator) SendAuth() (s state.StateEvent) {
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
 	authI.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(authI, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+	// encode & send
+	authIb, err := authI.Encode(o.tkm)
+	if err != nil {
 		log.Error(err)
 		s.Event = state.FAIL
 		s.Data = err
+		return
 	}
+	o.outgoing <- authIb
 	o.msgId++
 	return
 }

@@ -27,18 +27,21 @@ type Session struct {
 	tkm *Tkm
 	cfg *ClientCfg
 
-	conn          net.Conn
 	remote, local net.IP
 
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
 
-	messages chan *Message
+	incoming chan *Message
+	outgoing chan []byte
 
 	fsm *state.Fsm
 
 	msgId uint32
 }
+
+func (o *Session) HandleMessage(m *Message) { o.incoming <- m }
+func (o *Session) Replies() <-chan []byte   { return o.outgoing }
 
 func run(o *Session) {
 done:
@@ -46,7 +49,7 @@ done:
 		select {
 		case <-o.Done():
 			break done
-		case msg, ok := <-o.messages:
+		case msg, ok := <-o.incoming:
 			if !ok {
 				break done
 			}
@@ -109,8 +112,8 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 	return
 }
 func (o *Session) Finished() (s state.StateEvent) {
-	o.conn.Close()
-	close(o.messages)
+	close(o.incoming)
+	close(o.outgoing)
 	log.Info("Finishing; cancel context")
 	o.cancel(context.Canceled)
 	return // not used
@@ -230,9 +233,13 @@ func (o *Session) Notify(ie protocol.IkeError) {
 		},
 	})
 	info.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+	// encode & send
+	infoB, err := info.Encode(o.tkm)
+	if err != nil {
 		log.Error(err)
+		return
 	}
+	o.outgoing <- infoB
 	o.msgId++
 }
 
@@ -249,9 +256,13 @@ func (o *Session) SendIkeSaDelete() {
 		},
 	})
 	info.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+	// encode & send
+	infoB, err := info.Encode(o.tkm)
+	if err != nil {
 		log.Error(err)
+		return
 	}
+	o.outgoing <- infoB
 	o.msgId++
 }
 
@@ -263,9 +274,13 @@ func (o *Session) SendEmptyInformational() {
 		spiR:        o.IkeSpiR,
 	})
 	info.IkeHeader.MsgId = o.msgId
-	if _, err := EncodeTx(info, o.tkm, o.conn, o.conn.RemoteAddr(), true); err != nil {
+	// encode & send
+	infoB, err := info.Encode(o.tkm)
+	if err != nil {
 		log.Error(err)
+		return
 	}
+	o.outgoing <- infoB
 	o.msgId++
 }
 

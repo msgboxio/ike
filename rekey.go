@@ -45,12 +45,13 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		dhPublic:      o.newTkm.DhPublic,
 	})
 	init.IkeHeader.MsgId = o.msgId
-	// use old tkm to encrypt & sign
-	o.initIb, err = EncodeTx(init, o.tkm, o.conn, o.conn.RemoteAddr(), true)
+	// encode & send
+	o.initIb, err = init.Encode(o.tkm)
 	if err != nil {
 		log.Error(err)
-		o.cancel(err)
+		return
 	}
+	o.outgoing <- o.initIb
 	o.msgId++
 }
 
@@ -92,10 +93,10 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 	// create rest of ike sa
 	o.newTkm.IsaCreate(o.newIkeSpiI, o.newIkeSpiR, o.tkm.skD)
 	log.Infof("NEW IKE SA Established: [%s]%#x<=>%#x[%s]",
-		o.conn.LocalAddr(),
+		o.local,
 		o.newIkeSpiI,
 		o.newIkeSpiR,
-		o.conn.RemoteAddr())
+		o.remote)
 	// save Data
 	o.initRb = m.Data
 	o.fsm.Event(state.StateEvent{})

@@ -14,10 +14,9 @@ type Responder struct {
 	Session
 
 	initIb, initRb []byte
-	remoteAddr     net.Addr
 }
 
-func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteAddr net.Addr, remote, local net.IP, initI *Message) (*Responder, error) {
+func NewResponder(parent context.Context, ids Identities, remote, local net.IP, initI *Message) (*Responder, error) {
 	cxt, cancel := context.WithCancel(parent)
 
 	if !initI.EnsurePayloads(InitPayloads) {
@@ -45,7 +44,6 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 		Session: Session{
 			Context:  cxt,
 			cancel:   cancel,
-			conn:     conn,
 			remote:   remote,
 			local:    local,
 			tkm:      tkm,
@@ -53,9 +51,9 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 			IkeSpiI:  spiI,
 			IkeSpiR:  MakeSpi(),
 			EspSpiR:  MakeSpi()[:4],
-			messages: make(chan *Message, 10),
+			incoming: make(chan *Message, 10),
+			outgoing: make(chan []byte, 10),
 		},
-		remoteAddr: remoteAddr,
 	}
 	go run(&o.Session)
 
@@ -64,8 +62,6 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 
 	return o, nil
 }
-
-func (o *Responder) HandleMessage(m *Message) { o.messages <- m }
 
 func (o *Responder) SendInit() (s state.StateEvent) {
 	// make response message
@@ -80,20 +76,22 @@ func (o *Responder) SendInit() (s state.StateEvent) {
 	})
 	// encode & send
 	var err error
-	o.initRb, err = EncodeTx(initR, nil, o.conn, o.remoteAddr, false)
+	o.initRb, err = initR.Encode(nil)
 	if err != nil {
 		log.Error(err)
 		s.Event = state.FAIL
 		s.Data = err
 		return
 	}
+	o.outgoing <- o.initRb
+
 	o.msgId++
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
-		o.remoteAddr,
+		o.remote,
 		o.IkeSpiI,
 		o.IkeSpiR,
-		o.conn.LocalAddr())
+		o.local)
 	return
 }
 
@@ -104,13 +102,15 @@ func (o *Responder) SendAuth() (s state.StateEvent) {
 	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
 	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
-	_, err := EncodeTx(authR, o.tkm, o.conn, o.remoteAddr, false)
+	// encode & send
+	authRb, err := authR.Encode(o.tkm)
 	if err != nil {
 		log.Error(err)
 		s.Event = state.FAIL
 		s.Data = err
 		return
 	}
+	o.outgoing <- authRb
 	return
 }
 

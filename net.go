@@ -60,24 +60,20 @@ func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, fro
 	return b, from, nil
 }
 
-func EncodeTx(msg *Message, tkm *Tkm, conn net.Conn, remote net.Addr, isConnected bool) (msgB []byte, err error) {
-	if msgB, err = msg.Encode(tkm); err != nil {
+func WritePacket(msgB []byte, conn net.Conn, remote net.Addr, isConnected bool) (err error) {
+	var n int
+	if isConnected {
+		n, err = conn.Write(msgB)
+	} else {
+		udp := conn.(*net.UDPConn)
+		addr := remote.(*net.UDPAddr)
+		n, err = udp.WriteToUDP(msgB, addr)
+	}
+	if err != nil {
 		return
 	} else {
-		var n int
-		if isConnected {
-			n, err = conn.Write(msgB)
-		} else {
-			udp := conn.(*net.UDPConn)
-			addr := remote.(*net.UDPAddr)
-			n, err = udp.WriteToUDP(msgB, addr)
-		}
-		if err != nil {
-			return
-		} else {
-			log.Infof("%d to %s", n, remote)
-			log.V(4).Info("\n" + hex.Dump(msgB))
-		}
-		return msgB, nil
+		log.Infof("%d to %s", n, remote)
+		log.V(4).Info("\n" + hex.Dump(msgB))
 	}
+	return nil
 }

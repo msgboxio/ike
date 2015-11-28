@@ -58,15 +58,30 @@ func main() {
 		responder, found := responders[spi]
 		if !found {
 			remoteU := remote.(*net.UDPAddr)
-			responder, err = ike.NewResponder(cxt, ids, udp, remote, remoteU.IP, localU.IP, msg)
+			responder, err = ike.NewResponder(cxt, ids, remoteU.IP, localU.IP, msg)
 			if err != nil {
 				log.Error(err)
 				continue
 			}
 			responders[spi] = responder
 			go func() {
-				<-responder.Done()
-				delete(responders, spi)
+			loop:
+				for {
+					select {
+					case reply, ok := <-responder.Replies():
+						if !ok {
+							break
+						}
+						// unconnected socker write
+						if err = ike.WritePacket(reply, udp, remote, false); err != nil {
+							log.Error(err)
+						}
+					case <-responder.Done():
+						delete(responders, spi)
+						log.Infof("Finished SA 0x%x", spi)
+						break loop
+					}
+				}
 			}()
 		}
 		responder.HandleMessage(msg)
