@@ -35,6 +35,7 @@ func NewResponder(parent context.Context, ids Identities, conn net.Conn, remoteA
 		cancel(err)
 		return nil, err
 	}
+	// TODO - check ike proposal
 	spiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		cancel(err)
@@ -110,7 +111,6 @@ func (o *Responder) SendAuth() (s state.StateEvent) {
 		s.Data = err
 		return
 	}
-	log.Infof("ESP SA Configured: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, o.cfg.TsI, o.cfg.TsR)
 	return
 }
 
@@ -162,12 +162,12 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 		return
 	}
 	// load additional configs
-	if err = AddClientConfigFromAuth(msg, o.cfg); err != nil {
+	if err = o.cfg.AddFromAuth(msg); err != nil {
 		log.Error(err)
 		s.Data = err
 		return
 	}
-
+	// TODO - check IPSEC selectors & config
 	s.Event = state.SUCCESS
 	// move to MATURE state
 	o.fsm.Event(state.StateEvent{Event: state.SUCCESS})

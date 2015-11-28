@@ -1,11 +1,45 @@
 package ike
 
 import (
+	"bytes"
 	"encoding/hex"
 	"net"
 
 	"msgbox.io/log"
 )
+
+func FirstLastAddressToIPNet(start, end net.IP) *net.IPNet {
+	l := len(start)
+	if l != len(end) {
+		return nil
+	}
+	// shortcut
+	if bytes.Equal(start, end) {
+		return &net.IPNet{IP: start, Mask: net.CIDRMask(l*8, l*8)}
+	}
+	mask := make([]byte, l)
+	// This will only work if there are no holes in addresses given
+	for idx, _ := range start {
+		mask[idx] = ^(end[idx] - start[idx])
+	}
+	return &net.IPNet{IP: start, Mask: mask}
+}
+
+func IPNetToFirstAddress(n *net.IPNet) net.IP {
+	first := make([]byte, len(n.IP))
+	for idx, _ := range n.IP {
+		first[idx] = n.IP[idx] & n.Mask[idx]
+	}
+	return first
+}
+
+func IPNetToLastAddress(n *net.IPNet) net.IP {
+	last := make([]byte, len(n.IP))
+	for idx, _ := range n.IP {
+		last[idx] = (n.IP[idx] & n.Mask[idx]) | ^n.Mask[idx]
+	}
+	return last
+}
 
 func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
 	b = make([]byte, 1500)

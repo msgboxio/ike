@@ -61,6 +61,8 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	return
 }
 
+func (o *Initiator) HandleMessage(m *Message) { o.messages <- m }
+
 func (o *Initiator) SendInit() (s state.StateEvent) {
 	// IKE_SA_INIT
 	init := makeInit(initParams{
@@ -231,7 +233,7 @@ done:
 			}
 			// decrypt later
 			msg.Data = b
-			o.messages <- msg
+			o.HandleMessage(msg)
 		}
 	}
 }

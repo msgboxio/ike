@@ -51,11 +51,12 @@ done:
 			Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 		}
 
-		var config *ike.ClientCfg
-		if isTunnelMode {
-			config = ike.TunnelConfig()
-		} else {
-			config = ike.TransportCfg(localU.IP.To4(), remoteU.IP.To4())
+		config := ike.NewClientConfig()
+		config.AddSelector(
+			&net.IPNet{IP: localU.IP.To4(), Mask: net.CIDRMask(32, 32)},
+			&net.IPNet{IP: remoteU.IP.To4(), Mask: net.CIDRMask(32, 32)})
+		if !isTunnelMode {
+			config.IsTransportMode = true
 		}
 		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, config)
 		select {

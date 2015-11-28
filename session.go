@@ -147,10 +147,6 @@ func (o *Session) checkSa(m *Message) (err error) {
 			o.cfg.IsTransportMode = false
 		}
 	}
-
-	tsi := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload)
-	tsr := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload)
-	log.Infof("ESP SA Configured: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, tsi.Selectors, tsr.Selectors)
 	return
 }
 
@@ -159,13 +155,19 @@ func (o *Session) addSa() (err error) {
 	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.IkeSpiI, o.IkeSpiR)
 	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
 	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
+	tsI := o.cfg.TsI[0]
+	tsR := o.cfg.TsR[0]
+	srcNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
+	dstNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
+	// print config
+	log.Infof("Installing Child SA: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, srcNet, dstNet)
 	sa := &platform.SaParams{
 		Src:             o.local,
 		Dst:             o.remote,
 		SrcPort:         0,
 		DstPort:         0,
-		SrcNet:          &net.IPNet{o.local, net.CIDRMask(32, 32)},
-		DstNet:          &net.IPNet{o.remote, net.CIDRMask(32, 32)},
+		SrcNet:          srcNet,
+		DstNet:          dstNet,
 		EspEi:           espEi,
 		EspAi:           espAi,
 		EspEr:           espEr,
@@ -175,10 +177,10 @@ func (o *Session) addSa() (err error) {
 		IsTransportMode: o.cfg.IsTransportMode,
 	}
 	if err = platform.InstallChildSa(sa); err != nil {
-		log.Error("Error installing child SA: %s", err)
+		log.Error("Error installing Child SA: %s", err)
 		return err
 	}
-	log.Info("Installed child SA")
+	log.Info("Installed Child SA")
 	return
 }
 
@@ -186,13 +188,17 @@ func (o *Session) removeSa() (err error) {
 	// sa processing
 	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
 	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
+	tsI := o.cfg.TsI[0]
+	tsR := o.cfg.TsR[0]
+	srcNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
+	dstNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
 	sa := &platform.SaParams{
 		Src:             o.local,
 		Dst:             o.remote,
 		SrcPort:         0,
 		DstPort:         0,
-		SrcNet:          &net.IPNet{o.local, net.CIDRMask(32, 32)},
-		DstNet:          &net.IPNet{o.remote, net.CIDRMask(32, 32)},
+		SrcNet:          srcNet,
+		DstNet:          dstNet,
 		SpiI:            int(SpiI),
 		SpiR:            int(SpiR),
 		IsTransportMode: o.cfg.IsTransportMode,

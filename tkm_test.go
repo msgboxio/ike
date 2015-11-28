@@ -28,14 +28,10 @@ func TestTkm(t *testing.T) {
 		t.Fatal(3)
 	}
 
-	transforms := []*protocol.SaTransform{
-		&protocol.SaTransform{Transform: _ENCR_CAMELLIA_CBC},
-		&protocol.SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&protocol.SaTransform{Transform: _MODP_2048},
-		&protocol.SaTransform{Transform: _PRF_HMAC_SHA2_256},
-	}
+	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048
+	suite, _ := crypto.NewCipherSuite(transforms)
 	tkm := &Tkm{
-		suite:       crypto.NewCipherSuite(transforms),
+		suite:       suite,
 		isInitiator: false,
 		Ni:          Nonce,
 		Nr:          NonceO,
@@ -45,7 +41,7 @@ func TestTkm(t *testing.T) {
 		t.Fatal(4)
 	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
-	tkm.IsaCreate(spiI, []byte{})
+	tkm.IsaCreate(spiI, []byte{}, []byte{})
 
 	_sk := `ff7972ddae0b6d10ea4fd33418a489a4c92e8b053e25b4c9166b4b7a2aa29776`
 	sk, _ := hex.DecodeString(_sk)
