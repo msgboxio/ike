@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"msgbox.io/context"
 	"msgbox.io/ike"
 	"msgbox.io/ike/ike_error"
+	"msgbox.io/ike/protocol"
 	"msgbox.io/log"
 )
 
@@ -20,6 +22,54 @@ func waitForSignal(cancel context.CancelFunc) {
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel(errors.New("received signal: " + sig.String()))
+}
+
+func runReader(o *ike.Initiator, conn net.Conn) {
+done:
+	for {
+		select {
+		case <-o.Done():
+			break done
+		default:
+			b, _, err := ike.ReadPacket(conn, conn.RemoteAddr(), true)
+			if err != nil {
+				log.Error(err)
+				o.Close(err)
+				break done
+			}
+			// check if client closed the session
+			if o.Err() != nil {
+				break done
+			}
+			// if o.remote != nil && o.remote.String() != from.String() {
+			// 	log.Errorf("from different address: %s", from)
+			// 	continue
+			// }
+			msg := &ike.Message{}
+			if err := msg.DecodeHeader(b); err != nil {
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
+				continue
+			}
+			if len(b) < int(msg.IkeHeader.MsgLength) {
+				log.V(protocol.LOG_CODEC).Info("")
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
+				continue
+			}
+			if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
+				log.Errorf("different initiator Spi %s", spi)
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
+				continue
+			}
+			pld := b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength]
+			if err = msg.DecodePayloads(pld, msg.IkeHeader.NextPayload); err != nil {
+				o.Notify(protocol.ERR_INVALID_SYNTAX)
+				continue
+			}
+			// decrypt later
+			msg.Data = b
+			o.HandleMessage(msg)
+		}
+	}
 }
 
 func main() {
@@ -57,7 +107,9 @@ func main() {
 		if !isTunnelMode {
 			config.IsTransportMode = true
 		}
-		cli := ike.NewInitiator(context.Background(), ids, udp, remoteU.IP, localU.IP, config)
+		cli := ike.NewInitiator(context.Background(), ids, remoteU.IP, localU.IP, config)
+		go runReader(cli, udp)
+
 	loop:
 		for {
 			select {
@@ -73,7 +125,7 @@ func main() {
 				// }
 				break loop
 			case <-cxt.Done():
-				cli.Close()
+				cli.Close(cxt.Err())
 				// drain replies
 				for reply := range cli.Replies() {
 					if err = ike.WritePacket(reply, udp, remoteU, true); err != nil {

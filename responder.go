@@ -12,8 +12,6 @@ import (
 
 type Responder struct {
 	Session
-
-	initIb, initRb []byte
 }
 
 func NewResponder(parent context.Context, ids Identities, remote, local net.IP, initI *Message) (*Responder, error) {

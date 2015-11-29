@@ -1,7 +1,6 @@
 package ike
 
 import (
-	"errors"
 	"net"
 	"time"
 
@@ -38,6 +37,8 @@ type Session struct {
 	fsm *state.Fsm
 
 	msgId uint32
+
+	initIb, initRb []byte
 }
 
 func (o *Session) HandleMessage(m *Message) { o.incoming <- m }
@@ -91,9 +92,9 @@ done:
 	} // for
 }
 
-func (o *Session) Close() {
+func (o *Session) Close(err error) {
 	log.Info("Close Session")
-	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: errors.New("Session Closed")})
+	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
 }
 
 func (o *Session) InstallSa() (s state.StateEvent) {

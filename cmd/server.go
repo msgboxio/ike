@@ -11,6 +11,26 @@ import (
 	"msgbox.io/packets"
 )
 
+func runSession(session *ike.Session, spi uint64, sessions map[uint64]*ike.Session, conn net.Conn, remote net.Addr) {
+	sessions[spi] = session
+	for {
+		select {
+		case reply, ok := <-session.Replies():
+			if !ok {
+				break
+			}
+			// unconnected socker write
+			if err := ike.WritePacket(reply, conn, remote, false); err != nil {
+				log.Error(err)
+			}
+		case <-session.Done():
+			delete(sessions, spi)
+			log.Infof("Finished SA 0x%x", spi)
+			return
+		}
+	}
+}
+
 func main() {
 	var local string
 
@@ -32,7 +52,7 @@ func main() {
 	}
 	log.Infof("socket listening: %s", localU)
 
-	responders := make(map[uint64]*ike.Responder)
+	sessions := make(map[uint64]*ike.Session)
 	for {
 		b, remote, err := ike.ReadPacket(udp, nil, false)
 		if err != nil {
@@ -55,36 +75,18 @@ func main() {
 		msg.Data = b
 		// convert spi to uint64 for map lookup
 		spi, _ := packets.ReadB64(msg.IkeHeader.SpiI, 0)
-		responder, found := responders[spi]
+		session, found := sessions[spi]
 		if !found {
 			remoteU := remote.(*net.UDPAddr)
-			responder, err = ike.NewResponder(cxt, ids, remoteU.IP, localU.IP, msg)
+			responder, err := ike.NewResponder(cxt, ids, remoteU.IP, localU.IP, msg)
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			responders[spi] = responder
-			go func() {
-			loop:
-				for {
-					select {
-					case reply, ok := <-responder.Replies():
-						if !ok {
-							break
-						}
-						// unconnected socker write
-						if err = ike.WritePacket(reply, udp, remote, false); err != nil {
-							log.Error(err)
-						}
-					case <-responder.Done():
-						delete(responders, spi)
-						log.Infof("Finished SA 0x%x", spi)
-						break loop
-					}
-				}
-			}()
+			session = &responder.Session
+			go runSession(session, spi, sessions, udp, remote)
 		}
-		responder.HandleMessage(msg)
+		session.HandleMessage(msg)
 	}
 	cancel(context.Canceled)
 }

@@ -1,7 +1,6 @@
 package ike
 
 import (
-	"bytes"
 	"errors"
 	"net"
 
@@ -12,17 +11,11 @@ import (
 	"msgbox.io/log"
 )
 
-// Initiator will run over a socket
-// until asked to stop,
-// or when it gives up due to failure
 type Initiator struct {
 	Session
-
-	initIb, initRb []byte
-	conn           net.Conn
 }
 
-func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
+func NewInitiator(parent context.Context, ids Identities, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{
@@ -36,7 +29,6 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 			incoming: make(chan *Message, 10),
 			outgoing: make(chan []byte, 10),
 		},
-		conn: conn,
 	}
 
 	var err error
@@ -55,7 +47,6 @@ func NewInitiator(parent context.Context, ids Identities, conn net.Conn, remote,
 	}
 
 	go run(&o.Session)
-	go runReader(o, conn.RemoteAddr())
 
 	o.fsm = state.NewFsm(state.AddTransitions(state.InitiatorTransitions(o), state.CommonTransitions(o)))
 	go o.fsm.Run()
@@ -122,10 +113,10 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
-		o.conn.LocalAddr(),
+		o.local,
 		o.IkeSpiI,
 		o.IkeSpiR,
-		o.conn.RemoteAddr())
+		o.remote)
 	// save Data
 	o.initRb = m.Data
 	s.Event = state.SUCCESS
@@ -195,52 +186,4 @@ func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
 	}
 	s.Event = state.SUCCESS
 	return
-}
-
-func runReader(o *Initiator, remoteAddr net.Addr) {
-done:
-	for {
-		select {
-		case <-o.Done():
-			break done
-		default:
-			b, _, err := ReadPacket(o.conn, remoteAddr, true)
-			if err != nil {
-				log.Error(err)
-				o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
-				break done
-			}
-			// check if client closed the session
-			if o.Err() != nil {
-				break done
-			}
-			// if o.remote != nil && o.remote.String() != from.String() {
-			// 	log.Errorf("from different address: %s", from)
-			// 	continue
-			// }
-			msg := &Message{}
-			if err := msg.DecodeHeader(b); err != nil {
-				o.Notify(protocol.ERR_INVALID_SYNTAX)
-				continue
-			}
-			if len(b) < int(msg.IkeHeader.MsgLength) {
-				log.V(protocol.LOG_CODEC).Info("")
-				o.Notify(protocol.ERR_INVALID_SYNTAX)
-				continue
-			}
-			if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
-				log.Errorf("different initiator Spi %s", spi)
-				o.Notify(protocol.ERR_INVALID_SYNTAX)
-				continue
-			}
-			pld := b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength]
-			if err = msg.DecodePayloads(pld, msg.IkeHeader.NextPayload); err != nil {
-				o.Notify(protocol.ERR_INVALID_SYNTAX)
-				continue
-			}
-			// decrypt later
-			msg.Data = b
-			o.HandleMessage(msg)
-		}
-	}
 }
