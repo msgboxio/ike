@@ -107,7 +107,7 @@ func main() {
 		if !isTunnelMode {
 			config.IsTransportMode = true
 		}
-		cli := ike.NewInitiator(context.Background(), ids, remoteU.IP, localU.IP, config)
+		cli := ike.NewInitiator(context.Background(), ids, remoteU, localU, config)
 		go runReader(cli, udp)
 
 	loop:

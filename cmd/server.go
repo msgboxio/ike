@@ -78,7 +78,7 @@ func main() {
 		session, found := sessions[spi]
 		if !found {
 			remoteU := remote.(*net.UDPAddr)
-			responder, err := ike.NewResponder(cxt, ids, remoteU.IP, localU.IP, msg)
+			responder, err := ike.NewResponder(cxt, ids, remoteU, localU, msg)
 			if err != nil {
 				log.Error(err)
 				continue

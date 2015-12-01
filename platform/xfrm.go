@@ -12,57 +12,20 @@ import (
 	"msgbox.io/netlink"
 )
 
-func makeSaPolicies(reqid int, sa *SaParams) (policies []netlink.XfrmPolicy) {
-	// out
-	out := netlink.XfrmPolicy{
-		Src:      sa.SrcNet,
-		Dst:      sa.DstNet,
-		Dir:      netlink.XFRM_DIR_OUT,
-		Priority: 1795,
-	}
-	mode := netlink.XFRM_MODE_TUNNEL
-	if sa.IsTransportMode {
-		mode = netlink.XFRM_MODE_TRANSPORT
-	}
-	otmpl := netlink.XfrmPolicyTmpl{
-		Src:   sa.Src,
-		Dst:   sa.Dst,
-		Proto: netlink.XFRM_PROTO_ESP,
-		Mode:  mode,
-		Reqid: reqid,
-	}
-	out.Tmpls = append(out.Tmpls, otmpl)
-	policies = append(policies, out)
-	// in
-	in := netlink.XfrmPolicy{
-		Src:      sa.DstNet,
-		Dst:      sa.SrcNet,
-		Dir:      netlink.XFRM_DIR_IN,
-		Priority: 1795,
-	}
-	itmpl := netlink.XfrmPolicyTmpl{
-		Src:   sa.Dst,
-		Dst:   sa.Src,
-		Proto: netlink.XFRM_PROTO_ESP,
-		Mode:  mode,
-		Reqid: reqid,
-	}
-	in.Tmpls = append(in.Tmpls, itmpl)
-	policies = append(policies, in)
-	// fwd ??
-	fwd := netlink.XfrmPolicy{
-		Src:      sa.DstNet,
-		Dst:      sa.SrcNet,
-		Dir:      netlink.XFRM_DIR_FWD,
-		Priority: 1795,
-	}
-	fwd.Tmpls = append(fwd.Tmpls, itmpl)
-	policies = append(policies, fwd)
-	return policies
-}
+// Policy :
+// selector
+// ist of templates
+// index
 
-func makeSelector(src, dst *net.IPNet) (sel *netlink.XfrmSelector) {
-	sel = &netlink.XfrmSelector{}
+// Template:
+// mode,proto,algo:
+// daddr/saddr: tunnel endpoint (ignored for transport mode)
+
+// template & selector are used to match sa
+// sa is applied
+
+func makeSelector(src, dst *net.IPNet) *netlink.XfrmSelector {
+	sel := &netlink.XfrmSelector{}
 	sel.Family = uint16(netlink.GetIPFamily(dst.IP))
 	sel.Daddr.FromIP(dst.IP)
 	sel.Saddr.FromIP(src.IP)
@@ -70,22 +33,62 @@ func makeSelector(src, dst *net.IPNet) (sel *netlink.XfrmSelector) {
 	sel.PrefixlenD = uint8(prefixlenD)
 	prefixlenS, _ := src.Mask.Size()
 	sel.PrefixlenS = uint8(prefixlenS)
-	return
+	return sel
+}
+
+// src & dst are tunnel endpoints; ignored for transport mode
+func makeTemplate(src, dst net.IP, reqId uint32, isTransportMode bool) (templ netlink.XfrmPolicyTmpl) {
+	mode := netlink.XFRM_MODE_TUNNEL
+	if isTransportMode {
+		mode = netlink.XFRM_MODE_TRANSPORT
+	}
+	return netlink.XfrmPolicyTmpl{
+		Src:   src,
+		Dst:   dst,
+		Proto: netlink.XFRM_PROTO_ESP,
+		Mode:  mode,
+		Reqid: reqId,
+	}
+}
+
+func makeSaPolicies(reqId uint32, sa *SaParams) (policies []netlink.XfrmPolicy) {
+	// out
+	out := netlink.XfrmPolicy{
+		Sel:      makeSelector(sa.SrcNet, sa.DstNet),
+		Dir:      netlink.XFRM_DIR_OUT,
+		Priority: 1795,
+	}
+	out.Tmpls = append(out.Tmpls, makeTemplate(sa.Src, sa.Dst, reqId, sa.IsTransportMode))
+	policies = append(policies, out)
+	// in
+	in := netlink.XfrmPolicy{
+		Sel:      makeSelector(sa.DstNet, sa.SrcNet),
+		Dir:      netlink.XFRM_DIR_IN,
+		Priority: 1795,
+	}
+	inTemplate := makeTemplate(sa.Dst, sa.Src, reqId, sa.IsTransportMode)
+	in.Tmpls = append(in.Tmpls, inTemplate)
+	policies = append(policies, in)
+	// fwd ??
+	fwd := netlink.XfrmPolicy{
+		Sel:      makeSelector(sa.DstNet, sa.SrcNet),
+		Dir:      netlink.XFRM_DIR_FWD,
+		Priority: 1795,
+	}
+	fwd.Tmpls = append(fwd.Tmpls, inTemplate)
+	policies = append(policies, fwd)
+	return policies
 }
 
 func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 	mode := netlink.XFRM_MODE_TUNNEL
 	flag := netlink.XFRM_STATE_AF_UNSPEC
-	var selIn, selOut *netlink.XfrmSelector
 	if sa.IsTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
 		flag = 0
-		// selectors
-		selOut = makeSelector(sa.SrcNet, sa.DstNet)
-		selIn = makeSelector(sa.DstNet, sa.SrcNet)
 	}
 	out := netlink.XfrmState{
-		Sel:          selOut,
+		Sel:          makeSelector(sa.SrcNet, sa.DstNet),
 		Src:          sa.Src,
 		Dst:          sa.Dst,
 		Proto:        netlink.XFRM_PROTO_ESP,
@@ -116,7 +119,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 	}
 	states = append(states, out)
 	in := netlink.XfrmState{
-		Sel:          selIn,
+		Sel:          makeSelector(sa.DstNet, sa.SrcNet),
 		Src:          sa.Dst,
 		Dst:          sa.Src,
 		Proto:        netlink.XFRM_PROTO_ESP,

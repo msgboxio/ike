@@ -41,6 +41,16 @@ func IPNetToLastAddress(n *net.IPNet) net.IP {
 	return last
 }
 
+func AddrToIp(addr net.Addr) net.IP {
+	switch ip := addr.(type) {
+	case *net.TCPAddr:
+		return ip.IP
+	case *net.UDPAddr:
+		return ip.IP
+	}
+	return nil
+}
+
 func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
 	b = make([]byte, 1500)
 	n := 0
