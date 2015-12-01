@@ -14,7 +14,7 @@ type Responder struct {
 	Session
 }
 
-func NewResponder(parent context.Context, ids Identities, remote, local net.Addr, initI *Message) (*Responder, error) {
+func NewResponder(parent context.Context, ids Identities, remote, local net.IP, initI *Message) (*Responder, error) {
 	cxt, cancel := context.WithCancel(parent)
 
 	if !initI.EnsurePayloads(InitPayloads) {

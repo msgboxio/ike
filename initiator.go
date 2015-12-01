@@ -15,7 +15,7 @@ type Initiator struct {
 	Session
 }
 
-func NewInitiator(parent context.Context, ids Identities, remote, local net.Addr, cfg *ClientCfg) (o *Initiator) {
+func NewInitiator(parent context.Context, ids Identities, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{

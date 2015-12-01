@@ -26,7 +26,7 @@ type Session struct {
 	tkm *Tkm
 	cfg *ClientCfg
 
-	remote, local net.Addr
+	remote, local net.IP
 
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
@@ -166,8 +166,8 @@ func (o *Session) addSa() (err error) {
 	// print config
 	log.Infof("Installing Child SA: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, srcNet, dstNet)
 	sa := &platform.SaParams{
-		Src:             AddrToIp(o.local),
-		Dst:             AddrToIp(o.remote),
+		Src:             o.local,
+		Dst:             o.remote,
 		SrcPort:         0,
 		DstPort:         0,
 		SrcNet:          srcNet,
@@ -197,8 +197,8 @@ func (o *Session) removeSa() (err error) {
 	srcNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	dstNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
 	sa := &platform.SaParams{
-		Src:             AddrToIp(o.local),
-		Dst:             AddrToIp(o.remote),
+		Src:             o.local,
+		Dst:             o.remote,
 		SrcPort:         0,
 		DstPort:         0,
 		SrcNet:          srcNet,
