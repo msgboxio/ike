@@ -105,7 +105,16 @@ done:
 						}
 					}
 				} // del
-				// TODO - notification & cp
+				if note := msg.Payloads.Get(protocol.PayloadTypeN); note != nil {
+					np := note.(*protocol.NotifyPayload)
+					if err, ok := protocol.GetIkeError(np.NotificationType); ok {
+						log.Errorf("Received Error: %v", err)
+						evt.Event = state.FAIL
+						evt.Data = err
+						o.fsm.Event(evt)
+					}
+				}
+				// TODO cp
 			} // ExchangeType
 		} // select
 	} // for
@@ -133,6 +142,10 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 }
 func (o *Session) Finished() (s state.StateEvent) {
 	close(o.incoming)
+	if len(o.outgoing) > 0 {
+		// let the queue drain
+		time.Sleep(100 * time.Millisecond)
+	}
 	close(o.outgoing)
 	log.Info("Finishing; cancel context")
 	o.cancel(context.Canceled)
@@ -232,6 +245,12 @@ func (o *Session) removeSa() (err error) {
 	} else {
 		log.Info("Removed child SA")
 	}
+	return
+}
+
+func (o *Session) CheckError(m interface{}) (s state.StateEvent) {
+	// evt := m.(state.StateEvent)
+	o.Notify(protocol.ERR_INVALID_SYNTAX)
 	return
 }
 

@@ -42,15 +42,18 @@ func read(p *ipv4.PacketConn) (b []byte, remoteAddr net.Addr, localIP net.IP, er
 		b = b[:n]
 		localIP = cm.Dst
 	}
+	log.V(1).Infof("%d from %v", n, remoteAddr)
 	return
 }
 
 func write(p *ipv4.PacketConn, reply []byte, remoteAddr net.Addr) error {
-	if n, err := p.WriteTo(reply, nil, remoteAddr); err != nil {
+	n, err := p.WriteTo(reply, nil, remoteAddr)
+	if err != nil {
 		return err
 	} else if n != len(reply) {
 		return fmt.Errorf("short write: %v of %v", n, len(reply))
 	}
+	log.V(1).Infof("%d to %v", n, remoteAddr)
 	return nil
 }
 
@@ -159,5 +162,4 @@ func main() {
 		session.HandleMessage(msg)
 	}
 	cancel(context.Canceled)
-
 }

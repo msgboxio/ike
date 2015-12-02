@@ -51,6 +51,7 @@ func ResponderTransitions(h FsmHandler) map[Event][]Transition {
 			Transition{
 				source: STATE_INIT,
 				dest:   STATE_FINISHED,
+				check:  h.CheckError,
 			},
 		},
 	}

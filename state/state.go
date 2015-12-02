@@ -42,4 +42,6 @@ type FsmHandler interface {
 	// checks
 	CheckInit(interface{}) StateEvent
 	CheckAuth(interface{}) StateEvent
+
+	CheckError(interface{}) StateEvent
 }
