@@ -74,6 +74,7 @@ func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
 	}, nil
 }
 
+// Adds esp proposal & selector
 func (cfg *ClientCfg) AddFromAuth(authI *Message) error {
 	var espProp *protocol.SaProposal
 	espSa := authI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)

@@ -2,7 +2,6 @@ package ike
 
 import (
 	"errors"
-	"net"
 
 	"msgbox.io/context"
 	"msgbox.io/ike/protocol"
@@ -14,7 +13,7 @@ type Responder struct {
 	Session
 }
 
-func NewResponder(parent context.Context, ids Identities, remote, local net.IP, initI *Message) (*Responder, error) {
+func NewResponder(parent context.Context, ids Identities, initI *Message) (*Responder, error) {
 	cxt, cancel := context.WithCancel(parent)
 
 	if !initI.EnsurePayloads(InitPayloads) {
@@ -42,8 +41,8 @@ func NewResponder(parent context.Context, ids Identities, remote, local net.IP, 
 		Session: Session{
 			Context:  cxt,
 			cancel:   cancel,
-			remote:   remote,
-			local:    local,
+			remote:   initI.RemoteIp,
+			local:    initI.LocalIp,
 			tkm:      tkm,
 			cfg:      cfg,
 			IkeSpiI:  spiI,

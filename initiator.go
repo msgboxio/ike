@@ -15,15 +15,15 @@ type Initiator struct {
 	Session
 }
 
-func NewInitiator(parent context.Context, ids Identities, remote, local net.IP, cfg *ClientCfg) (o *Initiator) {
+func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *ClientCfg) (o *Initiator) {
 	cxt, cancel := context.WithCancel(parent)
 
 	o = &Initiator{
 		Session: Session{
-			Context:  cxt,
-			cancel:   cancel,
-			remote:   remote,
-			local:    local,
+			Context: cxt,
+			cancel:  cancel,
+			remote:  remote,
+			// local:    local,
 			IkeSpiI:  MakeSpi(),
 			EspSpiI:  MakeSpi()[:4],
 			incoming: make(chan *Message, 10),
@@ -127,7 +127,16 @@ func (o *Initiator) SendAuth() (s state.StateEvent) {
 	// IKE_AUTH
 	o.cfg.ProposalEsp.Spi = o.EspSpiI
 	porp := []*protocol.SaProposal{o.cfg.ProposalEsp}
+	// make sure selectors are present
+	if o.cfg.TsI == nil {
+		// add host based selectors by defaut
+		slen := len(o.local) * 8
+		o.cfg.AddSelector(
+			&net.IPNet{IP: o.local, Mask: net.CIDRMask(slen, slen)},
+			&net.IPNet{IP: o.remote, Mask: net.CIDRMask(slen, slen)})
+	}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
+
 	// tkm.Auth  needs to be called for both initiator & responder from the initator. so
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"net"
 
 	"msgbox.io/ike/protocol"
 	"msgbox.io/log"
@@ -33,9 +34,10 @@ var (
 )
 
 type Message struct {
-	IkeHeader *protocol.IkeHeader
-	Payloads  *protocol.Payloads
-	Data      []byte // used to carry raw bytes
+	IkeHeader         *protocol.IkeHeader
+	Payloads          *protocol.Payloads
+	Data              []byte // used to carry raw bytes
+	LocalIp, RemoteIp net.IP
 }
 
 func (s *Message) DecodeHeader(b []byte) (err error) {

@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"bytes"
 	"net"
 	"time"
 
@@ -41,8 +42,26 @@ type Session struct {
 	initIb, initRb []byte
 }
 
-func (o *Session) HandleMessage(m *Message) { o.incoming <- m }
-func (o *Session) Replies() <-chan []byte   { return o.outgoing }
+func (o *Session) HandleMessage(m *Message) {
+	// check spis
+	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
+		log.Errorf("different initiator Spi %s", spi)
+		return
+	}
+	// Dont check Responder SPI. initiator IKE_INTI does not have it
+	if !bytes.Equal(o.remote, m.RemoteIp) {
+		log.Errorf("different remote IP %v vs %v", o.remote, m.RemoteIp)
+		return
+	}
+	if o.local == nil {
+		o.local = m.LocalIp
+	} else if !bytes.Equal(o.local, m.LocalIp) {
+		log.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
+		return
+	}
+	o.incoming <- m
+}
+func (o *Session) Replies() <-chan []byte { return o.outgoing }
 
 func run(o *Session) {
 done:
