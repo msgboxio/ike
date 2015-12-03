@@ -182,11 +182,11 @@ func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
 		return
 	}
 	// get peer spi
-	peerSpi, err := getPeerSpi(m, protocol.ESP)
+	espSpiR, err := getPeerSpi(m, protocol.ESP)
 	if err != nil {
 		return
 	}
-	o.EspSpiR = append([]byte{}, peerSpi...)
+	o.EspSpiR = append([]byte{}, espSpiR...)
 	// final check
 	if err := o.checkSa(m); err != nil {
 		log.Error(err)

@@ -32,24 +32,25 @@ func NewResponder(parent context.Context, ids Identities, initI *Message) (*Resp
 		return nil, err
 	}
 	// TODO - check ike proposal
-	spiI, err := getPeerSpi(initI, protocol.IKE)
+	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		cancel(err)
 		return nil, err
 	}
 	o := &Responder{
 		Session: Session{
-			Context:  cxt,
-			cancel:   cancel,
-			remote:   initI.RemoteIp,
-			local:    initI.LocalIp,
-			tkm:      tkm,
-			cfg:      cfg,
-			IkeSpiI:  spiI,
-			IkeSpiR:  MakeSpi(),
-			EspSpiR:  MakeSpi()[:4],
-			incoming: make(chan *Message, 10),
-			outgoing: make(chan []byte, 10),
+			Context:     cxt,
+			cancel:      cancel,
+			isResponder: true,
+			remote:      initI.RemoteIp,
+			local:       initI.LocalIp,
+			tkm:         tkm,
+			cfg:         cfg,
+			IkeSpiI:     ikeSpiI,
+			IkeSpiR:     MakeSpi(),
+			EspSpiR:     MakeSpi()[:4],
+			incoming:    make(chan *Message, 10),
+			outgoing:    make(chan []byte, 10),
 		},
 	}
 	go run(&o.Session)
@@ -58,6 +59,15 @@ func NewResponder(parent context.Context, ids Identities, initI *Message) (*Resp
 	go o.fsm.Run()
 
 	return o, nil
+}
+
+func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
+	s.Event = state.INIT_FAIL
+	msg := m.(*Message)
+	o.initIb = msg.Data
+	// TODO Check message
+	s.Event = state.SUCCESS
+	return
 }
 
 func (o *Responder) SendInit() (s state.StateEvent) {
@@ -92,34 +102,6 @@ func (o *Responder) SendInit() (s state.StateEvent) {
 	return
 }
 
-func (o *Responder) SendAuth() (s state.StateEvent) {
-	// responder's signed octet
-	// initR | Ni | prf(sk_pr | IDr )
-	o.cfg.ProposalEsp.Spi = o.EspSpiR
-	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
-	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
-	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
-	// encode & send
-	authRb, err := authR.Encode(o.tkm)
-	if err != nil {
-		log.Error(err)
-		s.Event = state.FAIL
-		s.Data = err
-		return
-	}
-	o.outgoing <- authRb
-	return
-}
-
-func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
-	s.Event = state.INIT_FAIL
-	msg := m.(*Message)
-	o.initIb = msg.Data
-	// TODO Check message
-	s.Event = state.SUCCESS
-	return
-}
-
 func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 	// initialize return
 	s.Event = state.AUTH_FAIL
@@ -145,13 +127,13 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 		return
 	}
 	// get peer spi
-	peerSpi, err := getPeerSpi(msg, protocol.ESP)
+	espSpiI, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {
 		log.Error(err)
 		s.Data = err
 		return
 	}
-	o.EspSpiI = append([]byte{}, peerSpi...)
+	o.EspSpiI = append([]byte{}, espSpiI...)
 	// final check
 	if err := o.checkSa(msg); err != nil {
 		log.Error(err)
@@ -168,5 +150,24 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 	s.Event = state.SUCCESS
 	// move to MATURE state
 	o.fsm.Event(state.StateEvent{Event: state.SUCCESS})
+	return
+}
+
+func (o *Responder) SendAuth() (s state.StateEvent) {
+	// responder's signed octet
+	// initR | Ni | prf(sk_pr | IDr )
+	o.cfg.ProposalEsp.Spi = o.EspSpiR
+	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
+	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
+	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
+	// encode & send
+	authRb, err := authR.Encode(o.tkm)
+	if err != nil {
+		log.Error(err)
+		s.Event = state.FAIL
+		s.Data = err
+		return
+	}
+	o.outgoing <- authRb
 	return
 }

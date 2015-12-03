@@ -27,8 +27,8 @@ func getTransforms(pr []*protocol.SaProposal, proto protocol.ProtocolId) []*prot
 }
 
 func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err error) {
-	// first exchange contains peer spi
-	if m.IkeHeader.MsgId == 0 {
+	// first exchange contains peer spi // TODO - MAJOR hack
+	if m.IkeHeader.MsgId == 0 && (pid == protocol.IKE) {
 		peerSpi = m.IkeHeader.SpiI
 		return
 	}

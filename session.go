@@ -24,6 +24,8 @@ type Session struct {
 	context.Context
 	cancel context.CancelFunc
 
+	isResponder bool
+
 	tkm *Tkm
 	cfg *ClientCfg
 
@@ -53,6 +55,7 @@ func (o *Session) HandleMessage(m *Message) {
 		log.Errorf("different remote IP %v vs %v", o.remote, m.RemoteIp)
 		return
 	}
+	// local IP is not set initially for initiator
 	if o.local == nil {
 		o.local = m.LocalIp
 	} else if !bytes.Equal(o.local, m.LocalIp) {
@@ -193,17 +196,17 @@ func (o *Session) addSa() (err error) {
 	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
 	tsI := o.cfg.TsI[0]
 	tsR := o.cfg.TsR[0]
-	srcNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
-	dstNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
+	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
+	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
 	// print config
-	log.Infof("Installing Child SA: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, srcNet, dstNet)
+	log.Infof("Installing Child SA: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, iNet, rNet)
 	sa := &platform.SaParams{
 		Src:             o.local,
 		Dst:             o.remote,
 		SrcPort:         0,
 		DstPort:         0,
-		SrcNet:          srcNet,
-		DstNet:          dstNet,
+		SrcNet:          iNet,
+		DstNet:          rNet,
 		EspEi:           espEi,
 		EspAi:           espAi,
 		EspEr:           espEr,
@@ -211,6 +214,10 @@ func (o *Session) addSa() (err error) {
 		SpiI:            int(SpiI),
 		SpiR:            int(SpiR),
 		IsTransportMode: o.cfg.IsTransportMode,
+	}
+	if o.isResponder {
+		sa.SrcNet = rNet
+		sa.DstNet = iNet
 	}
 	if err = platform.InstallChildSa(sa); err != nil {
 		log.Error("Error installing Child SA: %s", err)
@@ -226,18 +233,22 @@ func (o *Session) removeSa() (err error) {
 	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
 	tsI := o.cfg.TsI[0]
 	tsR := o.cfg.TsR[0]
-	srcNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
-	dstNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
+	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
+	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
 	sa := &platform.SaParams{
 		Src:             o.local,
 		Dst:             o.remote,
 		SrcPort:         0,
 		DstPort:         0,
-		SrcNet:          srcNet,
-		DstNet:          dstNet,
+		SrcNet:          iNet,
+		DstNet:          rNet,
 		SpiI:            int(SpiI),
 		SpiR:            int(SpiR),
 		IsTransportMode: o.cfg.IsTransportMode,
+	}
+	if o.isResponder {
+		sa.SrcNet = rNet
+		sa.DstNet = iNet
 	}
 	if err = platform.RemoveChildSa(sa); err != nil {
 		log.Error("Error removing child SA: %s", err)

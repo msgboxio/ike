@@ -41,6 +41,8 @@ func makeTemplate(src, dst net.IP, reqId uint32, isTransportMode bool) (templ ne
 	mode := netlink.XFRM_MODE_TUNNEL
 	if isTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
+		src = net.IPv4zero.To4()
+		dst = net.IPv4zero.To4()
 	}
 	return netlink.XfrmPolicyTmpl{
 		Src:   src,
@@ -69,14 +71,16 @@ func makeSaPolicies(reqId uint32, sa *SaParams) (policies []netlink.XfrmPolicy) 
 	inTemplate := makeTemplate(sa.Dst, sa.Src, reqId, sa.IsTransportMode)
 	in.Tmpls = append(in.Tmpls, inTemplate)
 	policies = append(policies, in)
-	// fwd ??
-	fwd := netlink.XfrmPolicy{
-		Sel:      makeSelector(sa.DstNet, sa.SrcNet),
-		Dir:      netlink.XFRM_DIR_FWD,
-		Priority: 1795,
+	if !sa.IsTransportMode {
+		// fwd ??
+		fwd := netlink.XfrmPolicy{
+			Sel:      makeSelector(sa.DstNet, sa.SrcNet),
+			Dir:      netlink.XFRM_DIR_FWD,
+			Priority: 1795,
+		}
+		fwd.Tmpls = append(fwd.Tmpls, inTemplate)
+		policies = append(policies, fwd)
 	}
-	fwd.Tmpls = append(fwd.Tmpls, inTemplate)
-	policies = append(policies, fwd)
 	return policies
 }
 
