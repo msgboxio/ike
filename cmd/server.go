@@ -1,20 +1,33 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"net"
+	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
 	"golang.org/x/net/internal/nettest"
 	"golang.org/x/net/ipv4"
 
 	"msgbox.io/context"
 	"msgbox.io/ike"
+	"msgbox.io/ike/platform"
 	"msgbox.io/ike/protocol"
 	"msgbox.io/log"
 	"msgbox.io/packets"
 )
+
+func waitForSignal(cancel context.CancelFunc) {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	sig := <-c
+	// sig is a ^C, handle it
+	cancel(errors.New("received signal: " + sig.String()))
+}
 
 func listen(localString string) (p *ipv4.PacketConn, err error) {
 	udp, err := net.ListenPacket("udp4", localString)
@@ -88,6 +101,7 @@ func main() {
 	flag.Parse()
 
 	cxt, cancel := context.WithCancel(context.Background())
+	go waitForSignal(cancel)
 
 	ids := ike.PskIdentities{
 		Primary: "ak@msgbox.io",
@@ -98,8 +112,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer p.Close()
 	log.Infof("socket listening: %s", p.Conn.LocalAddr())
+
+	if err := platform.SetSocketBypas(p.Conn, syscall.AF_INET); err != nil {
+		log.Fatal(err)
+	}
 
 	sessions := make(map[uint64]*ike.Session)
 
@@ -134,11 +151,25 @@ func main() {
 		go runSession(spi, &initiator.Session, remoteAddr)
 	}
 
+	go func() {
+		// wait for app shutdown
+		<-cxt.Done()
+		for _, session := range sessions {
+			// reply on this to drain replies
+			session.Close(cxt.Err())
+			// wait until client is done
+			<-session.Done()
+		}
+		p.Close()
+	}()
+
 	for {
 		b, remoteAddr, localIP, err := read(p)
 		if err != nil {
 			log.Fatal(err)
-			return
+			// ask app to close
+			cancel(err)
+			break
 		}
 		msg, err := decode(b)
 		if err != nil {
@@ -151,7 +182,7 @@ func main() {
 		spi, _ := packets.ReadB64(msg.IkeHeader.SpiI, 0)
 		session, found := sessions[spi]
 		if !found {
-			responder, err := ike.NewResponder(cxt, ids, msg)
+			responder, err := ike.NewResponder(context.Background(), ids, msg)
 			if err != nil {
 				log.Error(err)
 				continue
@@ -161,5 +192,7 @@ func main() {
 		}
 		session.HandleMessage(msg)
 	}
-	cancel(context.Canceled)
+
+	<-cxt.Done()
+	fmt.Printf("shutdown: %v\n", cxt.Err())
 }

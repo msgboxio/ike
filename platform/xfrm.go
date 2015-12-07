@@ -3,9 +3,13 @@
 package platform
 
 import (
+	"errors"
 	"fmt"
 	"net"
+	"os"
+	"reflect"
 	"syscall"
+	"unsafe"
 
 	"msgbox.io/context"
 	"msgbox.io/log"
@@ -267,5 +271,47 @@ func runReader(cxt context.Context, cancel context.CancelFunc, nsock *netlink.Ne
 			}
 		}
 	}
+}
+
+// fd
+func sysfd(c net.Conn) (int, error) {
+	cv := reflect.ValueOf(c)
+	switch ce := cv.Elem(); ce.Kind() {
+	case reflect.Struct:
+		netfd := ce.FieldByName("conn").FieldByName("fd")
+		switch fe := netfd.Elem(); fe.Kind() {
+		case reflect.Struct:
+			fd := fe.FieldByName("sysfd")
+			return int(fd.Int()), nil
+		}
+	}
+	return 0, errors.New("invalid conn type")
+}
+
+// bypass
+const XFRM_POLICY_ALLOW = 0
+
+func setsockopt(fd, level, name int, v unsafe.Pointer, l int) error {
+	if _, _, errno := syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(fd), uintptr(level), uintptr(name), uintptr(v), uintptr(l), 0); errno != 0 {
+		return error(errno)
+	}
+	return nil
+}
+
+func SetSocketBypas(conn net.Conn, family uint16) error {
+	fd, err := sysfd(conn)
+	if err != nil {
+		return err
+	}
+	policy := netlink.XfrmUserpolicyInfo{}
+	policy.Action = XFRM_POLICY_ALLOW
+	policy.Sel.Family = family
+	sol := syscall.SOL_IP
+	ipsec_policy := syscall.IP_XFRM_POLICY
+	if family == syscall.AF_INET6 {
+		sol = syscall.SOL_IPV6
+		ipsec_policy = syscall.IPV6_XFRM_POLICY
+	}
+	return os.NewSyscallError("setsockopt", setsockopt(fd, sol, ipsec_policy, unsafe.Pointer(&policy), policy.Len()))
 
 }
