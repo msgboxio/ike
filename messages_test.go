@@ -1,4 +1,4 @@
-package protocol
+package ike
 
 import (
 	"bytes"
@@ -6,11 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"net"
+	"io/ioutil"
 	"testing"
 
 	"math/big"
 
+	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
@@ -45,7 +46,7 @@ f2 c2 98 98 2b fd 26 87  4c 57 b5 1f 38 dc 7f fc
 6b f8 a4 cb 91 33 45 aa  aa a8 33 ff b9 33 51 aa
 b6 7a f6 83 00 00 00 24  63 a0 2b 62 47 56 80 de
 1c 50 af 97 a8 2a 7a bd  8d 46 4d 95 11 f8 7a c8
-6a 3e 1e 42 17 40 5a fa                         
+6a 3e 1e 42 17 40 5a fa
 `
 var auth_psk = `
 92 8f 3f 58 1f 05 a5 63  00 00 00 00 00 00 00 00
@@ -123,6 +124,13 @@ func testDecode(dec []byte, tkm *Tkm, t *testing.T) *Message {
 	return msg
 }
 
+func TestCorpus(t *testing.T) {
+	dec := packets.Hexit(sa_init).Bytes()
+	if err := ioutil.WriteFile("protocol/corpus/sa_init", dec, 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestDecode(t *testing.T) {
 	dec := packets.Hexit(sa_init).Bytes()
 
@@ -134,30 +142,32 @@ func TestDecode(t *testing.T) {
 		t.Fatal(3)
 	}
 
-	no := msg.Payloads.Get(PayloadTypeNonce).(*NoncePayload)
+	no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 
-	transforms := []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
-		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&SaTransform{Transform: _MODP_2048},
-		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
+	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048
+	suite, _ := crypto.NewCipherSuite(transforms)
+
+	ids := PskIdentities{
+		Primary: "ak@msgbox.io",
+		Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 	}
-	suite, _ := NewCipherSuite(transforms)
+
 	tkm := &Tkm{
 		suite:       suite,
 		isInitiator: false,
+		ids:         ids,
 		Ni:          no.Nonce,
 		Nr:          no.Nonce,
 		DhShared:    dhShared,
 	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
-	tkm.IsaCreate(spiI, []byte{})
-	tkm.SetSecret([]byte("ak@msgbox.io"), []byte("foo"))
+	tkm.IsaCreate(spiI, []byte{}, []byte{})
 
 	dec = packets.Hexit(auth_psk).Bytes()
 	testDecode(dec, tkm, t)
 }
 
+/*
 func TestResp(t *testing.T) {
 	local, _ := net.ResolveUDPAddr("udp4", "0.0.0.0:5000")
 	udp, err := net.ListenUDP("udp4", local)
@@ -211,3 +221,4 @@ func TestResp(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+*/

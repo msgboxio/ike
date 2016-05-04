@@ -7,8 +7,8 @@ import (
 	"math/big"
 	"net"
 
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 )
 
 var (
@@ -42,7 +42,7 @@ type Message struct {
 }
 
 func (s *Message) DecodeHeader(b []byte) (err error) {
-	s.IkeHeader, err = protocol.DecodeIkeHeader(b[:protocol.IKE_HEADER_LEN])
+	s.IkeHeader, err = protocol.DecodeIkeHeader(b)
 	return
 }
 

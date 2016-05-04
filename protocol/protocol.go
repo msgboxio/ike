@@ -534,7 +534,7 @@ func (prop *SaProposal) IsSpiSizeCorrect(spiSize int) bool {
 
 func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 	if len(b) < MIN_LEN_PROPOSAL {
-		log.V(LOG_CODEC_ERR).Info("")
+		log.V(LOG_CODEC_ERR).Infof("proposal too small %d < %d", len(b), MIN_LEN_PROPOSAL)
 		err = ERR_INVALID_SYNTAX
 		return
 	}
@@ -543,29 +543,31 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 		prop.IsLast = true
 	}
 	propLength, _ := packets.ReadB16(b, 2)
-	if len(b) < int(propLength) {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
-	}
-	if int(propLength) < MIN_LEN_PROPOSAL {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
-	}
 	prop.Number, _ = packets.ReadB8(b, 4)
 	pId, _ := packets.ReadB8(b, 5)
 	prop.ProtocolId = ProtocolId(pId)
 	spiSize, _ := packets.ReadB8(b, 6)
+	numTransforms, _ := packets.ReadB8(b, 7)
 	// variable parts
-	if len(b) < MIN_LEN_PROPOSAL+int(spiSize) {
-		log.V(LOG_CODEC_ERR).Info("")
+	// spi
+	used = MIN_LEN_PROPOSAL + int(spiSize)
+	if len(b) < used {
+		log.V(LOG_CODEC_ERR).Infof("proposal length too small %d < %d", len(b), used)
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	numTransforms, _ := packets.ReadB8(b, 7)
-	used = MIN_LEN_PROPOSAL + int(spiSize)
-	prop.Spi = append([]byte{}, b[8:used]...)
+	prop.Spi = append([]byte{}, b[MIN_LEN_PROPOSAL:used]...)
+	// proposal
+	if int(propLength) < MIN_LEN_PROPOSAL {
+		log.V(LOG_CODEC_ERR).Infof("proposal length too small %d < %d", propLength, MIN_LEN_PROPOSAL)
+		err = ERR_INVALID_SYNTAX
+		return
+	}
+	if len(b) < used+int(propLength) {
+		log.V(LOG_CODEC_ERR).Infof("invalid length of proposal %d < %d", len(b), used+int(propLength))
+		err = ERR_INVALID_SYNTAX
+		return
+	}
 	b = b[used:int(propLength)]
 	for len(b) > 0 {
 		trans, usedT, errT := decodeTransform(b)
@@ -1378,6 +1380,10 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err 
 			payload = &ConfigurationPayload{PayloadHeader: pHeader}
 		case PayloadTypeEAP:
 			payload = &EapPayload{PayloadHeader: pHeader}
+		default:
+			log.V(LOG_CODEC_ERR).Infof("Invalid Payload Type received: 0x%x", nextPayload)
+			err = ERR_INVALID_SYNTAX
+			return
 		}
 		pbuf := b[PAYLOAD_HEADER_LENGTH:pHeader.PayloadLength]
 		if err = payload.Decode(pbuf); err != nil {
