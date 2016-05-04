@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 )
 
 type Cipher interface {

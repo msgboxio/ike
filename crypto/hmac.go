@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"hash"
 
-	"msgbox.io/ike/protocol"
+	"github.com/msgboxio/ike/protocol"
 )
 
 type macFunc func(key, data []byte) []byte

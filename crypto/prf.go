@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"hash"
 
-	"msgbox.io/ike/protocol"
+	"github.com/msgboxio/ike/protocol"
 )
 
 type prfFunc func(key, data []byte) []byte

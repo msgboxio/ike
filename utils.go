@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	"msgbox.io/ike/crypto"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
+	"github.com/msgboxio/ike/crypto"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 )
 
 func MakeSpi() (ret protocol.Spi) {

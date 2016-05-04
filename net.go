@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"net"
 
-	"msgbox.io/log"
+	"github.com/msgboxio/log"
 )
 
 func FirstLastAddressToIPNet(start, end net.IP) *net.IPNet {

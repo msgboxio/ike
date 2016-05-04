@@ -1,27 +1,40 @@
 package ike
 
 import (
-	"errors"
 	"net"
 
-	"msgbox.io/context"
-	"msgbox.io/ike/crypto"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/ike/state"
-	"msgbox.io/log"
+	"github.com/msgboxio/context"
+	"github.com/msgboxio/ike/crypto"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
+	"github.com/msgboxio/log"
 )
 
 type Initiator struct {
 	Session
 }
 
-func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *ClientCfg) (o *Initiator) {
+func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *ClientCfg) *Initiator {
+	suite, err := crypto.NewCipherSuite(cfg.ProposalIke.Transforms)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	var tkm *Tkm
+	if tkm, err = NewTkmInitiator(suite, ids); err != nil {
+		log.Error(err)
+		return nil
+	}
+
 	cxt, cancel := context.WithCancel(parent)
 
-	o = &Initiator{
+	o := &Initiator{
 		Session: Session{
 			Context: cxt,
 			cancel:  cancel,
+			tkm:     tkm,
+			cfg:     cfg,
 			remote:  remote,
 			// local:    local,
 			IkeSpiI:  MakeSpi(),
@@ -30,28 +43,12 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Cl
 			outgoing: make(chan []byte, 10),
 		},
 	}
-
-	var err error
-
-	o.cfg = cfg
-	suite, err := crypto.NewCipherSuite(o.cfg.ProposalIke.Transforms)
-	if err != nil {
-		log.Error(err)
-		cancel(err)
-		return
-	}
-	if o.tkm, err = NewTkmInitiator(suite, ids); err != nil {
-		log.Error(err)
-		cancel(err)
-		return
-	}
-
 	go run(&o.Session)
 
 	o.fsm = state.NewFsm(state.AddTransitions(state.InitiatorTransitions(o), state.CommonTransitions(o)))
 	go o.fsm.Run()
 	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
-	return
+	return o
 }
 
 func (o *Initiator) SendInit() (s state.StateEvent) {
@@ -91,8 +88,7 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	// find traffic selectors
 	// send IKE_AUTH req
-	if !m.EnsurePayloads(InitPayloads) {
-		err := errors.New("essential payload is missing from init message")
+	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		log.Error(err)
 		s.Data = err
 		return
@@ -163,14 +159,14 @@ func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
 		s.Data = err
 		return
 	}
-	if !m.EnsurePayloads(AuthRPayloads) {
+	if err := m.EnsurePayloads(AuthRPayloads); err != nil {
+		// notification is recoverable
 		for _, n := range m.Payloads.GetNotifications() {
 			if err, ok := protocol.GetIkeError(n.NotificationType); ok {
 				s.Data = err
 				return
 			}
 		}
-		err := errors.New("essential payload is missing from auth message")
 		log.Error(err)
 		s.Data = err
 		return

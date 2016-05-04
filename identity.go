@@ -1,6 +1,6 @@
 package ike
 
-import "msgbox.io/ike/protocol"
+import "github.com/msgboxio/ike/protocol"
 
 type Identities interface {
 	ForAuthentication(protocol.IdType) []byte

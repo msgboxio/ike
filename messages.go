@@ -3,11 +3,12 @@ package ike
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"net"
 
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/ike/protocol"
 )
 
 var (
@@ -78,7 +79,7 @@ func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
 	return
 }
 
-func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) bool {
+func (msg *Message) ensurePayloads(payloadTypes []protocol.PayloadType) bool {
 	mp := msg.Payloads
 	for _, pt := range payloadTypes {
 		if mp.Get(pt) == nil {
@@ -86,6 +87,13 @@ func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) bool {
 		}
 	}
 	return true
+}
+
+func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
+	if !msg.ensurePayloads(payloadTypes) {
+		return fmt.Errorf("essential payload is missing from %s message", msg.IkeHeader.ExchangeType)
+	}
+	return nil
 }
 
 type initParams struct {

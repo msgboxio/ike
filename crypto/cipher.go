@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 
 	"github.com/dgryski/go-camellia"
 )

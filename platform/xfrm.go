@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"unsafe"
 
-	"msgbox.io/context"
-	"msgbox.io/log"
+	"github.com/msgboxio/context"
+	"github.com/msgboxio/log"
 	"msgbox.io/netlink"
 )
 
@@ -226,7 +226,7 @@ func RemoveChildSa(sa *SaParams) error {
 }
 
 func Listen(parent context.Context) context.Context {
-	cxt, cancel := context.WithCancel(context.Background())
+	cxt, cancel := context.WithCancel(parent)
 	nsock, err := netlink.Subscribe(syscall.NETLINK_XFRM, []uint32{
 	// XFRMNLGRP(ACQUIRE),
 	// XFRMNLGRP(EXPIRE),
@@ -238,13 +238,12 @@ func Listen(parent context.Context) context.Context {
 		return cxt
 	}
 	go runReader(cxt, cancel, nsock)
-	go waitForCancel(parent, cxt, nsock)
+	go waitForCancel(cxt, nsock)
 	return cxt
 }
 
-func waitForCancel(parent, cxt context.Context, nsock *netlink.NetlinkSocket) {
+func waitForCancel(cxt context.Context, nsock *netlink.NetlinkSocket) {
 	select {
-	case <-parent.Done():
 	case <-cxt.Done():
 	}
 	nsock.Close()

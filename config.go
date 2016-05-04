@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net"
 
-	"msgbox.io/ike/protocol"
+	"github.com/msgboxio/ike/protocol"
 )
 
 type ClientCfg struct {

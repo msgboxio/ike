@@ -13,12 +13,12 @@ import (
 	"golang.org/x/net/internal/nettest"
 	"golang.org/x/net/ipv4"
 
-	"msgbox.io/context"
-	"msgbox.io/ike"
-	"msgbox.io/ike/platform"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
-	"msgbox.io/packets"
+	"github.com/msgboxio/context"
+	"github.com/msgboxio/ike"
+	"github.com/msgboxio/ike/platform"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
 )
 
 func waitForSignal(cancel context.CancelFunc) {

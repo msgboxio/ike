@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"math/big"
 
-	"msgbox.io/ike/crypto"
-	"msgbox.io/ike/protocol"
+	"github.com/msgboxio/ike/crypto"
+	"github.com/msgboxio/ike/protocol"
 )
 
 // ike-seperation.pdf

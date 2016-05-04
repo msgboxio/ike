@@ -1,6 +1,6 @@
 package state
 
-import "msgbox.io/log"
+import "github.com/msgboxio/log"
 
 type Event uint32
 type State uint32

@@ -5,12 +5,12 @@ import (
 	"net"
 	"time"
 
-	"msgbox.io/context"
-	"msgbox.io/ike/platform"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/ike/state"
-	"msgbox.io/log"
-	"msgbox.io/packets"
+	"github.com/msgboxio/context"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
+	"github.com/msgboxio/ike/platform"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
 )
 
 type stateEvents int

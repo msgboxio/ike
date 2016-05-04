@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"sync"
 
-	"msgbox.io/ike/protocol"
+	"github.com/msgboxio/ike/protocol"
 )
 
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.

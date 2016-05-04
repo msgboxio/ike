@@ -6,9 +6,9 @@ import (
 	"math/big"
 	"testing"
 
-	"msgbox.io/ike/crypto"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/packets"
+	"github.com/msgboxio/ike/crypto"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/packets"
 )
 
 func TestTkm(t *testing.T) {

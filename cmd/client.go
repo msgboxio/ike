@@ -9,11 +9,11 @@ import (
 	"os"
 	"os/signal"
 
-	"msgbox.io/context"
-	"msgbox.io/ike"
-	"msgbox.io/ike/ike_error"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
+	"github.com/msgboxio/context"
+	"github.com/msgboxio/ike"
+	"github.com/msgboxio/ike/ike_error"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 )
 
 func waitForSignal(cancel context.CancelFunc) {

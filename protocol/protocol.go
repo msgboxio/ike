@@ -7,8 +7,8 @@ import (
 	"net"
 	"time"
 
-	"msgbox.io/log"
-	"msgbox.io/packets"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
 )
 
 const (

@@ -3,10 +3,10 @@ package ike
 import (
 	"errors"
 
-	"msgbox.io/context"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/ike/state"
-	"msgbox.io/log"
+	"github.com/msgboxio/context"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
 )
 
 type Responder struct {
@@ -14,29 +14,23 @@ type Responder struct {
 }
 
 func NewResponder(parent context.Context, ids Identities, initI *Message) (*Responder, error) {
-	cxt, cancel := context.WithCancel(parent)
-
-	if !initI.EnsurePayloads(InitPayloads) {
-		err := errors.New("essential payload is missing from init message")
-		cancel(err)
+	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
 	tkm, err := newTkmFromInit(initI, ids)
 	if err != nil {
-		cancel(err)
 		return nil, err
 	}
 	cfg, err := NewClientConfigFromInit(initI)
 	if err != nil {
-		cancel(err)
 		return nil, err
 	}
 	// TODO - check ike proposal
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
-		cancel(err)
 		return nil, err
 	}
+	cxt, cancel := context.WithCancel(parent)
 	o := &Responder{
 		Session: Session{
 			Context:     cxt,
@@ -113,8 +107,7 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 		s.Data = err
 		return
 	}
-	if !msg.EnsurePayloads(AuthIPayloads) {
-		err := errors.New("essential payload is missing from auth message")
+	if err := msg.EnsurePayloads(AuthIPayloads); err != nil {
 		log.Error(err)
 		s.Data = err
 		return

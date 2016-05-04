@@ -11,9 +11,9 @@ import (
 
 	"math/big"
 
-	"msgbox.io/ike/protocol"
-	"msgbox.io/log"
-	"msgbox.io/packets"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
 
 	"code.google.com/p/gopacket/bytediff"
 )

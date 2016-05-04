@@ -1,12 +1,10 @@
 package ike
 
 import (
-	"errors"
-
-	"msgbox.io/ike/crypto"
-	"msgbox.io/ike/protocol"
-	"msgbox.io/ike/state"
-	"msgbox.io/log"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/ike/crypto"
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
 )
 
 // rekeying can be started by either end
@@ -69,8 +67,7 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		log.V(1).Info("received CREATE_CHILD_SA for child sa")
 		return // TODO
 	}
-	if !m.EnsurePayloads(InitPayloads) {
-		err := errors.New("essential payload is missing from Ike Sa rekey message")
+	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		log.Error(err)
 		return
 	}
