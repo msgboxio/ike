@@ -20,7 +20,7 @@ func (psk PskIdentities) ForAuthentication(idType protocol.IdType) []byte {
 }
 
 func (psk PskIdentities) AuthData(id []byte, method protocol.AuthMethod) []byte {
-	if method != protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE {
+	if method != protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
 		return nil
 	}
 	if d, ok := psk.Ids[string(id)]; ok {

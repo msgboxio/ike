@@ -194,8 +194,8 @@ func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, ts
 	// initR | Ni | prf(sk_pr | IDr )
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		AuthMethod:    protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE,
-		Data:          tkm.Auth(realMessage, iDi, protocol.SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
+		AuthMethod:    protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE,
+		Data:          tkm.Auth(realMessage, iDi, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},

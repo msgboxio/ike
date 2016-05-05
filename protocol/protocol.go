@@ -495,9 +495,9 @@ func (s *CertRequestPayload) Decode(b []byte) (err error) {
 type AuthMethod uint8
 
 const (
-	RSA_DIGITAL_SIGNATURE             AuthMethod = 1
-	SHARED_KEY_MESSAGE_INTEGRITY_CODE AuthMethod = 2
-	DSS_DIGITAL_SIGNATURE             AuthMethod = 3
+	AUTH_RSA_DIGITAL_SIGNATURE             AuthMethod = 1
+	AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE AuthMethod = 2
+	AUTH_DSS_DIGITAL_SIGNATURE             AuthMethod = 3
 )
 
 type AuthPayload struct {
