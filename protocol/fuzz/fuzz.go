@@ -23,7 +23,7 @@ func Fuzz(data []byte) int {
 	if enc := hdr.Encode(); !bytes.Equal(enc, data[:protocol.IKE_HEADER_LEN]) {
 		panic("unequal header")
 	}
-	if enc := protocol.EncodePayloads(payloads); !bytes.Equal(enc, plData) {
+	if pld := protocol.EncodePayloads(payloads); !bytes.Equal(pld, plData[:len(pld)]) {
 		panic("unequal payload")
 	}
 	return 1

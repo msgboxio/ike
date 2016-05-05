@@ -568,7 +568,7 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 		err = ERR_INVALID_SYNTAX
 		return
 	}
-	b = b[used:int(propLength)]
+	b = b[used : used+int(propLength)]
 	for len(b) > 0 {
 		trans, usedT, errT := decodeTransform(b)
 		if errT != nil {
@@ -1333,7 +1333,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err 
 	payloads = MakePayloads()
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
-			log.V(LOG_CODEC_ERR).Info("")
+			log.V(LOG_CODEC_ERR).Info("payload is too small, %d < %d", len(b), PAYLOAD_HEADER_LENGTH)
 			err = ERR_INVALID_SYNTAX
 			return
 		}
@@ -1341,8 +1341,9 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err 
 		if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
 			return
 		}
-		if len(b) < int(pHeader.PayloadLength) {
-			log.V(LOG_CODEC_ERR).Info("")
+		if (len(b) < int(pHeader.PayloadLength)) ||
+			(int(pHeader.PayloadLength) < PAYLOAD_HEADER_LENGTH) {
+			log.V(LOG_CODEC_ERR).Info("incorrect payload length in payload header")
 			err = ERR_INVALID_SYNTAX
 			return
 		}
