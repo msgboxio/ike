@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
+	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
 )
 
 type stateEvents int
@@ -51,14 +51,14 @@ func (o *Session) HandleMessage(m *Message) {
 		return
 	}
 	// Dont check Responder SPI. initiator IKE_INTI does not have it
-	if !bytes.Equal(o.remote, m.RemoteIp) {
+	if !o.remote.Equal(m.RemoteIp) {
 		log.Errorf("different remote IP %v vs %v", o.remote, m.RemoteIp)
 		return
 	}
 	// local IP is not set initially for initiator
 	if o.local == nil {
 		o.local = m.LocalIp
-	} else if !bytes.Equal(o.local, m.LocalIp) {
+	} else if !o.local.Equal(m.LocalIp) {
 		log.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
 		return
 	}

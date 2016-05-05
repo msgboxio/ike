@@ -25,6 +25,8 @@ func waitForSignal(cancel context.CancelFunc) {
 }
 
 func runReader(o *ike.Initiator, conn net.Conn) {
+	remoteIP := ike.AddrToIp(conn.RemoteAddr())
+	localIP := ike.AddrToIp(conn.LocalAddr())
 done:
 	for {
 		select {
@@ -45,7 +47,7 @@ done:
 			// 	log.Errorf("from different address: %s", from)
 			// 	continue
 			// }
-			msg := &ike.Message{}
+			msg := &ike.Message{LocalIp: localIP, RemoteIp: remoteIP}
 			if err := msg.DecodeHeader(b); err != nil {
 				o.Notify(protocol.ERR_INVALID_SYNTAX)
 				continue
