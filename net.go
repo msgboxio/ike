@@ -3,6 +3,7 @@ package ike
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"net"
 
 	"github.com/msgboxio/log"
@@ -25,20 +26,44 @@ func FirstLastAddressToIPNet(start, end net.IP) *net.IPNet {
 	return &net.IPNet{IP: start, Mask: mask}
 }
 
-func IPNetToFirstAddress(n *net.IPNet) net.IP {
-	first := make([]byte, len(n.IP))
-	for idx, _ := range n.IP {
-		first[idx] = n.IP[idx] & n.Mask[idx]
+// copy of the incredbly useful function from ip.go
+func networkNumberAndMask(n *net.IPNet) (ip net.IP, m net.IPMask) {
+	if ip = n.IP.To4(); ip == nil {
+		ip = n.IP
+		if len(ip) != net.IPv6len {
+			return nil, nil
+		}
 	}
-	return first
+	m = n.Mask
+	switch len(m) {
+	case net.IPv4len:
+		if len(ip) != net.IPv4len {
+			return nil, nil
+		}
+	case net.IPv6len:
+		if len(ip) == net.IPv4len {
+			m = m[12:]
+		}
+	default:
+		return nil, nil
+	}
+	return
 }
 
-func IPNetToLastAddress(n *net.IPNet) net.IP {
-	last := make([]byte, len(n.IP))
-	for idx, _ := range n.IP {
-		last[idx] = (n.IP[idx] & n.Mask[idx]) | ^n.Mask[idx]
+// Returns the first & last derived from the ipnet notation
+func IPNetToFirstLastAddress(n *net.IPNet) (first, last net.IP, err error) {
+	ip, m := networkNumberAndMask(n)
+	if ip == nil {
+		err = errors.New("cannot extract bounds from address")
+		return
 	}
-	return last
+	last = make([]byte, len(ip))
+	first = make([]byte, len(ip))
+	for idx, val := range ip {
+		first[idx] = val & m[idx]
+		last[idx] = (val & m[idx]) | ^m[idx]
+	}
+	return
 }
 
 func AddrToIp(addr net.Addr) net.IP {

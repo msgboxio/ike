@@ -34,23 +34,33 @@ func NewClientConfig() *ClientCfg {
 	}
 }
 
-func (cfg *ClientCfg) AddSelector(from, to *net.IPNet) {
+// AddSelector builds selector from address & mask
+func (cfg *ClientCfg) AddSelector(from, to *net.IPNet) (err error) {
+	first, last, err := IPNetToFirstLastAddress(from)
+	if err != nil {
+		return
+	}
 	cfg.TsI = []*protocol.Selector{&protocol.Selector{
 		Type:         protocol.TS_IPV4_ADDR_RANGE,
 		IpProtocolId: 0,
 		StartPort:    0,
 		Endport:      65535,
-		StartAddress: IPNetToFirstAddress(from).To4(),
-		EndAddress:   IPNetToLastAddress(from).To4(),
+		StartAddress: first,
+		EndAddress:   last,
 	}}
+	first, last, err = IPNetToFirstLastAddress(from)
+	if err != nil {
+		return
+	}
 	cfg.TsR = []*protocol.Selector{&protocol.Selector{
 		Type:         protocol.TS_IPV4_ADDR_RANGE,
 		IpProtocolId: 0,
 		StartPort:    0,
 		Endport:      65535,
-		StartAddress: IPNetToFirstAddress(to).To4(),
-		EndAddress:   IPNetToLastAddress(to).To4(),
+		StartAddress: first,
+		EndAddress:   last,
 	}}
+	return
 }
 
 func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {

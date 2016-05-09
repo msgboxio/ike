@@ -122,7 +122,7 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 func (o *Initiator) SendAuth() (s state.StateEvent) {
 	// IKE_AUTH
 	o.cfg.ProposalEsp.Spi = o.EspSpiI
-	porp := []*protocol.SaProposal{o.cfg.ProposalEsp}
+	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	// make sure selectors are present
 	if o.cfg.TsI == nil {
 		// add host based selectors by defaut
@@ -135,7 +135,7 @@ func (o *Initiator) SendAuth() (s state.StateEvent) {
 
 	// tkm.Auth  needs to be called for both initiator & responder from the initator. so
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
-	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, porp, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
+	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
 	authI.IkeHeader.MsgId = o.msgId
 	// encode & send
 	authIb, err := authI.Encode(o.tkm)

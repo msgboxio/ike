@@ -11,12 +11,12 @@ import (
 func Fuzz(data []byte) int {
 	hdr, err := protocol.DecodeIkeHeader(data)
 	if err != nil {
-		return 0
+		return -1
 	}
 	plData := data[protocol.IKE_HEADER_LEN:]
 	payloads, err := protocol.DecodePayloads(plData, hdr.NextPayload)
 	if err != nil {
-		return 0
+		return -1
 	}
 
 	// ensure encoding is same

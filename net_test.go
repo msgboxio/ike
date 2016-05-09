@@ -5,31 +5,18 @@ import (
 	"testing"
 )
 
-func TestIPNetToFirstAddress(t *testing.T) {
-	_, n, _ := net.ParseCIDR("198.51.100.0/24")
-	if IPNetToFirstAddress(n).String() != "198.51.100.0" {
-		t.Fail()
-	}
-}
-
-func TestIPNetToLastAddress(t *testing.T) {
-	_, n, _ := net.ParseCIDR("198.51.100.0/24")
-	if IPNetToLastAddress(n).String() != "198.51.100.255" {
-		t.Fail()
-	}
-}
-
-func TestIPNetToFirstLastAddress(t *testing.T) {
+func TestNetIPNetToFirstLastAddress(t *testing.T) {
 	_, n, _ := net.ParseCIDR("198.51.100.1/32")
-	if IPNetToFirstAddress(n).String() != "198.51.100.1" {
+	f, l, _ := IPNetToFirstLastAddress(n)
+	if f.String() != "198.51.100.1" {
 		t.Fail()
 	}
-	if IPNetToLastAddress(n).String() != "198.51.100.1" {
+	if l.String() != "198.51.100.1" {
 		t.Fail()
 	}
 }
 
-func TestFirstLastAddressToIPNet1(t *testing.T) {
+func TestNetFirstLastAddressToIPNet1(t *testing.T) {
 	first := net.ParseIP("198.51.100.0")
 	last := net.ParseIP("198.51.100.255")
 
@@ -38,7 +25,7 @@ func TestFirstLastAddressToIPNet1(t *testing.T) {
 	}
 }
 
-func TestFirstLastAddressToIPNet2(t *testing.T) {
+func TestNetFirstLastAddressToIPNet2(t *testing.T) {
 	first := net.ParseIP("198.51.100.1")
 	last := net.ParseIP("198.51.100.1")
 
@@ -47,7 +34,7 @@ func TestFirstLastAddressToIPNet2(t *testing.T) {
 	}
 }
 
-func TestFirstLastAddressToIPNet3(t *testing.T) {
+func TestNetFirstLastAddressToIPNet3(t *testing.T) {
 	first := net.ParseIP("0.0.0.0")
 	last := net.ParseIP("255.255.255.255")
 
