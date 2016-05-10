@@ -183,19 +183,20 @@ func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, ts
 		Payloads: protocol.MakePayloads(),
 	}
 	// TODO - handle various other types of ID
+	authenticator := &psk{tkm}
 	iDi := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
-		IdType:        protocol.ID_RFC822_ADDR,
-		Data:          tkm.AuthId(protocol.ID_RFC822_ADDR),
+		IdType:        authenticator.IdType(),
+		Data:          authenticator.Id(),
 	}
 	auth.Payloads.Add(iDi)
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		AuthMethod:    protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE,
-		Data:          tkm.Auth(realMessage, iDi, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE, flags),
+		AuthMethod:    authenticator.AuthMethod(),
+		Data:          authenticator.Sign(realMessage, iDi, flags),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},

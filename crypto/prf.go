@@ -4,25 +4,36 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
+	"fmt"
 	"hash"
 
 	"github.com/msgboxio/ike/protocol"
 )
 
-type prfFunc func(key, data []byte) []byte
+// Pseudo Random Function
+type Prf struct {
+	Apply  func(key, data []byte) []byte
+	Length int
+	name   string
+}
 
-func (prfFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
+func (p *Prf) MarshalJSON() ([]byte, error) {
+	str := fmt.Sprintf("{\"%s\"}", p.name)
+	return []byte(str), nil
+}
 
-func prfTranform(prfId uint16) (prfLen int, prfFunc prfFunc, ok bool) {
+func prfTranform(prfId uint16) (*Prf, error) {
 	switch protocol.PrfTransformId(prfId) {
 	case protocol.PRF_HMAC_SHA2_256:
-		return sha256.Size, macPrf(sha256.New), true
+		return &Prf{macPrf(sha256.New), sha256.Size, "sha256"}, nil
 	case protocol.PRF_HMAC_SHA1:
-		return sha1.Size, macPrf(sha1.New), true
+		return &Prf{macPrf(sha1.New), sha1.Size, "sha1"}, nil
 	default:
-		return 0, nil, false
+		return nil, fmt.Errorf("Unsupported PRF transfom: %s", prfId)
 	}
 }
+
+type prfFunc func(key, data []byte) []byte
 
 func macPrf(h func() hash.Hash) prfFunc {
 	return func(key, data []byte) []byte {

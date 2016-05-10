@@ -8,6 +8,7 @@ import (
 	"github.com/msgboxio/log"
 )
 
+// Cipher interface provides Encryption & Integrity Protection
 type Cipher interface {
 	Overhead(clear []byte) int
 	VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error)
@@ -16,10 +17,7 @@ type Cipher interface {
 
 type CipherSuite struct {
 	Cipher // aead or nonAead
-
-	PrfLen int
-	Prf    prfFunc
-
+	*Prf
 	DhGroup *dhGroup
 
 	// Lengths, in bytes, of the key material needed for each component.
@@ -43,9 +41,10 @@ func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
 			}
 		case protocol.TRANSFORM_TYPE_PRF:
 			// for hmac based Prf, preferred key size is size of output
-			cs.PrfLen, cs.Prf, ok = prfTranform(tr.Transform.TransformId)
+			var err error
+			cs.Prf, err = prfTranform(tr.Transform.TransformId)
 			if !ok {
-				return nil, fmt.Errorf("Unsupported Prf transfom %s", tr.Transform.TransformId)
+				return nil, err
 			}
 		case protocol.TRANSFORM_TYPE_ENCR:
 			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
