@@ -4,9 +4,9 @@ import (
 	"errors"
 
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
+	"github.com/msgboxio/log"
 )
 
 type Responder struct {
@@ -147,10 +147,11 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 }
 
 func (o *Responder) SendAuth() (s state.StateEvent) {
-	// responder's signed octet
-	// initR | Ni | prf(sk_pr | IDr )
 	o.cfg.ProposalEsp.Spi = o.EspSpiR
 	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
+	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
+	// responder's signed octet
+	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
 	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
 	// encode & send

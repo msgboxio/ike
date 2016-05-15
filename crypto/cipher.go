@@ -19,6 +19,7 @@ type cipherFunc func(key, iv []byte, isRead bool) interface{}
 
 func (cipherFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
 
+// TODO - check if the parameters are valid
 func cipherTransform(cipherId uint16, keyLen int, cipher *simpleCipher) (*simpleCipher, bool) {
 	blockSize, cipherFunc, ok := _cipherTransform(cipherId)
 	if !ok {

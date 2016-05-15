@@ -2,6 +2,19 @@ package protocol
 
 import "fmt"
 
+func (p ProtocolId) String() string {
+	switch p {
+	case IKE:
+		return "IKE"
+	case AH:
+		return "AH"
+	case ESP:
+		return "ESP"
+	default:
+		return "Unknown"
+	}
+}
+
 func (p PayloadType) String() string {
 	switch p {
 	case PayloadTypeNone:

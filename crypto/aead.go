@@ -17,7 +17,7 @@ AES-CCM :
 
 AES-GCM :
 cipher - AES block cipher in Counter Mode (AES-CTR).
-MAC-  it uses a universal hash called GHASH, encrypted with AES-CTR.
+MAC- universal hash called GHASH, encrypted with AES-CTR.
 
 4 inputs:
 	secret key
@@ -65,7 +65,7 @@ A (additional data) ->
 
 K - key; 128, 192 or 256 bit; fn(ks_ex)
 Salt - GCM (4B), CCM (3B)
-N - 12B (11 for CCM), Salt(not in payload) + IV
+N - 12B (11 for CCM) == Salt(not in payload) + IV
 IV - 8B (GCM & CCM)
 ICV(T, auth tag) - integ check value; 16 B, MAY support 8, 12 B; fn(A,C)
 
@@ -83,6 +83,7 @@ if keyLen is 128, then 20 bytes (16B + 4B salt)
 
 type aeadFunc func(key []byte) (cipher.AEAD, error)
 
+// TODO - check if the parameters are valid
 func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher, int, bool) {
 	blockLen, saltLen, ivLen, icvLen, aeadFunc := _aeadTransform(cipherId)
 	if aeadFunc == nil {

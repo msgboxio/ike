@@ -163,7 +163,8 @@ type authParams struct {
 // b->a
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
-func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, realMessage []byte, tkm *Tkm, isTransportMode bool) *Message {
+// signed1 : init[i/r]B | N[r/i]
+func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, signed1 []byte, tkm *Tkm, isTransportMode bool) *Message {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
 	if tkm.isInitiator {
@@ -184,19 +185,17 @@ func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, ts
 	}
 	// TODO - handle various other types of ID
 	authenticator := &psk{tkm}
-	iDi := &protocol.IdPayload{
+	iD := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
 		IdType:        authenticator.IdType(),
 		Data:          authenticator.Id(),
 	}
-	auth.Payloads.Add(iDi)
-	// responder's signed octet
-	// initR | Ni | prf(sk_pr | IDr )
+	auth.Payloads.Add(iD)
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		AuthMethod:    authenticator.AuthMethod(),
-		Data:          authenticator.Sign(realMessage, iDi, flags),
+		Data:          authenticator.Sign(signed1, iD, flags),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},

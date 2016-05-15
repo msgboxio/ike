@@ -220,7 +220,6 @@ func (o *Session) addSa() (err error) {
 		sa.DstNet = iNet
 	}
 	if err = platform.InstallChildSa(sa); err != nil {
-		log.Error("Error installing Child SA: %s", err)
 		return err
 	}
 	log.Info("Installed Child SA")

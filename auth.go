@@ -39,6 +39,10 @@ func (psk *psk) AuthMethod() protocol.AuthMethod {
 	return protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE
 }
 
+// responder's signed octet
+// initR | Ni | prf(sk_pr | IDr )
+// intiators's signed octet
+// initI | Nr | prf(sk_pi | IDi )
 func (psk *psk) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
 	signB := psk.tkm.signB(signed1, id, flag)
 	secret := psk.tkm.ids.AuthData(id.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
@@ -89,7 +93,7 @@ func authenticateR(msg *Message, initRb []byte, tkm *Tkm) bool {
 		log.Errorf("Ike Auth failed: auth method not supported: %d", authRp.AuthMethod)
 		return false
 	}
-	auth := psk.Sign(signed1, idR, protocol.INITIATOR)
+	auth := psk.Sign(signed1, idR, protocol.RESPONSE)
 	// compare
 	if hmac.Equal(auth, authRp.Data) {
 		return true

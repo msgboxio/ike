@@ -114,6 +114,20 @@ func main() {
 	}
 	log.Infof("socket listening: %s", p.Conn.LocalAddr())
 
+	// this should load the xfrm modules
+	// requires root
+	if xfrm := platform.ListenForEvents(cxt); xfrm != nil {
+		go func() {
+			<-xfrm.Done()
+			if err := xfrm.Err(); err != context.Canceled {
+				log.Fatal(err)
+				cancel(err)
+			}
+			xfrm.Close()
+		}()
+	}
+
+	// requires root
 	if err := platform.SetSocketBypas(p.Conn, syscall.AF_INET); err != nil {
 		log.Fatal(err)
 	}

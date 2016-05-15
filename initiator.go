@@ -125,6 +125,7 @@ func (o *Initiator) SendAuth() (s state.StateEvent) {
 	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	// make sure selectors are present
 	if o.cfg.TsI == nil {
+		log.Infoln("Adding host based selectors")
 		// add host based selectors by defaut
 		slen := len(o.local) * 8
 		o.cfg.AddSelector(

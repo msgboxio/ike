@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+func (p ProtocolId) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
+}
+
 func (p PayloadType) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
 }

@@ -48,7 +48,7 @@ func (cfg *ClientCfg) AddSelector(from, to *net.IPNet) (err error) {
 		StartAddress: first,
 		EndAddress:   last,
 	}}
-	first, last, err = IPNetToFirstLastAddress(from)
+	first, last, err = IPNetToFirstLastAddress(to)
 	if err != nil {
 		return
 	}

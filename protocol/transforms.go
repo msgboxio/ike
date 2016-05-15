@@ -76,8 +76,10 @@ var (
 		&SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
 
+	// key length is set to 128
+	// 16B icv
 	IKE_AES_GCM_16_DH_1024 = []*SaTransform{
-		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 256}, // AEAD_AES_128_GCM
+		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
 		&SaTransform{Transform: _PRF_HMAC_SHA1},
 		&SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
@@ -95,8 +97,10 @@ var (
 		&SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 
+	// key length is set to 128
+	// This is due to lack of support for 256b keys in older kernels (Jessie)
 	ESP_AES_GCM_16 = []*SaTransform{
-		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 256},
+		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128},
 		&SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 
