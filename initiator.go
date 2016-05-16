@@ -52,15 +52,12 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Co
 }
 
 func (o *Initiator) SendInit() (s state.StateEvent) {
-	proposal := []*protocol.SaProposal{
-		ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
-	}
 	// IKE_SA_INIT
 	init := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          make([]byte, 8),
-		proposals:     proposal,
+		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
 		nonce:         o.tkm.Ni,
 		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.tkm.DhPublic,
@@ -123,9 +120,6 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 }
 
 func (o *Initiator) SendAuth() (s state.StateEvent) {
-	prop := []*protocol.SaProposal{
-		ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI),
-	}
 	// IKE_AUTH
 	// make sure selectors are present
 	if o.cfg.TsI == nil {
@@ -137,7 +131,8 @@ func (o *Initiator) SendAuth() (s state.StateEvent) {
 			&net.IPNet{IP: o.remote, Mask: net.CIDRMask(slen, slen)})
 	}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
-
+	// proposal
+	prop := ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
 	// tkm.Auth  needs to be called for both initiator & responder from the initator. so
 	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
 	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)

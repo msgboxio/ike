@@ -18,7 +18,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		//Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-		ProposalIke: protocol.IKE_AES_GCM_16_DH_1024,
+		ProposalIke: protocol.IKE_AES_GCM_16_DH_2048,
 		//Transforms: protocol.ESP_AES_CBC_SHA1_96,
 		ProposalEsp: protocol.ESP_AES_GCM_16,
 	}
@@ -103,12 +103,14 @@ func (cfg *Config) AddFromAuth(authI *Message) error {
 	return nil
 }
 
-func ProposalFromTransform(prot protocol.ProtocolId, trs protocol.Transforms, spi []byte) *protocol.SaProposal {
-	return &protocol.SaProposal{
-		IsLast:       true,
-		Number:       1,
-		ProtocolId:   prot,
-		Spi:          append([]byte{}, spi...),
-		SaTransforms: trs.AsList(),
+func ProposalFromTransform(prot protocol.ProtocolId, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
+	return []*protocol.SaProposal{
+		&protocol.SaProposal{
+			IsLast:       true,
+			Number:       1,
+			ProtocolId:   prot,
+			Spi:          append([]byte{}, spi...),
+			SaTransforms: trs.AsList(),
+		},
 	}
 }

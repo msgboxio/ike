@@ -32,14 +32,11 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		return
 	}
 	o.newIkeSpiI = MakeSpi()
-	proposal := []*protocol.SaProposal{
-		ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.newIkeSpiI),
-	}
 	init := makeIkeChildSa(childSaParams{
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
-		proposals:     proposal,
+		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.newIkeSpiI),
 		nonce:         o.newTkm.Ni,
 		dhTransformId: o.newTkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.newTkm.DhPublic,

@@ -65,19 +65,19 @@ func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
 }
 
 func (o *Responder) SendInit() (s state.StateEvent) {
-	proposal := []*protocol.SaProposal{
-		ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
-	}
 	// make response message
 	initR := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
-		proposals:     proposal,
+		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
 		nonce:         o.tkm.Nr,
 		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.tkm.DhPublic,
 	})
+	// set & increment msgId
+	initR.IkeHeader.MsgId = o.msgId
+	o.msgId++
 	// encode & send
 	var err error
 	o.initRb, err = initR.Encode(nil)
@@ -89,7 +89,6 @@ func (o *Responder) SendInit() (s state.StateEvent) {
 	}
 	o.outgoing <- o.initRb
 
-	o.msgId++
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
 		o.remote,
@@ -150,14 +149,15 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 }
 
 func (o *Responder) SendAuth() (s state.StateEvent) {
-	prop := []*protocol.SaProposal{
-		ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR),
-	}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
+	prop := ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )
 	signed1 := append(o.initRb, o.tkm.Ni.Bytes()...)
 	authR := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
+	// add msgId & increment
+	authR.IkeHeader.MsgId = o.msgId
+	o.msgId++
 	// encode & send
 	authRb, err := authR.Encode(o.tkm)
 	if err != nil {

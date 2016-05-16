@@ -86,6 +86,12 @@ var (
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
 
+	IKE_AES_GCM_16_DH_2048 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _PRF_HMAC_SHA1},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: _MODP_2048, IsLast: true},
+	}
+
 	IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: _PRF_HMAC_SHA2_256},
