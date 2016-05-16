@@ -17,11 +17,11 @@ func NewResponder(parent context.Context, ids Identities, initI *Message) (*Resp
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
-	tkm, err := newTkmFromInit(initI, ids)
+	cfg, err := NewConfigFromInit(initI)
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := NewClientConfigFromInit(initI)
+	tkm, err := newTkmFromInit(initI, cfg, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -65,12 +65,15 @@ func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
 }
 
 func (o *Responder) SendInit() (s state.StateEvent) {
+	proposal := []*protocol.SaProposal{
+		ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
+	}
 	// make response message
 	initR := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
-		proposals:     []*protocol.SaProposal{o.cfg.ProposalIke},
+		proposals:     proposal,
 		nonce:         o.tkm.Nr,
 		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.tkm.DhPublic,
@@ -147,8 +150,9 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 }
 
 func (o *Responder) SendAuth() (s state.StateEvent) {
-	o.cfg.ProposalEsp.Spi = o.EspSpiR
-	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
+	prop := []*protocol.SaProposal{
+		ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR),
+	}
 	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
 	// responder's signed octet
 	// initR | Ni | prf(sk_pr | IDr )

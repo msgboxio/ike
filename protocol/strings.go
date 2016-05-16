@@ -15,6 +15,23 @@ func (p ProtocolId) String() string {
 	}
 }
 
+func (p TransformType) String() string {
+	switch p {
+	case TRANSFORM_TYPE_ENCR:
+		return "ENCR"
+	case TRANSFORM_TYPE_PRF:
+		return "PRF"
+	case TRANSFORM_TYPE_INTEG:
+		return "INTEG"
+	case TRANSFORM_TYPE_DH:
+		return "DH"
+	case TRANSFORM_TYPE_ESN:
+		return "ESN"
+	default:
+		return "Unknown"
+	}
+}
+
 func (p PayloadType) String() string {
 	switch p {
 	case PayloadTypeNone:

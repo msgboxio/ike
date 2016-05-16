@@ -7,35 +7,45 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
-type ClientCfg struct {
-	ProposalIke, ProposalEsp *protocol.SaProposal
+type Config struct {
+	ProposalIke, ProposalEsp protocol.Transforms
 
 	TsI, TsR []*protocol.Selector
 
 	IsTransportMode bool
 }
 
-func NewClientConfig() *ClientCfg {
-	return &ClientCfg{
-		ProposalIke: &protocol.SaProposal{
-			IsLast:     true,
-			Number:     1,
-			ProtocolId: protocol.IKE,
-			//Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
-			Transforms: protocol.IKE_AES_GCM_16_DH_1024,
-		},
-		ProposalEsp: &protocol.SaProposal{
-			IsLast:     true,
-			Number:     1,
-			ProtocolId: protocol.ESP,
-			//Transforms: protocol.ESP_AES_CBC_SHA1_96,
-			Transforms: protocol.ESP_AES_GCM_16,
-		},
+func DefaultConfig() *Config {
+	return &Config{
+		//Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+		ProposalIke: protocol.IKE_AES_GCM_16_DH_1024,
+		//Transforms: protocol.ESP_AES_CBC_SHA1_96,
+		ProposalEsp: protocol.ESP_AES_GCM_16,
 	}
 }
 
+func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.Proposals) error {
+	for _, prop := range proposals {
+		if prop.ProtocolId != prot {
+			continue
+		}
+		// select first acceptable one from the list
+		switch prot {
+		case protocol.IKE:
+			if cfg.ProposalIke.Within(prop.SaTransforms) {
+				return nil
+			}
+		case protocol.ESP:
+			if cfg.ProposalEsp.Within(prop.SaTransforms) {
+				return nil
+			}
+		}
+	}
+	return errors.New("acceptable proposals are missing")
+}
+
 // AddSelector builds selector from address & mask
-func (cfg *ClientCfg) AddSelector(from, to *net.IPNet) (err error) {
+func (cfg *Config) AddSelector(from, to *net.IPNet) (err error) {
 	first, last, err := IPNetToFirstLastAddress(from)
 	if err != nil {
 		return
@@ -63,42 +73,24 @@ func (cfg *ClientCfg) AddSelector(from, to *net.IPNet) (err error) {
 	return
 }
 
-func NewClientConfigFromInit(initI *Message) (*ClientCfg, error) {
-	// get proposals
-	var ikeProp *protocol.SaProposal
+// NewConfigFromInit takes an IkeSaInit message and returns a Config
+// if acceptable IKE proposal is available
+// Note: Currently This only checks if default Config's IKE config is available
+func NewConfigFromInit(initI *Message) (*Config, error) {
+	cfg := DefaultConfig()
+	// get SA payload
 	ikeSa := initI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	// select first ones
-	for _, prop := range ikeSa.Proposals {
-		switch prop.ProtocolId {
-		case protocol.IKE:
-			if ikeProp == nil {
-				ikeProp = prop
-			}
-		}
+	if err := cfg.CheckProposals(protocol.IKE, ikeSa.Proposals); err != nil {
+		return nil, err
 	}
-	if ikeProp == nil {
-		return nil, errors.New("acceptable IKE proposals are missing")
-	}
-	return &ClientCfg{
-		ProposalIke: ikeProp,
-	}, nil
+	return cfg, nil
 }
 
 // Adds esp proposal & selector
-func (cfg *ClientCfg) AddFromAuth(authI *Message) error {
-	var espProp *protocol.SaProposal
+func (cfg *Config) AddFromAuth(authI *Message) error {
 	espSa := authI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	// select first ones
-	for _, prop := range espSa.Proposals {
-		switch prop.ProtocolId {
-		case protocol.ESP:
-			if espProp == nil {
-				espProp = prop
-			}
-		}
-	}
-	if espProp == nil {
-		return errors.New("acceptable ESP proposals are missing")
+	if err := cfg.CheckProposals(protocol.ESP, espSa.Proposals); err != nil {
+		return err
 	}
 	// get selectors
 	tsI := authI.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
@@ -106,9 +98,17 @@ func (cfg *ClientCfg) AddFromAuth(authI *Message) error {
 	if len(tsI) == 0 || len(tsR) == 0 {
 		return errors.New("acceptable traffic selectors are missing")
 	}
-	// set & return
-	cfg.ProposalEsp = espProp
 	cfg.TsI = tsI
 	cfg.TsR = tsR
 	return nil
+}
+
+func ProposalFromTransform(prot protocol.ProtocolId, trs protocol.Transforms, spi []byte) *protocol.SaProposal {
+	return &protocol.SaProposal{
+		IsLast:       true,
+		Number:       1,
+		ProtocolId:   prot,
+		Spi:          append([]byte{}, spi...),
+		SaTransforms: trs.AsList(),
+	}
 }

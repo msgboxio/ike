@@ -14,8 +14,8 @@ type Initiator struct {
 	Session
 }
 
-func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *ClientCfg) *Initiator {
-	suite, err := crypto.NewCipherSuite(cfg.ProposalIke.Transforms)
+func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Config) *Initiator {
+	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -52,12 +52,15 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Cl
 }
 
 func (o *Initiator) SendInit() (s state.StateEvent) {
+	proposal := []*protocol.SaProposal{
+		ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
+	}
 	// IKE_SA_INIT
 	init := makeInit(initParams{
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          make([]byte, 8),
-		proposals:     []*protocol.SaProposal{o.cfg.ProposalIke},
+		proposals:     proposal,
 		nonce:         o.tkm.Ni,
 		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.tkm.DhPublic,
@@ -120,9 +123,10 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 }
 
 func (o *Initiator) SendAuth() (s state.StateEvent) {
+	prop := []*protocol.SaProposal{
+		ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI),
+	}
 	// IKE_AUTH
-	o.cfg.ProposalEsp.Spi = o.EspSpiI
-	prop := []*protocol.SaProposal{o.cfg.ProposalEsp}
 	// make sure selectors are present
 	if o.cfg.TsI == nil {
 		log.Infoln("Adding host based selectors")

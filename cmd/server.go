@@ -156,7 +156,7 @@ func main() {
 
 	if remoteString != "" {
 		remoteAddr, _ := net.ResolveUDPAddr("udp4", remoteString)
-		config := ike.NewClientConfig()
+		config := ike.DefaultConfig()
 		if !isTunnelMode {
 			config.IsTransportMode = true
 		}

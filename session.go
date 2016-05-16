@@ -2,6 +2,7 @@ package ike
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"time"
 
@@ -27,7 +28,7 @@ type Session struct {
 	isResponder bool
 
 	tkm *Tkm
-	cfg *ClientCfg
+	cfg *Config
 
 	remote, local net.IP
 
@@ -44,26 +45,32 @@ type Session struct {
 	initIb, initRb []byte
 }
 
-func (o *Session) HandleMessage(m *Message) {
-	// check spis
+func isMessageValid(m *Message, o *Session) error {
 	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
-		log.Errorf("different initiator Spi %s", spi)
-		return
+		return fmt.Errorf("different initiator Spi %s", spi)
 	}
 	// Dont check Responder SPI. initiator IKE_INTI does not have it
 	if !o.remote.Equal(m.RemoteIp) {
-		log.Errorf("different remote IP %v vs %v", o.remote, m.RemoteIp)
-		return
+		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteIp)
 	}
 	// local IP is not set initially for initiator
 	if o.local == nil {
 		o.local = m.LocalIp
 	} else if !o.local.Equal(m.LocalIp) {
-		log.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
+		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
+	}
+	return nil
+}
+
+func (o *Session) HandleMessage(m *Message) {
+	if err := isMessageValid(m, o); err != nil {
+		log.Error("Drop Message: ", err)
 		return
 	}
+	// check spis
 	o.incoming <- m
 }
+
 func (o *Session) Replies() <-chan []byte { return o.outgoing }
 
 func run(o *Session) {
@@ -169,7 +176,6 @@ func (o *Session) checkSa(m *Message) (err error) {
 			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
 				o.fsm.Event(state.StateEvent{Event: state.REKEY_START})
-				// o.fsm.Event(state.StateEvent{Event: state.MSG_IKE_REKEY})
 			})
 		case protocol.USE_TRANSPORT_MODE:
 			wantsTransportMode = true

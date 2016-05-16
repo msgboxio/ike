@@ -34,7 +34,7 @@ func (t Transform) MarshalJSON() ([]byte, error) {
 	if str, ok := transforms[t]; ok {
 		return []byte(fmt.Sprintf("\"%s\"", str)), nil
 	}
-	return json.Marshal(t)
+	return []byte(fmt.Sprintf("\"%s: %d\"", t.Type, t.TransformId)), nil
 }
 
 func (p IkeExchangeType) MarshalJSON() ([]byte, error) {

@@ -68,54 +68,98 @@ var transforms = map[Transform]string{
 	_NO_ESN: "NO_ESN",
 }
 
+type Transforms map[TransformType]*SaTransform
+
 var (
-	IKE_AES_CBC_SHA1_96_DH_1024 = []*SaTransform{
-		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
-		&SaTransform{Transform: _PRF_HMAC_SHA1},
-		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
-		&SaTransform{Transform: _MODP_1024, IsLast: true},
+	IKE_AES_CBC_SHA1_96_DH_1024 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: _PRF_HMAC_SHA1},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
 
-	// key length is set to 128
+	// key length is set to 128b
 	// 16B icv
-	IKE_AES_GCM_16_DH_1024 = []*SaTransform{
-		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
-		&SaTransform{Transform: _PRF_HMAC_SHA1},
-		&SaTransform{Transform: _MODP_1024, IsLast: true},
+	IKE_AES_GCM_16_DH_1024 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _PRF_HMAC_SHA1},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: _MODP_1024, IsLast: true},
 	}
 
-	IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048 = []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
-		&SaTransform{Transform: _PRF_HMAC_SHA2_256},
-		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&SaTransform{Transform: _MODP_2048, IsLast: true},
+	IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: _PRF_HMAC_SHA2_256},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: _MODP_2048, IsLast: true},
 	}
 
-	ESP_AES_CBC_SHA1_96 = []*SaTransform{
-		&SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
-		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
-		&SaTransform{Transform: _NO_ESN, IsLast: true},
+	ESP_AES_CBC_SHA1_96 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _ENCR_AES_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		TRANSFORM_TYPE_ESN:   &SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 
 	// key length is set to 128
 	// This is due to lack of support for 256b keys in older kernels (Jessie)
-	ESP_AES_GCM_16 = []*SaTransform{
-		&SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128},
-		&SaTransform{Transform: _NO_ESN, IsLast: true},
+	ESP_AES_GCM_16 = Transforms{
+		TRANSFORM_TYPE_ENCR: &SaTransform{Transform: _AEAD_AES_GCM_16, KeyLength: 128},
+		TRANSFORM_TYPE_ESN:  &SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 
-	ESP_NULL_SHA1_96 = []*SaTransform{
-		&SaTransform{Transform: _ENCR_NULL},
-		&SaTransform{Transform: _AUTH_HMAC_SHA1_96},
-		&SaTransform{Transform: _NO_ESN, IsLast: true},
+	ESP_NULL_SHA1_96 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _ENCR_NULL},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _AUTH_HMAC_SHA1_96},
+		TRANSFORM_TYPE_ESN:   &SaTransform{Transform: _NO_ESN, IsLast: true},
 	}
 
-	ESP_CAMELLIA_CBC_SHA2_256_128 = []*SaTransform{
-		&SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
-		&SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
-		&SaTransform{Transform: _ESN, IsLast: true},
+	ESP_CAMELLIA_CBC_SHA2_256_128 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: _ENCR_CAMELLIA_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: _AUTH_HMAC_SHA2_256_128},
+		TRANSFORM_TYPE_ESN:   &SaTransform{Transform: _ESN, IsLast: true},
 	}
 )
+
+func listHas(trsList []*SaTransform, trs *SaTransform) bool {
+	for _, tr := range trsList {
+		if trs.IsEqual(tr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (configured Transforms) AsList() (trs []*SaTransform) {
+	for _, trsVal := range configured {
+		trs = append(trs, trsVal)
+	}
+	return
+}
+
+// checks if the configured set of transforms occurs within list of porposed transforms
+func (configured Transforms) Within(trs []*SaTransform) bool {
+	for _, trsVal := range configured {
+		if !listHas(trs, trsVal) {
+			return false
+		}
+	}
+	return true
+}
+
+func (tr *SaTransform) IsEqual(other *SaTransform) bool {
+	if tr == nil || other == nil {
+		return false
+	}
+	if tr.KeyLength != other.KeyLength {
+		return false
+	}
+	if tr.Transform.Type != other.Transform.Type {
+		return false
+	}
+	if tr.Transform.TransformId != other.Transform.TransformId {
+		return false
+	}
+	return true
+}
 
 // mutualTransform returns a cipherSuite given
 // a list requested by the peer.

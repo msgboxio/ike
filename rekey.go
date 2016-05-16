@@ -1,10 +1,10 @@
 package ike
 
 import (
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
+	"github.com/msgboxio/log"
 )
 
 // rekeying can be started by either end
@@ -20,7 +20,7 @@ type ReKeySession struct {
 //  SK {SA, Ni, KEi} - ike sa
 func (o *ReKeySession) SendIkeSaRekey() {
 	var err error
-	suite, err := crypto.NewCipherSuite(o.cfg.ProposalIke.Transforms)
+	suite, err := crypto.NewCipherSuite(o.cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
 		o.cancel(err)
@@ -32,12 +32,14 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		return
 	}
 	o.newIkeSpiI = MakeSpi()
-	o.cfg.ProposalIke.Spi = o.newIkeSpiI
+	proposal := []*protocol.SaProposal{
+		ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.newIkeSpiI),
+	}
 	init := makeIkeChildSa(childSaParams{
 		isInitiator:   o.tkm.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
-		proposals:     []*protocol.SaProposal{o.cfg.ProposalIke},
+		proposals:     proposal,
 		nonce:         o.newTkm.Ni,
 		dhTransformId: o.newTkm.suite.DhGroup.DhTransformId,
 		dhPublic:      o.newTkm.DhPublic,

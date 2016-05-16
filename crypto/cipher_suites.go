@@ -25,7 +25,7 @@ type CipherSuite struct {
 }
 
 // TODO - check that the entire suite makes sense
-func NewCipherSuite(trs []*protocol.SaTransform) (*CipherSuite, error) {
+func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	cs := &CipherSuite{}
 	ok := false
 	// empty variables, filled in later

@@ -18,7 +18,7 @@ type dhGroup struct {
 
 func (group *dhGroup) DiffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
 	if theirPublic.Sign() <= 0 || theirPublic.Cmp(group.p) >= 0 {
-		return nil, errors.New("ssh: DH parameter out of bounds")
+		return nil, errors.New("DH parameter out of bounds")
 	}
 	return new(big.Int).Exp(theirPublic, myPrivate, group.p), nil
 }

@@ -11,8 +11,8 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
-func newConfig() (config *ClientCfg) {
-	config = NewClientConfig()
+func newConfig() (config *Config) {
+	config = DefaultConfig()
 	config.AddSelector(
 		&net.IPNet{IP: net.IPv4(192, 168, 10, 2).To4(), Mask: net.CIDRMask(32, 32)},
 		&net.IPNet{IP: net.IPv4(10, 10, 10, 2).To4(), Mask: net.CIDRMask(32, 32)})
@@ -34,7 +34,7 @@ func initiatorTkm(t *testing.T) *Tkm {
 		t.Fatal(err)
 	}
 	// nonce for responder
-	if nr, err := tkm.ncCreate(suite.PrfLen * 8); err != nil {
+	if nr, err := tkm.ncCreate(suite.Prf.Length * 8); err != nil {
 		t.Fatal(err)
 	} else {
 		tkm.Nr = nr

@@ -102,7 +102,7 @@ func main() {
 	}
 
 	for {
-		config := ike.NewClientConfig()
+		config := ike.DefaultConfig()
 		config.AddSelector(
 			&net.IPNet{IP: localU.IP.To4(), Mask: net.CIDRMask(32, 32)},
 			&net.IPNet{IP: remoteU.IP.To4(), Mask: net.CIDRMask(32, 32)})

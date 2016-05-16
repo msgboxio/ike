@@ -297,10 +297,10 @@ type PayloadHeader struct {
    |                                                               |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
-
+type Proposals []*SaProposal
 type SaPayload struct {
 	*PayloadHeader
-	Proposals []*SaProposal
+	Proposals
 }
 
 /*
@@ -318,17 +318,11 @@ type SaPayload struct {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type SaProposal struct {
-	IsLast     bool
-	Number     uint8
-	ProtocolId ProtocolId
-	Spi        []byte
-	Transforms []*SaTransform
-}
-
-type SaTransform struct {
-	Transform Transform
-	KeyLength uint16
-	IsLast    bool
+	IsLast       bool
+	Number       uint8
+	ProtocolId   ProtocolId
+	Spi          []byte
+	SaTransforms []*SaTransform
 }
 
 /*
@@ -343,6 +337,12 @@ type SaTransform struct {
    |                                                               |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
+
+type SaTransform struct {
+	Transform Transform
+	KeyLength uint16
+	IsLast    bool
+}
 
 type Transform struct {
 	Type        TransformType
