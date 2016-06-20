@@ -21,7 +21,7 @@ func newConfig() (config *Config) {
 
 func initiatorTkm(t *testing.T) *Tkm {
 	config := newConfig()
-	suite, err := crypto.NewCipherSuite(config.ProposalIke.Transforms)
+	suite, err := crypto.NewCipherSuite(config.ProposalIke)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,11 +45,12 @@ func initiatorTkm(t *testing.T) *Tkm {
 func TestIkeMsgGen(t *testing.T) {
 	cfg := newConfig()
 	tkm := initiatorTkm(t)
+	ikeSpi := MakeSpi()
 	params := initParams{
 		isInitiator:   true,
-		spiI:          MakeSpi(),
+		spiI:          ikeSpi,
 		spiR:          MakeSpi(),
-		proposals:     []*protocol.SaProposal{cfg.ProposalIke},
+		proposals:     ProposalFromTransform(protocol.IKE, cfg.ProposalIke, ikeSpi),
 		nonce:         tkm.Ni,
 		dhTransformId: tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      tkm.DhPublic,
@@ -70,7 +71,7 @@ func TestIkeMsgGen(t *testing.T) {
 	signed1 := append(initIb, tkm.Nr.Bytes()...)
 	authI := makeAuth(params.spiI,
 		params.spiR,
-		[]*protocol.SaProposal{cfg.ProposalEsp},
+		ProposalFromTransform(protocol.ESP, cfg.ProposalEsp, params.spiR),
 		cfg.TsI,
 		cfg.TsR, signed1,
 		tkm,

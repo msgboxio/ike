@@ -151,22 +151,6 @@ func (configured Transforms) Within(trs []*SaTransform) bool {
 	return true
 }
 
-func (tr *SaTransform) IsEqual(other *SaTransform) bool {
-	if tr == nil || other == nil {
-		return false
-	}
-	if tr.KeyLength != other.KeyLength {
-		return false
-	}
-	if tr.Transform.Type != other.Transform.Type {
-		return false
-	}
-	if tr.Transform.TransformId != other.Transform.TransformId {
-		return false
-	}
-	return true
-}
-
 // mutualTransform returns a cipherSuite given
 // a list requested by the peer.
 func mutualTransform(want [][]*SaTransform) bool {
