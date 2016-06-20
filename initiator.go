@@ -162,7 +162,7 @@ func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
 	if err := m.EnsurePayloads(AuthRPayloads); err != nil {
 		// notification is recoverable
 		for _, n := range m.Payloads.GetNotifications() {
-			if err, ok := protocol.GetIkeError(n.NotificationType); ok {
+			if err, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
 				s.Data = err
 				return
 			}

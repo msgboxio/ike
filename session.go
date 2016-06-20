@@ -121,7 +121,7 @@ done:
 				} // del
 				if note := msg.Payloads.Get(protocol.PayloadTypeN); note != nil {
 					np := note.(*protocol.NotifyPayload)
-					if err, ok := protocol.GetIkeError(np.NotificationType); ok {
+					if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
 						log.Errorf("Received Error: %v", err)
 						evt.Event = state.FAIL
 						evt.Data = err
@@ -278,7 +278,7 @@ func (o *Session) CheckError(m interface{}) (s state.StateEvent) {
 	return
 }
 
-func (o *Session) Notify(ie protocol.IkeError) {
+func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	spi := o.IkeSpiI
 	if o.tkm.isInitiator {
 		spi = o.IkeSpiR
