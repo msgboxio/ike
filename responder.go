@@ -25,7 +25,6 @@ func NewResponder(parent context.Context, ids Identities, initI *Message) (*Resp
 	if err != nil {
 		return nil, err
 	}
-	// TODO - check ike proposal
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		return nil, err

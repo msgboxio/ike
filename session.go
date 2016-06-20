@@ -23,7 +23,8 @@ const (
 
 type Session struct {
 	context.Context
-	cancel context.CancelFunc
+	cancel    context.CancelFunc
+	isClosing bool
 
 	isResponder bool
 
@@ -67,7 +68,10 @@ func (o *Session) HandleMessage(m *Message) {
 		log.Error("Drop Message: ", err)
 		return
 	}
-	// check spis
+	if o.isClosing {
+		log.Error("Drop Message: Closing")
+		return
+	}
 	o.incoming <- m
 }
 
@@ -132,6 +136,9 @@ done:
 
 func (o *Session) Close(err error) {
 	log.Info("Close Session")
+	if o.isClosing {
+		return
+	}
 	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
 }
 
@@ -151,6 +158,7 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 	return
 }
 func (o *Session) Finished() (s state.StateEvent) {
+	o.isClosing = true
 	close(o.incoming)
 	if len(o.outgoing) > 0 {
 		// let the queue drain

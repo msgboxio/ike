@@ -168,6 +168,7 @@ func main() {
 	go func() {
 		// wait for app shutdown
 		<-cxt.Done()
+		// shutdown sessions
 		for _, session := range sessions {
 			// reply on this to drain replies
 			session.Close(cxt.Err())
@@ -194,8 +195,10 @@ func main() {
 		msg.RemoteIp = ike.AddrToIp(remoteAddr)
 		// convert spi to uint64 for map lookup
 		spi, _ := packets.ReadB64(msg.IkeHeader.SpiI, 0)
+		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
+			// create and run session
 			responder, err := ike.NewResponder(context.Background(), ids, msg)
 			if err != nil {
 				log.Error(err)
