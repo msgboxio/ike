@@ -1,9 +1,6 @@
 package protocol
 
-import (
-	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
-)
+import "github.com/msgboxio/packets"
 
 func (s *AuthPayload) Type() PayloadType {
 	return PayloadTypeAUTH
@@ -16,8 +13,7 @@ func (s *AuthPayload) Encode() (b []byte) {
 
 func (s *AuthPayload) Decode(b []byte) (err error) {
 	if len(b) < 4 {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = ErrF(ERR_INVALID_SYNTAX, "auth too small %d < %d", len(b), 4)
 		return
 	}
 	// Header has already been decoded

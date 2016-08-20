@@ -1,21 +1,16 @@
 package protocol
 
-import (
-	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
-)
+import "github.com/msgboxio/packets"
 
 //   Transform Substructure
 
 func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
 	if len(b) < MIN_LEN_ATTRIBUTE {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = ErrF(ERR_INVALID_SYNTAX, "attribute too small %d < %d", len(b), MIN_LEN_ATTRIBUTE)
 		return
 	}
 	if at, _ := packets.ReadB16(b, 0); AttributeType(at&0x7fff) != ATTRIBUTE_TYPE_KEY_LENGTH {
-		log.V(LOG_CODEC_ERR).Infof("wrong attribute type, 0x%x", at)
-		err = ERR_INVALID_SYNTAX
+		err = ErrF(ERR_INVALID_SYNTAX, "wrong attribute type, 0x%x", at)
 		return
 	}
 	alen, _ := packets.ReadB16(b, 2)
@@ -29,8 +24,7 @@ func decodeAttribute(b []byte) (attr *TransformAttribute, used int, err error) {
 
 func decodeTransform(b []byte) (trans *SaTransform, used int, err error) {
 	if len(b) < MIN_LEN_TRANSFORM {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = ErrF(ERR_INVALID_SYNTAX, "transform too small %d < %d", len(b), MIN_LEN_TRANSFORM)
 		return
 	}
 	trans = &SaTransform{}
@@ -39,13 +33,11 @@ func decodeTransform(b []byte) (trans *SaTransform, used int, err error) {
 	}
 	trLength, _ := packets.ReadB16(b, 2)
 	if len(b) < int(trLength) {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = ErrF(ERR_INVALID_SYNTAX, "transform too small %d < %d", len(b), int(trLength))
 		return
 	}
 	if int(trLength) < MIN_LEN_TRANSFORM {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = ErrF(ERR_INVALID_SYNTAX, "transform too small %d < %d", int(trLength), MIN_LEN_TRANSFORM)
 		return
 	}
 	trType, _ := packets.ReadB8(b, 4)

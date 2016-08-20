@@ -1,6 +1,24 @@
 package protocol
 
+import "fmt"
+
 type IkeErrorCode uint16
+
+type IkeError struct {
+	IkeErrorCode
+	Message string
+}
+
+func ErrF(e IkeErrorCode, format string, a ...interface{}) IkeError {
+	return IkeError{e, fmt.Sprintf(format, a...)}
+}
+
+func (e IkeError) Error() string {
+	if e.Message != "" {
+		return fmt.Sprintf("%s:%s", e.IkeErrorCode, e.Message)
+	}
+	return fmt.Sprintf("%s", e.IkeErrorCode)
+}
 
 const (
 	ERR_UNSUPPORTED_CRITICAL_PAYLOAD IkeErrorCode = 1

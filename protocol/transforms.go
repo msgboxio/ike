@@ -34,7 +34,7 @@ var (
 	_NO_ESN = Transform{Type: TRANSFORM_TYPE_ESN, TransformId: uint16(ESN_NONE)}
 )
 
-var transforms = map[Transform]string{
+var transformStrings = map[Transform]string{
 	_ENCR_AES_CBC:      "ENCR_AES_CBC",
 	_ENCR_AES_CTR:      "ENCR_AES_CTR",
 	_ENCR_CAMELLIA_CBC: "ENCR_CAMELLIA_CBC",
@@ -158,7 +158,7 @@ func mutualTransform(want [][]*SaTransform) bool {
 	next:
 		for {
 			for _, t := range w {
-				if _, ok := transforms[t.Transform]; !ok {
+				if _, ok := transformStrings[t.Transform]; !ok {
 					break next
 				}
 			}
