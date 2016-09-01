@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"syscall"
 
-	"golang.org/x/net/internal/nettest"
 	"golang.org/x/net/ipv4"
 
 	"github.com/msgboxio/context"
@@ -29,6 +28,26 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New("received signal: " + sig.String()))
 }
 
+// copied from golang.org/x/net/internal/nettest
+func protocolNotSupported(err error) bool {
+	switch err := err.(type) {
+	case syscall.Errno:
+		switch err {
+		case syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT:
+			return true
+		}
+	case *os.SyscallError:
+		switch err := err.Err.(type) {
+		case syscall.Errno:
+			switch err {
+			case syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT:
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func listen(localString string) (p *ipv4.PacketConn, err error) {
 	udp, err := net.ListenPacket("udp4", localString)
 	if err != nil {
@@ -38,8 +57,8 @@ func listen(localString string) (p *ipv4.PacketConn, err error) {
 
 	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil { // probe before test
-		if nettest.ProtocolNotSupported(err) {
-			log.Warningf("not supported on %s", runtime.GOOS)
+		if protocolNotSupported(err) {
+			log.Warningf("udp source address detection not supported on %s", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
