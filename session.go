@@ -213,14 +213,14 @@ func (o *Session) addSa() (err error) {
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
 	// print config
-	log.Infof("Installing Child SA: %#x<=>%#x; Selectors: %s<=>%s", o.EspSpiI, o.EspSpiR, iNet, rNet)
 	sa := &platform.SaParams{
-		Src:             o.local,
-		Dst:             o.remote,
-		SrcPort:         0,
-		DstPort:         0,
-		SrcNet:          iNet,
-		DstNet:          rNet,
+		// src, dst for initiator
+		Ini:             o.local,
+		Res:             o.remote,
+		IniPort:         0,
+		ResPort:         0,
+		IniNet:          iNet,
+		ResNet:          rNet,
 		EspEi:           espEi,
 		EspAi:           espAi,
 		EspEr:           espEr,
@@ -230,9 +230,12 @@ func (o *Session) addSa() (err error) {
 		IsTransportMode: o.cfg.IsTransportMode,
 	}
 	if o.isResponder {
-		sa.SrcNet = rNet
-		sa.DstNet = iNet
+		sa.Ini = o.remote
+		sa.Res = o.local
+		sa.IsResponder = true
 	}
+	log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
+		o.EspSpiI, o.EspSpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
 	if err = platform.InstallChildSa(sa); err != nil {
 		return err
 	}
@@ -249,22 +252,23 @@ func (o *Session) removeSa() (err error) {
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
 	sa := &platform.SaParams{
-		Src:             o.local,
-		Dst:             o.remote,
-		SrcPort:         0,
-		DstPort:         0,
-		SrcNet:          iNet,
-		DstNet:          rNet,
+		Ini:             o.local,
+		Res:             o.remote,
+		IniPort:         0,
+		ResPort:         0,
+		IniNet:          iNet,
+		ResNet:          rNet,
 		SpiI:            int(SpiI),
 		SpiR:            int(SpiR),
 		IsTransportMode: o.cfg.IsTransportMode,
 	}
 	if o.isResponder {
-		sa.SrcNet = rNet
-		sa.DstNet = iNet
+		sa.Ini = o.remote
+		sa.Res = o.local
+		sa.IsResponder = true
 	}
 	if err = platform.RemoveChildSa(sa); err != nil {
-		log.Error("Error removing child SA: %s", err)
+		log.Error("Error removing child SA:", err)
 		return err
 	} else {
 		log.Info("Removed child SA")

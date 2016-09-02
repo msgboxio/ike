@@ -54,27 +54,40 @@ func makeTemplate(src, dst net.IP, reqId uint32, isTransportMode bool) (templ ne
 }
 
 func makeSaPolicies(reqId uint32, sa *SaParams) (policies []netlink.XfrmPolicy) {
-	// out
-	out := netlink.XfrmPolicy{
-		Sel:      makeSelector(sa.SrcNet, sa.DstNet),
+	// ini
+	iniToRes := makeSelector(sa.IniNet, sa.ResNet)
+	ini := netlink.XfrmPolicy{
+		Sel:      iniToRes,
 		Dir:      netlink.XFRM_DIR_OUT,
 		Priority: 1795,
 	}
-	out.Tmpls = append(out.Tmpls, makeTemplate(sa.Src, sa.Dst, reqId, sa.IsTransportMode))
-	policies = append(policies, out)
-	// in
-	in := netlink.XfrmPolicy{
-		Sel:      makeSelector(sa.DstNet, sa.SrcNet),
+	ini.Tmpls = append(ini.Tmpls, makeTemplate(sa.Ini, sa.Res, reqId, sa.IsTransportMode))
+	if sa.IsResponder {
+		ini.Dir = netlink.XFRM_DIR_IN
+	}
+	policies = append(policies, ini)
+
+	// responder
+	resToIni := makeSelector(sa.ResNet, sa.IniNet)
+	resp := netlink.XfrmPolicy{
+		Sel:      resToIni,
 		Dir:      netlink.XFRM_DIR_IN,
 		Priority: 1795,
 	}
-	inTemplate := makeTemplate(sa.Dst, sa.Src, reqId, sa.IsTransportMode)
-	in.Tmpls = append(in.Tmpls, inTemplate)
-	policies = append(policies, in)
+	inTemplate := makeTemplate(sa.Res, sa.Ini, reqId, sa.IsTransportMode)
+	if sa.IsResponder {
+		resp.Dir = netlink.XFRM_DIR_OUT
+	}
+	resp.Tmpls = append(resp.Tmpls, inTemplate)
+	policies = append(policies, resp)
 	if !sa.IsTransportMode {
 		// fwd ??
+		fwdSel := resToIni
+		if sa.IsResponder {
+			fwdSel = iniToRes
+		}
 		fwd := netlink.XfrmPolicy{
-			Sel:      makeSelector(sa.DstNet, sa.SrcNet),
+			Sel:      fwdSel,
 			Dir:      netlink.XFRM_DIR_FWD,
 			Priority: 1795,
 		}
@@ -93,9 +106,9 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 	}
 	log.Infof("key len: %d & %d", len(sa.EspEi), len(sa.EspEr))
 	out := netlink.XfrmState{
-		Sel:          makeSelector(sa.SrcNet, sa.DstNet),
-		Src:          sa.Src,
-		Dst:          sa.Dst,
+		Sel:          makeSelector(sa.IniNet, sa.ResNet),
+		Src:          sa.Ini,
+		Dst:          sa.Res,
 		Proto:        netlink.XFRM_PROTO_ESP,
 		Mode:         mode,
 		Spi:          sa.SpiR,
@@ -115,18 +128,18 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 			Key:  sa.EspEi,
 		},
 	}
-	if sa.SrcPort != 0 && sa.DstPort != 0 {
+	if sa.IniPort != 0 && sa.ResPort != 0 {
 		out.Encap = &netlink.XfrmStateEncap{
 			Type:    netlink.XFRM_ENCAP_ESPINUDP,
-			SrcPort: sa.SrcPort,
-			DstPort: sa.DstPort,
+			SrcPort: sa.IniPort,
+			DstPort: sa.ResPort,
 		}
 	}
 	states = append(states, out)
 	in := netlink.XfrmState{
-		Sel:          makeSelector(sa.DstNet, sa.SrcNet),
-		Src:          sa.Dst,
-		Dst:          sa.Src,
+		Sel:          makeSelector(sa.ResNet, sa.IniNet),
+		Src:          sa.Res,
+		Dst:          sa.Ini,
 		Proto:        netlink.XFRM_PROTO_ESP,
 		Mode:         mode,
 		Spi:          sa.SpiI, // not sure why
@@ -146,11 +159,11 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 			Key:  sa.EspEr,
 		},
 	}
-	if sa.SrcPort != 0 && sa.DstPort != 0 {
+	if sa.IniPort != 0 && sa.ResPort != 0 {
 		in.Encap = &netlink.XfrmStateEncap{
 			Type:    netlink.XFRM_ENCAP_ESPINUDP,
-			SrcPort: sa.DstPort,
-			DstPort: sa.SrcPort,
+			SrcPort: sa.ResPort,
+			DstPort: sa.IniPort,
 		}
 	}
 	states = append(states, in)

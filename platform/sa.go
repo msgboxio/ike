@@ -3,11 +3,12 @@ package platform
 import "net"
 
 type SaParams struct {
-	Src, Dst         net.IP // tunnel endpoints
-	SrcPort, DstPort int
-	SrcNet, DstNet   *net.IPNet
+	Ini, Res         net.IP // tunnel endpoints
+	IniPort, ResPort int
+	IniNet, ResNet   *net.IPNet
 
 	EspEi, EspAi, EspEr, EspAr []byte
 	SpiI, SpiR                 int
 	IsTransportMode            bool
+	IsResponder                bool
 }
