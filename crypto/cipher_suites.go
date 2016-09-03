@@ -24,6 +24,7 @@ type CipherSuite struct {
 	KeyLen, MacKeyLen int
 }
 
+// Build a CipherSuite from the given transfom
 // TODO - check that the entire suite makes sense
 func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	cs := &CipherSuite{}
@@ -37,7 +38,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 		case protocol.TRANSFORM_TYPE_DH:
 			cs.DhGroup, ok = kexAlgoMap[protocol.DhTransformId(tr.Transform.TransformId)]
 			if !ok {
-				return nil, fmt.Errorf("Unsupported dh transfom %s", tr.Transform.TransformId)
+				return nil, fmt.Errorf("Unsupported dh transfom %d", tr.Transform.TransformId)
 			}
 		case protocol.TRANSFORM_TYPE_PRF:
 			// for hmac based Prf, preferred key size is size of output
@@ -50,17 +51,17 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
 			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
 				if aead, keyLen, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
-					return nil, fmt.Errorf("Unsupported cipher transfom %s", tr.Transform.TransformId)
+					return nil, fmt.Errorf("Unsupported cipher transfom %d", tr.Transform.TransformId)
 				}
 			}
 			cs.KeyLen = keyLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_INTEG:
 			if cipher, ok = integrityTransform(tr.Transform.TransformId, cipher); !ok {
-				return nil, fmt.Errorf("Unsupported mac transfom %s", tr.Transform.TransformId)
+				return nil, fmt.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
 			}
 			cs.MacKeyLen = cipher.macKeyLen // TODO - 2 places
 		default:
-			return nil, fmt.Errorf("Unsupported transfom type %s", tr.Transform.Type)
+			return nil, fmt.Errorf("Unsupported transfom type %d", tr.Transform.Type)
 		} // end switch
 	} // end loop
 	if cipher == nil && aead == nil {
