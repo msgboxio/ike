@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/msgboxio/netlink"
+	"github.com/vishvananda/netlink/nl"
 )
 
 // fd
@@ -49,7 +49,7 @@ func SetSocketBypas(conn net.Conn, family uint16) error {
 	if err != nil {
 		return err
 	}
-	policy := netlink.XfrmUserpolicyInfo{}
+	policy := nl.XfrmUserpolicyInfo{}
 	policy.Action = XFRM_POLICY_ALLOW
 	policy.Sel.Family = family
 	sol := syscall.SOL_IP
