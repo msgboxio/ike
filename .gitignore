@@ -6,3 +6,4 @@ gce.sh
 state/state.go_
 protocol/fuzz/corpus/
 protocol/fuzz/fuzz-fuzz.zip
+*.test

@@ -14,7 +14,7 @@ import (
 
 // Policy :
 // selector
-// ist of templates
+// list of templates
 // index
 
 // Template:
@@ -104,7 +104,6 @@ func makeSaStates(reqid int, sa *SaParams) (states []netlink.XfrmState) {
 		mode = netlink.XFRM_MODE_TRANSPORT
 		flag = 0
 	}
-	log.Infof("key len: %d & %d", len(sa.EspEi), len(sa.EspEr))
 	out := netlink.XfrmState{
 		Sel:          makeSelector(sa.IniNet, sa.ResNet),
 		Src:          sa.Ini,
