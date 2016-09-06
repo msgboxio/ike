@@ -20,7 +20,9 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Co
 		log.Error(err)
 		return nil
 	}
-
+	if suite == nil {
+		panic("suite must not be null")
+	}
 	var tkm *Tkm
 	if tkm, err = NewTkmInitiator(suite, ids); err != nil {
 		log.Error(err)

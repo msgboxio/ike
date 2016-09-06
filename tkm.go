@@ -42,18 +42,18 @@ type Tkm struct {
 	skEi, skEr []byte // encryption keys
 }
 
-func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities) (tkm *Tkm, err error) {
-	tkm = &Tkm{
+func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities) (*Tkm, error) {
+	tkm := &Tkm{
 		suite:       suite,
 		isInitiator: true,
 		ids:         ids,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
-	if ni, err := tkm.ncCreate(suite.Prf.Length * 8); err != nil {
+	ni, err := tkm.ncCreate(suite.Prf.Length * 8)
+	if err != nil {
 		return nil, err
-	} else {
-		tkm.Ni = ni
 	}
+	tkm.Ni = ni
 	// for sending public key
 	if _, err := tkm.dhCreate(); err != nil {
 		return nil, err
