@@ -53,37 +53,11 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Co
 	return o
 }
 
-func (o *Initiator) SendInit() (s state.StateEvent) {
-	// IKE_SA_INIT
-	init := makeInit(initParams{
-		isInitiator:   o.tkm.isInitiator,
-		spiI:          o.IkeSpiI,
-		spiR:          make([]byte, 8),
-		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
-		nonce:         o.tkm.Ni,
-		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
-		dhPublic:      o.tkm.DhPublic,
-	})
-	init.IkeHeader.MsgId = o.msgId
-	// encode & send
-	var err error
-	o.initIb, err = init.Encode(o.tkm)
-	if err != nil {
-		log.Error(err)
-		s.Event = state.FAIL
-		s.Data = err
-		return
-	}
-	o.outgoing <- o.initIb
-	o.msgId++
-	return
-}
-
 func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 	s.Event = state.INIT_FAIL
 	// response
 	m := msg.(*Message)
-	// we know what cryptographyc algorithms peer selected
+	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// check NAT-T payload to determine if there is a NAT between the two peers
 	// If there is, then all the further communication is perfomed over port 4500 instead of the default port 500
@@ -110,7 +84,7 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	log.Infof("IKE SA Established: [%s]%#x<=>%#x[%s]",
+	log.Infof("IKE SA INITIALISED: [%s]%#x<=>%#x[%s]",
 		o.local,
 		o.IkeSpiI,
 		o.IkeSpiR,
@@ -118,37 +92,6 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 	// save Data
 	o.initRb = m.Data
 	s.Event = state.SUCCESS
-	return
-}
-
-func (o *Initiator) SendAuth() (s state.StateEvent) {
-	// IKE_AUTH
-	// make sure selectors are present
-	if o.cfg.TsI == nil {
-		log.Infoln("Adding host based selectors")
-		// add host based selectors by defaut
-		slen := len(o.local) * 8
-		o.cfg.AddSelector(
-			&net.IPNet{IP: o.local, Mask: net.CIDRMask(slen, slen)},
-			&net.IPNet{IP: o.remote, Mask: net.CIDRMask(slen, slen)})
-	}
-	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
-	// proposal
-	prop := ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
-	// tkm.Auth  needs to be called for both initiator & responder from the initator. so
-	signed1 := append(o.initIb, o.tkm.Nr.Bytes()...)
-	authI := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
-	authI.IkeHeader.MsgId = o.msgId
-	// encode & send
-	authIb, err := authI.Encode(o.tkm)
-	if err != nil {
-		log.Error(err)
-		s.Event = state.FAIL
-		s.Data = err
-		return
-	}
-	o.outgoing <- authIb
-	o.msgId++
 	return
 }
 

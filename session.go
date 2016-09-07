@@ -134,6 +134,91 @@ done:
 	} // for
 }
 
+func (o *Session) InitMsg(msgID uint32) ([]byte, error) {
+	// IKE_SA_INIT
+	nonce := o.tkm.Ni
+	if !o.tkm.isInitiator {
+		nonce = o.tkm.Nr
+	}
+	init := makeInit(initParams{
+		isInitiator:   o.tkm.isInitiator,
+		spiI:          o.IkeSpiI,
+		spiR:          o.IkeSpiR,
+		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
+		nonce:         nonce,
+		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
+		dhPublic:      o.tkm.DhPublic,
+	})
+	init.IkeHeader.MsgId = msgID
+	// encode
+	initB, err := init.Encode(o.tkm)
+	if err != nil {
+		return nil, err
+	}
+	if o.tkm.isInitiator {
+		o.initIb = initB
+	} else {
+		o.initRb = initB
+	}
+	return initB, nil
+}
+
+func (o *Session) AuthMsg(msgID uint32) ([]byte, error) {
+	// IKE_AUTH
+	// make sure selectors are present
+	if o.cfg.TsI == nil {
+		log.Infoln("Adding host based selectors")
+		// add host based selectors by defaut
+		slen := len(o.local) * 8
+		o.cfg.AddSelector(
+			&net.IPNet{IP: o.local, Mask: net.CIDRMask(slen, slen)},
+			&net.IPNet{IP: o.remote, Mask: net.CIDRMask(slen, slen)})
+	}
+	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
+
+	// proposal
+	var prop []*protocol.SaProposal
+	// part of signed octet
+	var signed1 []byte
+	if o.tkm.isInitiator {
+		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
+		// intiators's signed octet
+		// initI | Nr | prf(sk_pi | IDi )
+		signed1 = append(o.initIb, o.tkm.Nr.Bytes()...)
+	} else {
+		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
+		// responder's signed octet
+		// initR | Ni | prf(sk_pr | IDr )
+		signed1 = append(o.initRb, o.tkm.Ni.Bytes()...)
+	}
+	auth := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
+	auth.IkeHeader.MsgId = msgID
+	// encode
+	return auth.Encode(o.tkm)
+}
+
+func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
+	if err != nil {
+		log.Error(err)
+		s.Event = state.FAIL
+		s.Data = err
+		return
+	}
+	o.outgoing <- buf
+	o.msgId++
+	return
+}
+
+// callbacks
+
+func (o *Session) SendInit() (s state.StateEvent) {
+	return o.sendMsg(o.InitMsg(o.msgId))
+}
+
+func (o *Session) SendAuth() (s state.StateEvent) {
+	return o.sendMsg(o.AuthMsg(o.msgId))
+}
+
 func (o *Session) Close(err error) {
 	log.Info("Close Session")
 	if o.isClosing {
@@ -154,6 +239,7 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 	o.removeSa()
 	return
 }
+
 func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 	return
 }
@@ -270,9 +356,8 @@ func (o *Session) removeSa() (err error) {
 	if err = platform.RemoveChildSa(sa); err != nil {
 		log.Error("Error removing child SA:", err)
 		return err
-	} else {
-		log.Info("Removed child SA")
 	}
+	log.Info("Removed child SA")
 	return
 }
 
