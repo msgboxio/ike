@@ -3,16 +3,17 @@
 package platform
 
 import (
+	"context"
 	"syscall"
 
-	"github.com/msgboxio/context"
 	"github.com/msgboxio/log"
+	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 )
 
 type Listener struct {
 	context.Context
-	context.CancelFunc
+	cancel context.CancelFunc
 	socket *nl.NetlinkSocket
 }
 
@@ -25,60 +26,85 @@ const (
 )
 
 func ListenForEvents(parent context.Context) (listener *Listener) {
-	listener = &Listener{}
-	listener.Context, listener.CancelFunc = context.WithCancel(parent)
-	var err error
-	listener.socket, err = nl.Subscribe(syscall.NETLINK_XFRM,
+	cxt, cancel := context.WithCancel(parent)
+	listener = &Listener{
+		Context: cxt,
+		cancel:  cancel,
+	}
+
+	socket, err := nl.Subscribe(syscall.NETLINK_XFRM,
 		XFRMGRP_ACQUIRE,
 		XFRMGRP_EXPIRE,
 		XFRMGRP_SA,
 		XFRMGRP_POLICY,
 		XFRMGRP_REPORT,
 	)
-
 	if err != nil {
 		log.Error("xfrm listener: ", err)
-		listener.CancelFunc(err)
+		listener.cancel()
 		return
 	}
-	go runReader(listener.Context, listener.CancelFunc, listener.socket)
+	listener.socket = socket
+	go listener.runReader()
 	return
 }
 
-func (listener *Listener) Close() {
-	if listener.socket != nil {
-		listener.socket.Close()
+func (l *Listener) Close() {
+	if l.socket != nil {
+		l.socket.Close()
 	}
+	l.cancel() // NOTE : this will leak the goroutine
 }
 
-func runReader(cxt context.Context, cancel context.CancelFunc, nsock *nl.NetlinkSocket) {
-	log.Infoln("Listening for xfrm messages from kernel")
+func (l *Listener) runReader() {
+	log.Infoln("Started listening for xfrm messages from kernel")
+done:
 	for {
-		if msgs, err := nsock.Receive(); err != nil {
-			log.Error("xfrm Error:", err)
-			cancel(err)
-			return
-		} else {
-			for _, msg := range msgs {
-				switch msg.Header.Type {
-				case nl.XFRM_MSG_ACQUIRE:
-					log.Infof("xfrm acquire: %v", msg.Header)
-				case nl.XFRM_MSG_EXPIRE:
-					log.Infof("xfrm expire: %v", msg.Header)
-				case nl.XFRM_MSG_NEWPOLICY:
-					log.Infof("xfrm new policy: %v", msg.Header)
-				case nl.XFRM_MSG_DELPOLICY:
-					log.Infof("xfrm delete policy: %v", msg.Header)
-				case nl.XFRM_MSG_NEWSA:
-					log.Infof("xfrm new sa: %v", msg.Header)
-				case nl.XFRM_MSG_DELSA:
-					log.Infof("xfrm del sa: %v", msg.Header)
-				case nl.XFRM_MSG_REPORT:
-					log.Infof("xfrm report: %v", msg.Header)
-				default:
-					log.Infof("xfrm unknown type: 0x%x\n", msg.Header.Type)
-				}
+		select {
+		case <-l.Done():
+			break done
+		default:
+			if err := processMsg(l.socket); err != nil {
+				log.Error("xfrm listen Error:", err)
+				l.cancel()
 			}
 		}
 	}
+	log.Infoln("Stopped listening for xfrm messages from kernel")
+}
+
+func processMsg(nsock *nl.NetlinkSocket) error {
+	msgs, err := nsock.Receive()
+	if err != nil {
+		return err
+	}
+	if len(msgs) == 0 {
+		log.Error("len 0")
+	}
+	for _, msg := range msgs {
+		// log.Infof("msg: %+v", msg)
+		switch msg.Header.Type {
+		case nl.XFRM_MSG_ACQUIRE:
+			log.Infof("xfrm acquire: %+v", msg.Header)
+		case nl.XFRM_MSG_EXPIRE:
+			log.Infof("xfrm expire: %+v", msg.Header)
+		case nl.XFRM_MSG_NEWPOLICY:
+			policy, _ := netlink.ParseXfrmPolicy(msg.Data, netlink.FAMILY_ALL)
+			log.Infof("xfrm new policy: %+v", policy)
+		case nl.XFRM_MSG_DELPOLICY:
+			policy, _ := netlink.ParseXfrmPolicy(msg.Data, netlink.FAMILY_ALL)
+			log.Infof("xfrm delete policy: %+v", policy)
+		case nl.XFRM_MSG_NEWSA:
+			sa, _ := netlink.ParseXfrmState(msg.Data, netlink.FAMILY_ALL)
+			log.Infof("xfrm new sa: %+v", sa)
+		case nl.XFRM_MSG_DELSA:
+			sa, _ := netlink.ParseXfrmState(msg.Data, netlink.FAMILY_ALL)
+			log.Infof("xfrm del sa: %+v", sa)
+		case nl.XFRM_MSG_REPORT:
+			log.Infof("xfrm report: %+v", msg.Header)
+		default:
+			log.Infof("xfrm unknown type: %+v", msg.Header)
+		}
+	}
+	return nil
 }

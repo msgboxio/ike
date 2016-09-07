@@ -3,19 +3,12 @@
 package platform
 
 import (
-	"context"
 	"crypto/rand"
 	"net"
 	"testing"
 
 	"github.com/vishvananda/netlink"
 )
-
-func testXfrmReader(t *testing.T) {
-	parent := context.Background()
-	cxt := ListenForEvents(parent)
-	<-cxt.Done()
-}
 
 func randomKey() []byte {
 	// 256b (32)B key + 4 B salt
@@ -40,8 +33,6 @@ func TestXfrm(t *testing.T) {
 
 	netlink.XfrmPolicyFlush()
 	netlink.XfrmStateFlush(0)
-
-	testXfrmReader(t)
 }
 
 func getState() *netlink.XfrmState {

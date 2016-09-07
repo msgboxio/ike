@@ -3,9 +3,8 @@
 package platform
 
 import (
+	"context"
 	"net"
-
-	"golang.org/x/net/context"
 )
 
 func InstallChildSa(sa *SaParams) error {
@@ -25,6 +24,6 @@ type Listener struct {
 }
 
 func (Listener) Close() {}
-func ListenForEvents(parent context.Context) (listener *Listener) {
+func ListenForEvents(context.Context) (listener *Listener) {
 	return
 }
