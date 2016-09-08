@@ -2,6 +2,7 @@ package ike
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"net"
 	"time"
@@ -240,11 +241,10 @@ func (o *Session) checkSa(m *Message) (err error) {
 		log.Info("Using Transport Mode")
 	} else {
 		if wantsTransportMode {
-			log.Info("Peer Configured Transport Mode")
-			o.cfg.IsTransportMode = true
+			log.Info("Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			log.Info("Peer Rejected Transport Mode Config")
-			o.cfg.IsTransportMode = false
+			err = errors.New("Peer Rejected Transport Mode Config")
 		}
 	}
 	return

@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 )
 
 type Config struct {
@@ -45,8 +46,8 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.P
 }
 
 // AddSelector builds selector from address & mask
-func (cfg *Config) AddSelector(from, to *net.IPNet) (err error) {
-	first, last, err := IPNetToFirstLastAddress(from)
+func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
+	first, last, err := IPNetToFirstLastAddress(initiator)
 	if err != nil {
 		return
 	}
@@ -58,7 +59,7 @@ func (cfg *Config) AddSelector(from, to *net.IPNet) (err error) {
 		StartAddress: first,
 		EndAddress:   last,
 	}}
-	first, last, err = IPNetToFirstLastAddress(to)
+	first, last, err = IPNetToFirstLastAddress(responder)
 	if err != nil {
 		return
 	}
@@ -98,8 +99,11 @@ func (cfg *Config) AddFromAuth(authI *Message) error {
 	if len(tsI) == 0 || len(tsR) == 0 {
 		return errors.New("acceptable traffic selectors are missing")
 	}
-	cfg.TsI = tsI
-	cfg.TsR = tsR
+	log.Infof("Configured selectors: [INI]%s<=>%s[RES]", cfg.TsI, cfg.TsR)
+	log.Infof("Offered selectors: [INI]%s<=>%s[RES]", tsI, tsR)
+	// TODO - dont blindly overwrite
+	// cfg.TsI = tsI
+	// cfg.TsR = tsR
 	return nil
 }
 

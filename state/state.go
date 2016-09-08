@@ -43,6 +43,7 @@ type FsmHandler interface {
 	// checks
 	HandleIkeSaInit(interface{}) StateEvent
 	HandleIkeAuth(interface{}) StateEvent
+	CheckSa(interface{}) StateEvent
 
 	CheckError(interface{}) StateEvent
 }

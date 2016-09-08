@@ -127,14 +127,30 @@ func (o *Initiator) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 		o.IkeSpiI,
 		o.IkeSpiR,
 		o.remote)
+	s.Event = state.SUCCESS
+	// currently in STATE_AUTH, move to STATE_MATURE state
+	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
+	return
+}
+
+func (o *Initiator) CheckSa(msg interface{}) (s state.StateEvent) {
+	m := msg.(*Message)
 	// get peer spi
 	espSpiR, err := getPeerSpi(m, protocol.ESP)
 	if err != nil {
+		log.Error(err)
+		s.Data = err
 		return
 	}
 	o.EspSpiR = append([]byte{}, espSpiR...)
 	// final check
 	if err := o.checkSa(m); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	// load additional configs
+	if err = o.cfg.AddFromAuth(m); err != nil {
 		log.Error(err)
 		s.Data = err
 		return

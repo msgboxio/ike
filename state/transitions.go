@@ -5,8 +5,6 @@ import "github.com/msgboxio/log"
 type Event uint32
 type State uint32
 
-const ()
-
 type StateEvent struct {
 	Event
 	Data interface{}
@@ -16,9 +14,9 @@ type CheckEvent func(interface{}) StateEvent
 type Action func() StateEvent
 
 type Transition struct {
-	source, dest State
-	check        CheckEvent
-	action       Action
+	Source, Dest State
+	CheckEvent
+	Action
 }
 
 func AddTransitions(t1, t2 map[Event][]Transition) map[Event][]Transition {
@@ -35,7 +33,7 @@ func AddTransitions(t1, t2 map[Event][]Transition) map[Event][]Transition {
 
 type Fsm struct {
 	transitions map[Event][]Transition
-	state       State
+	State
 
 	messages chan StateEvent
 }
@@ -43,7 +41,7 @@ type Fsm struct {
 func NewFsm(trs map[Event][]Transition) *Fsm {
 	return &Fsm{
 		transitions: trs,
-		state:       STATE_IDLE,
+		State:       STATE_IDLE,
 		messages:    make(chan StateEvent, 10),
 	}
 }
@@ -56,43 +54,43 @@ func (f *Fsm) Run() {
 	for {
 		if m, ok := <-f.messages; ok {
 			f.handleEvent(m)
-			if f.state == STATE_FINISHED {
+			if f.State == STATE_FINISHED {
 				break
 			}
 		}
 	}
 	close(f.messages)
-	f.transitions[FINISHED][0].action()
+	f.transitions[FINISHED][0].Action()
 }
 
 func (f *Fsm) handleEvent(m StateEvent) {
 	transitions, ok := f.transitions[m.Event]
 	if !ok {
-		log.V(1).Infof("Ignoring event %s, in State %s", m.Event, f.state)
+		log.V(1).Infof("Ignoring event %s, in State %s", m.Event, f.State)
 		return
 	}
-	log.V(1).Infof("Run: Event %s, in State %s", m.Event, f.state)
+	log.V(1).Infof("Run: Event %s, in State %s", m.Event, f.State)
 	for _, t := range transitions {
-		if t.source == f.state {
-			if t.check != nil {
-				if err := t.check(m.Data); err.Data != nil {
-					log.V(1).Infof("check Error: %s, in State %s", err.Data, f.state)
+		if t.Source == f.State {
+			if t.CheckEvent != nil {
+				if err := t.CheckEvent(m.Data); err.Data != nil {
+					log.V(1).Infof("Check Error: %s, in State %s", err.Data, f.State)
 					// dont do transition, handle error in same state
 					f.Event(err)
 					return
 				}
 			}
-			if t.action != nil {
-				if err := t.action(); err.Data != nil {
-					log.V(1).Infof("Action Error: %s, in State %s", err.Data, f.state)
+			if t.Action != nil {
+				if err := t.Action(); err.Data != nil {
+					log.V(1).Infof("Action Error: %s, in State %s", err.Data, f.State)
 					// dont do transition, handle error in same state
 					f.Event(err)
 					return
 				}
 			}
 			// change state
-			log.V(1).Infof("Change: Previous %s, Current %s", f.state, t.dest)
-			f.state = t.dest
+			log.V(1).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
+			f.State = t.Dest
 			return
 		}
 	}

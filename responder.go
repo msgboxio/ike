@@ -102,6 +102,15 @@ func (o *Responder) HandleIkeAuth(m interface{}) (s state.StateEvent) {
 		o.IkeSpiI,
 		o.IkeSpiR,
 		o.local)
+	s.Event = state.SUCCESS
+	// currently in STATE_INIT, move to STATE_AUTH state
+	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
+	return
+}
+
+func (o *Responder) CheckSa(m interface{}) (s state.StateEvent) {
+	// get message
+	msg := m.(*Message)
 	// get peer spi
 	espSpiI, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {
@@ -124,7 +133,5 @@ func (o *Responder) HandleIkeAuth(m interface{}) (s state.StateEvent) {
 	}
 	// TODO - check IPSEC selectors & config
 	s.Event = state.SUCCESS
-	// move to MATURE state
-	o.fsm.Event(state.StateEvent{Event: state.SUCCESS})
 	return
 }

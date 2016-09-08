@@ -5,53 +5,54 @@ func ResponderTransitions(h FsmHandler) map[Event][]Transition {
 		MSG_INIT: []Transition{
 			// Received INIT reply
 			Transition{
-				source: STATE_IDLE,
-				dest:   STATE_INIT,
-				check:  h.HandleIkeSaInit,
-				action: h.SendInit,
+				Source:     STATE_IDLE,
+				Dest:       STATE_INIT,
+				CheckEvent: h.HandleIkeSaInit,
+				Action:     h.SendInit,
 			},
 		},
 		INIT_FAIL: []Transition{
 			// Cannot send message or Cannot build message
 			Transition{
-				source: STATE_IDLE,
-				dest:   STATE_FINISHED,
+				Source: STATE_IDLE,
+				Dest:   STATE_FINISHED,
 			},
 		},
 		TIMEOUT: []Transition{
 			// Did not recive Auth within timeout
 			Transition{
-				source: STATE_INIT,
-				dest:   STATE_IDLE,
+				Source: STATE_INIT,
+				Dest:   STATE_IDLE,
 			},
 			Transition{
-				source: STATE_AUTH,
-				dest:   STATE_IDLE,
+				Source: STATE_AUTH,
+				Dest:   STATE_IDLE,
 			},
 		},
 		MSG_AUTH: []Transition{
 			// Received AUTH
 			Transition{
-				source: STATE_INIT,
-				dest:   STATE_AUTH,
-				check:  h.HandleIkeAuth,
-				action: h.SendAuth,
+				Source:     STATE_INIT,
+				Dest:       STATE_AUTH,
+				CheckEvent: h.HandleIkeAuth,
+				Action:     h.SendAuth,
 			},
 		},
 		SUCCESS: []Transition{
 			// AUTH SUCCESS
 			Transition{
-				source: STATE_AUTH,
-				dest:   STATE_MATURE,
-				action: h.InstallSa,
+				Source:     STATE_AUTH,
+				Dest:       STATE_MATURE,
+				CheckEvent: h.CheckSa,
+				Action:     h.InstallSa,
 			},
 		},
 		AUTH_FAIL: []Transition{
 			// Unable to parse / Handle reply
 			Transition{
-				source: STATE_INIT,
-				dest:   STATE_FINISHED,
-				check:  h.CheckError,
+				Source:     STATE_INIT,
+				Dest:       STATE_FINISHED,
+				CheckEvent: h.CheckError,
 			},
 		},
 	}

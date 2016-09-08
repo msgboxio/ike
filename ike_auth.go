@@ -17,15 +17,21 @@ func AuthMsg(
 	local, remote net.IP) ([]byte, error) {
 	// IKE_AUTH
 	// make sure selectors are present
-	if cfg.TsI == nil {
+	if cfg.TsI == nil || cfg.TsR == nil {
 		log.Infoln("Adding host based selectors")
-		// add host based selectors by defaut
+		// add host based selectors by default
 		slen := len(local) * 8
+		ini := remote
+		res := local
+		if tkm.isInitiator {
+			ini = local
+			res = remote
+		}
 		cfg.AddSelector(
-			&net.IPNet{IP: local, Mask: net.CIDRMask(slen, slen)},
-			&net.IPNet{IP: remote, Mask: net.CIDRMask(slen, slen)})
+			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
+			&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
 	}
-	log.Infof("SA selectors: %s<=>%s", cfg.TsI, cfg.TsR)
+	log.Infof("SA selectors: [INI]%s<=>%s[RES]", cfg.TsI, cfg.TsR)
 
 	// proposal
 	var prop []*protocol.SaProposal
