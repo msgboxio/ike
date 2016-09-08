@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
 )
 
 type stateEvents int
@@ -25,8 +23,6 @@ type Session struct {
 	context.Context
 	cancel    context.CancelFunc
 	isClosing bool
-
-	isResponder bool
 
 	tkm *Tkm
 	cfg *Config
@@ -134,69 +130,6 @@ done:
 	} // for
 }
 
-func (o *Session) InitMsg(msgID uint32) ([]byte, error) {
-	// IKE_SA_INIT
-	nonce := o.tkm.Ni
-	if !o.tkm.isInitiator {
-		nonce = o.tkm.Nr
-	}
-	init := makeInit(initParams{
-		isInitiator:   o.tkm.isInitiator,
-		spiI:          o.IkeSpiI,
-		spiR:          o.IkeSpiR,
-		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
-		nonce:         nonce,
-		dhTransformId: o.tkm.suite.DhGroup.DhTransformId,
-		dhPublic:      o.tkm.DhPublic,
-	})
-	init.IkeHeader.MsgId = msgID
-	// encode
-	initB, err := init.Encode(o.tkm)
-	if err != nil {
-		return nil, err
-	}
-	if o.tkm.isInitiator {
-		o.initIb = initB
-	} else {
-		o.initRb = initB
-	}
-	return initB, nil
-}
-
-func (o *Session) AuthMsg(msgID uint32) ([]byte, error) {
-	// IKE_AUTH
-	// make sure selectors are present
-	if o.cfg.TsI == nil {
-		log.Infoln("Adding host based selectors")
-		// add host based selectors by defaut
-		slen := len(o.local) * 8
-		o.cfg.AddSelector(
-			&net.IPNet{IP: o.local, Mask: net.CIDRMask(slen, slen)},
-			&net.IPNet{IP: o.remote, Mask: net.CIDRMask(slen, slen)})
-	}
-	log.Infof("SA selectors: %s<=>%s", o.cfg.TsI, o.cfg.TsR)
-
-	// proposal
-	var prop []*protocol.SaProposal
-	// part of signed octet
-	var signed1 []byte
-	if o.tkm.isInitiator {
-		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
-		// intiators's signed octet
-		// initI | Nr | prf(sk_pi | IDi )
-		signed1 = append(o.initIb, o.tkm.Nr.Bytes()...)
-	} else {
-		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
-		// responder's signed octet
-		// initR | Ni | prf(sk_pr | IDr )
-		signed1 = append(o.initRb, o.tkm.Ni.Bytes()...)
-	}
-	auth := makeAuth(o.IkeSpiI, o.IkeSpiR, prop, o.cfg.TsI, o.cfg.TsR, signed1, o.tkm, o.cfg.IsTransportMode)
-	auth.IkeHeader.MsgId = msgID
-	// encode
-	return auth.Encode(o.tkm)
-}
-
 func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 	if err != nil {
 		log.Error(err)
@@ -212,23 +145,36 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 // callbacks
 
 func (o *Session) SendInit() (s state.StateEvent) {
-	return o.sendMsg(o.InitMsg(o.msgId))
+	initMsg := func() ([]byte, error) {
+		initB, err := InitMsg(o.tkm, o.IkeSpiI, o.IkeSpiR, o.msgId, o.cfg)
+		if err != nil {
+			return nil, err
+		}
+		if o.tkm.isInitiator {
+			o.initIb = initB
+		} else {
+			o.initRb = initB
+		}
+		return initB, nil
+	}
+	return o.sendMsg(initMsg())
 }
 
 func (o *Session) SendAuth() (s state.StateEvent) {
-	return o.sendMsg(o.AuthMsg(o.msgId))
-}
-
-func (o *Session) Close(err error) {
-	log.Info("Close Session")
-	if o.isClosing {
-		return
-	}
-	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
+	return o.sendMsg(AuthMsg(o.tkm,
+		o.IkeSpiI, o.IkeSpiR,
+		o.EspSpiI, o.EspSpiR,
+		o.initIb, o.initRb,
+		o.msgId, o.cfg,
+		o.local, o.remote))
 }
 
 func (o *Session) InstallSa() (s state.StateEvent) {
-	if err := o.addSa(); err != nil {
+	if err := addSa(o.tkm,
+		o.IkeSpiI, o.IkeSpiR,
+		o.EspSpiI, o.EspSpiR,
+		o.cfg,
+		o.local, o.remote); err != nil {
 		s.Event = state.FAIL
 		s.Data = err
 	}
@@ -236,13 +182,18 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 }
 func (o *Session) RemoveSa() (s state.StateEvent) {
 	o.SendIkeSaDelete()
-	o.removeSa()
+	removeSa(o.tkm,
+		o.IkeSpiI, o.IkeSpiR,
+		o.EspSpiI, o.EspSpiR,
+		o.cfg,
+		o.local, o.remote)
 	return
 }
 
 func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 	return
 }
+
 func (o *Session) Finished() (s state.StateEvent) {
 	o.isClosing = true
 	close(o.incoming)
@@ -254,6 +205,16 @@ func (o *Session) Finished() (s state.StateEvent) {
 	log.Info("Finishing; cancel context")
 	o.cancel(context.Canceled)
 	return // not used
+}
+
+// utilities
+
+func (o *Session) Close(err error) {
+	log.Info("Close Session")
+	if o.isClosing {
+		return
+	}
+	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
 }
 
 func (o *Session) checkSa(m *Message) (err error) {
@@ -289,78 +250,6 @@ func (o *Session) checkSa(m *Message) (err error) {
 	return
 }
 
-func (o *Session) addSa() (err error) {
-	// sa processing
-	espEi, espAi, espEr, espAr := o.tkm.IpsecSaCreate(o.IkeSpiI, o.IkeSpiR)
-	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
-	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
-	tsI := o.cfg.TsI[0]
-	tsR := o.cfg.TsR[0]
-	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
-	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	// print config
-	sa := &platform.SaParams{
-		// src, dst for initiator
-		Ini:             o.local,
-		Res:             o.remote,
-		IniPort:         0,
-		ResPort:         0,
-		IniNet:          iNet,
-		ResNet:          rNet,
-		EspEi:           espEi,
-		EspAi:           espAi,
-		EspEr:           espEr,
-		EspAr:           espAr,
-		SpiI:            int(SpiI),
-		SpiR:            int(SpiR),
-		IsTransportMode: o.cfg.IsTransportMode,
-	}
-	if o.isResponder {
-		sa.Ini = o.remote
-		sa.Res = o.local
-		sa.IsResponder = true
-	}
-	log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
-		o.EspSpiI, o.EspSpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
-	if err = platform.InstallChildSa(sa); err != nil {
-		return err
-	}
-	log.Info("Installed Child SA")
-	return
-}
-
-func (o *Session) removeSa() (err error) {
-	// sa processing
-	SpiI, _ := packets.ReadB32(o.EspSpiI, 0)
-	SpiR, _ := packets.ReadB32(o.EspSpiR, 0)
-	tsI := o.cfg.TsI[0]
-	tsR := o.cfg.TsR[0]
-	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
-	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	sa := &platform.SaParams{
-		Ini:             o.local,
-		Res:             o.remote,
-		IniPort:         0,
-		ResPort:         0,
-		IniNet:          iNet,
-		ResNet:          rNet,
-		SpiI:            int(SpiI),
-		SpiR:            int(SpiR),
-		IsTransportMode: o.cfg.IsTransportMode,
-	}
-	if o.isResponder {
-		sa.Ini = o.remote
-		sa.Res = o.local
-		sa.IsResponder = true
-	}
-	if err = platform.RemoveChildSa(sa); err != nil {
-		log.Error("Error removing child SA:", err)
-		return err
-	}
-	log.Info("Removed child SA")
-	return
-}
-
 func (o *Session) CheckError(m interface{}) (s state.StateEvent) {
 	// evt := m.(state.StateEvent)
 	o.Notify(protocol.ERR_INVALID_SYNTAX)
@@ -386,13 +275,7 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
-	infoB, err := info.Encode(o.tkm)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	o.outgoing <- infoB
-	o.msgId++
+	o.sendMsg(info.Encode(o.tkm))
 }
 
 func (o *Session) SendIkeSaDelete() {
@@ -409,13 +292,7 @@ func (o *Session) SendIkeSaDelete() {
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
-	infoB, err := info.Encode(o.tkm)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	o.outgoing <- infoB
-	o.msgId++
+	o.sendMsg(info.Encode(o.tkm))
 }
 
 func (o *Session) SendEmptyInformational() {
@@ -427,13 +304,7 @@ func (o *Session) SendEmptyInformational() {
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
-	infoB, err := info.Encode(o.tkm)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	o.outgoing <- infoB
-	o.msgId++
+	o.sendMsg(info.Encode(o.tkm))
 }
 
 func (o *Session) HandleSaRekey(msg interface{}) {

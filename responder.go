@@ -32,18 +32,17 @@ func NewResponder(parent context.Context, ids Identities, initI *Message) (*Resp
 	cxt, cancel := context.WithCancel(parent)
 	o := &Responder{
 		Session: Session{
-			Context:     cxt,
-			cancel:      cancel,
-			isResponder: true,
-			remote:      initI.RemoteIp,
-			local:       initI.LocalIp,
-			tkm:         tkm,
-			cfg:         cfg,
-			IkeSpiI:     ikeSpiI,
-			IkeSpiR:     MakeSpi(),
-			EspSpiR:     MakeSpi()[:4],
-			incoming:    make(chan *Message, 10),
-			outgoing:    make(chan []byte, 10),
+			Context:  cxt,
+			cancel:   cancel,
+			remote:   initI.RemoteIp,
+			local:    initI.LocalIp,
+			tkm:      tkm,
+			cfg:      cfg,
+			IkeSpiI:  ikeSpiI,
+			IkeSpiR:  MakeSpi(),
+			EspSpiR:  MakeSpi()[:4],
+			incoming: make(chan *Message, 10),
+			outgoing: make(chan []byte, 10),
 		},
 	}
 	go run(&o.Session)
