@@ -127,11 +127,11 @@ func main() {
 		Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 	}
 
-	p, err := listen(localString)
+	pconn, err := listen(localString)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("socket listening: %s", p.Conn.LocalAddr())
+	log.Infof("socket listening: %s", pconn.Conn.LocalAddr())
 
 	// this should load the xfrm modules
 	// requires root
@@ -147,7 +147,7 @@ func main() {
 	}
 
 	// requires root
-	if err := platform.SetSocketBypas(p.Conn, syscall.AF_INET); err != nil {
+	if err := platform.SetSocketBypas(pconn.Conn, syscall.AF_INET); err != nil {
 		log.Fatal(err)
 	}
 
@@ -161,7 +161,7 @@ func main() {
 				if !ok {
 					break
 				}
-				if err = write(p, reply, to); err != nil {
+				if err = write(pconn, reply, to); err != nil {
 					session.Close(err)
 					break
 				}
@@ -194,11 +194,11 @@ func main() {
 			// wait until client is done
 			<-session.Done()
 		}
-		p.Close()
+		pconn.Close()
 	}()
 
 	for {
-		b, remoteAddr, localIP, err := read(p)
+		b, remoteAddr, localIP, err := read(pconn)
 		if err != nil {
 			log.Fatal(err)
 			// ask app to close
@@ -217,8 +217,12 @@ func main() {
 		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
+			config := ike.DefaultConfig()
+			if !isTunnelMode {
+				config.IsTransportMode = true
+			}
 			// create and run session
-			responder, err := ike.NewResponder(context.Background(), ids, msg)
+			responder, err := ike.NewResponder(context.Background(), ids, config, msg)
 			if err != nil {
 				log.Error(err)
 				continue

@@ -13,14 +13,19 @@ type Responder struct {
 	Session
 }
 
-func NewResponder(parent context.Context, ids Identities, initI *Message) (*Responder, error) {
+// NewResponder creates a Responder session if everything looks OK
+func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Message) (*Responder, error) {
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
-	cfg, err := NewConfigFromInit(initI)
+	rcfg, err := NewConfigFromInit(initI)
 	if err != nil {
 		return nil, err
 	}
+	// check if config is usable
+	// use new config
+	cfg = rcfg
+
 	tkm, err := newTkmFromInit(initI, cfg, ids)
 	if err != nil {
 		return nil, err
