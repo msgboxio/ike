@@ -60,7 +60,7 @@ func NewResponder(parent context.Context, ids Identities, initI *Message) (*Resp
 	return o, nil
 }
 
-func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
+func (o *Responder) HandleIkeSaInit(m interface{}) (s state.StateEvent) {
 	s.Event = state.INIT_FAIL
 	msg := m.(*Message)
 	o.initIb = msg.Data
@@ -69,7 +69,7 @@ func (o *Responder) CheckInit(m interface{}) (s state.StateEvent) {
 	return
 }
 
-func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
+func (o *Responder) HandleIkeAuth(m interface{}) (s state.StateEvent) {
 	// initialize return
 	s.Event = state.AUTH_FAIL
 	// get message
@@ -92,6 +92,11 @@ func (o *Responder) CheckAuth(m interface{}) (s state.StateEvent) {
 		s.Data = err
 		return
 	}
+	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
+		o.remote,
+		o.IkeSpiI,
+		o.IkeSpiR,
+		o.local)
 	// get peer spi
 	espSpiI, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {

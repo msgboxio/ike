@@ -53,7 +53,7 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Co
 	return o
 }
 
-func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
+func (o *Initiator) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
 	s.Event = state.INIT_FAIL
 	// response
 	m := msg.(*Message)
@@ -95,7 +95,7 @@ func (o *Initiator) CheckInit(msg interface{}) (s state.StateEvent) {
 	return
 }
 
-func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
+func (o *Initiator) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 	s.Event = state.AUTH_FAIL
 	// response
 	m := msg.(*Message)
@@ -122,6 +122,11 @@ func (o *Initiator) CheckAuth(msg interface{}) (s state.StateEvent) {
 		s.Data = protocol.AUTHENTICATION_FAILED
 		return
 	}
+	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
+		o.local,
+		o.IkeSpiI,
+		o.IkeSpiR,
+		o.remote)
 	// get peer spi
 	espSpiR, err := getPeerSpi(m, protocol.ESP)
 	if err != nil {

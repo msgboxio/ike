@@ -15,7 +15,7 @@ func InitiatorTransitions(h FsmHandler) map[Event][]Transition {
 			Transition{
 				source: STATE_INIT,
 				dest:   STATE_AUTH,
-				check:  h.CheckInit,
+				check:  h.HandleIkeSaInit,
 				action: h.SendAuth,
 			},
 		},
@@ -44,7 +44,7 @@ func InitiatorTransitions(h FsmHandler) map[Event][]Transition {
 			Transition{
 				source: STATE_AUTH,
 				dest:   STATE_MATURE,
-				check:  h.CheckAuth,
+				check:  h.HandleIkeAuth,
 				action: h.InstallSa,
 			},
 		},

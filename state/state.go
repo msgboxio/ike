@@ -39,9 +39,10 @@ type FsmHandler interface {
 	InstallSa() StateEvent
 	RemoveSa() StateEvent
 	Finished() StateEvent
+
 	// checks
-	CheckInit(interface{}) StateEvent
-	CheckAuth(interface{}) StateEvent
+	HandleIkeSaInit(interface{}) StateEvent
+	HandleIkeAuth(interface{}) StateEvent
 
 	CheckError(interface{}) StateEvent
 }

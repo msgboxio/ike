@@ -34,7 +34,7 @@ func TestTransitions(t *testing.T) {
 				source: STATE_IDLE,
 				dest:   S1,
 				check:  func(interface{}) (s StateEvent) { wg.Done(); return },
-				action: func(interface{}) (s StateEvent) { wg.Done(); return },
+				action: func() (s StateEvent) { wg.Done(); return },
 			},
 		},
 		E2: []Transition{
@@ -47,7 +47,7 @@ func TestTransitions(t *testing.T) {
 					wg.Done()
 					return
 				},
-				action: func(interface{}) (s StateEvent) { wg.Done(); return },
+				action: func() (s StateEvent) { wg.Done(); return },
 			},
 		},
 		EE: []Transition{
@@ -55,7 +55,7 @@ func TestTransitions(t *testing.T) {
 				source: S1,
 				dest:   SE,
 				check:  func(interface{}) (s StateEvent) { wg.Done(); return },
-				action: func(interface{}) (s StateEvent) { wg.Done(); return },
+				action: func() (s StateEvent) { wg.Done(); return },
 			},
 		},
 	}

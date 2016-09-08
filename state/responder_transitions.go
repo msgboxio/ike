@@ -7,7 +7,7 @@ func ResponderTransitions(h FsmHandler) map[Event][]Transition {
 			Transition{
 				source: STATE_IDLE,
 				dest:   STATE_INIT,
-				check:  h.CheckInit,
+				check:  h.HandleIkeSaInit,
 				action: h.SendInit,
 			},
 		},
@@ -34,7 +34,7 @@ func ResponderTransitions(h FsmHandler) map[Event][]Transition {
 			Transition{
 				source: STATE_INIT,
 				dest:   STATE_AUTH,
-				check:  h.CheckAuth,
+				check:  h.HandleIkeAuth,
 				action: h.SendAuth,
 			},
 		},
