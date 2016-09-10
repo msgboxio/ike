@@ -52,9 +52,17 @@ func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Me
 	}
 	go run(&o.Session)
 
-	o.fsm = state.NewFsm(state.AddTransitions(state.ResponderTransitions(o), state.CommonTransitions(o)))
+	o.fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
 	go o.fsm.Run()
 
+	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
+	return o, nil
+}
+
+func (o *Responder) HandleIkeSaInit(m interface{}) (s state.StateEvent) {
+	s.Event = state.INIT_FAIL
+
+	// TODO Check message
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof("IKE SA INITIALISED: [%s]%#x<=>%#x[%s]",
 		o.remote,
@@ -62,14 +70,8 @@ func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Me
 		o.IkeSpiR,
 		o.local)
 
-	return o, nil
-}
-
-func (o *Responder) HandleIkeSaInit(m interface{}) (s state.StateEvent) {
-	s.Event = state.INIT_FAIL
 	msg := m.(*Message)
 	o.initIb = msg.Data
-	// TODO Check message
 	s.Event = state.SUCCESS
 	return
 }

@@ -1,67 +1,46 @@
 package state
 
-func InitiatorTransitions(h FsmHandler) map[Event][]Transition {
-	return map[Event][]Transition{
-		SMI_START: []Transition{
-			// Send INIT, set timeout
-			Transition{
-				Source: STATE_IDLE,
-				Dest:   STATE_INIT,
+func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
+	return map[State]UserTransitions{
+		STATE_IDLE: UserTransitions{
+			SMI_START: Transition{
+				Dest: STATE_START,
+			},
+		},
+		STATE_START: UserTransitions{
+			ENTRY_EVENT: Transition{
 				Action: h.SendInit,
 			},
-		},
-		MSG_INIT: []Transition{
-			// Received INIT reply
-			Transition{
-				Source:     STATE_INIT,
-				Dest:       STATE_AUTH,
+			MSG_INIT: Transition{
 				CheckEvent: h.HandleIkeSaInit,
-				Action:     h.SendAuth,
+				Dest:       STATE_INIT,
+			},
+			INIT_FAIL: Transition{
+				Dest: STATE_FINISHED,
 			},
 		},
-		INIT_FAIL: []Transition{
-			// Cannot send message or Cannot build message
-			Transition{
-				Source: STATE_INIT,
-				Dest:   STATE_FINISHED,
+		STATE_INIT: UserTransitions{
+			ENTRY_EVENT: Transition{
+				Action: h.SendAuth,
 			},
-		},
-		TIMEOUT: []Transition{
-			// Did not recive reply within timeout
-			Transition{
-				Source: STATE_INIT,
-				Dest:   STATE_IDLE,
-				Action: h.StartRetryTimeout,
-			},
-			Transition{
-				Source: STATE_AUTH,
-				Dest:   STATE_IDLE,
-				Action: h.StartRetryTimeout,
-			},
-		},
-		MSG_AUTH: []Transition{
-			// Received AUTH reply
-			Transition{
-				Source:     STATE_AUTH,
-				Dest:       STATE_AUTH,
+			MSG_AUTH: Transition{
 				CheckEvent: h.HandleIkeAuth,
+				Dest:       STATE_AUTH,
+			},
+			AUTH_FAIL: Transition{
+				Dest: STATE_FINISHED,
 			},
 		},
-		SUCCESS: []Transition{
-			// AUTH SUCCESS
-			Transition{
-				Source:     STATE_AUTH,
-				Dest:       STATE_MATURE,
+		STATE_AUTH: UserTransitions{
+			ENTRY_EVENT: Transition{
 				CheckEvent: h.CheckSa,
 				Action:     h.InstallSa,
 			},
-		},
-		AUTH_FAIL: []Transition{
-			// Unable to parse / Handle reply
-			Transition{
-				Source: STATE_AUTH,
-				Dest:   STATE_FINISHED,
+			SUCCESS: Transition{
+				Dest: STATE_MATURE,
 			},
 		},
+		STATE_MATURE:   UserTransitions{},
+		STATE_FINISHED: UserTransitions{},
 	}
 }

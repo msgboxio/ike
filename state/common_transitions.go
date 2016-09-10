@@ -1,6 +1,18 @@
 package state
 
-func CommonTransitions(h FsmHandler) map[Event][]Transition {
+func CommonTransitions(h FsmHandler) map[State]UserTransitions {
+	return map[State]UserTransitions{
+		STATE_MATURE: UserTransitions{
+			DELETE_IKE_SA: Transition{
+				Dest:   STATE_FINISHED,
+				Action: h.RemoveSa,
+			},
+		},
+	}
+}
+
+/*
+map[Event][]Transition {
 	return map[Event][]Transition{
 		FAIL: []Transition{
 			Transition{
@@ -21,15 +33,6 @@ func CommonTransitions(h FsmHandler) map[Event][]Transition {
 				Action: h.RemoveSa,
 			},
 		},
-
-		DELETE_IKE_SA: []Transition{
-			Transition{
-				Source: STATE_MATURE,
-				Dest:   STATE_FINISHED,
-				Action: h.RemoveSa,
-			},
-		},
-
 		FINISHED: []Transition{
 			Transition{
 				Action: h.Finished,
@@ -37,3 +40,4 @@ func CommonTransitions(h FsmHandler) map[Event][]Transition {
 		},
 	}
 }
+*/

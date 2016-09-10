@@ -47,7 +47,7 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Co
 	}
 	go run(&o.Session)
 
-	o.fsm = state.NewFsm(state.AddTransitions(state.InitiatorTransitions(o), state.CommonTransitions(o)))
+	o.fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
 	go o.fsm.Run()
 	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
 	return o

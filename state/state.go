@@ -2,10 +2,10 @@ package state
 
 const (
 	STATE_IDLE State = iota
+	STATE_START
 
 	STATE_INIT
 	STATE_AUTH
-
 	STATE_MATURE
 
 	STATE_FINISHED
@@ -29,6 +29,7 @@ const (
 	DELETE_IKE_SA
 
 	FINISHED // internal event
+	ENTRY_EVENT
 )
 
 type FsmHandler interface {

@@ -1,59 +1,40 @@
 package state
 
-func ResponderTransitions(h FsmHandler) map[Event][]Transition {
-	return map[Event][]Transition{
-		MSG_INIT: []Transition{
-			// Received INIT reply
-			Transition{
-				Source:     STATE_IDLE,
-				Dest:       STATE_INIT,
+func ResponderTransitions(h FsmHandler) map[State]UserTransitions {
+	return map[State]UserTransitions{
+		STATE_IDLE: UserTransitions{
+			SMI_START: Transition{
+				Dest: STATE_START,
+			},
+		},
+		STATE_START: UserTransitions{
+			MSG_INIT: Transition{
 				CheckEvent: h.HandleIkeSaInit,
 				Action:     h.SendInit,
+				Dest:       STATE_INIT,
+			},
+			INIT_FAIL: Transition{
+				Dest: STATE_IDLE,
 			},
 		},
-		INIT_FAIL: []Transition{
-			// Cannot send message or Cannot build message
-			Transition{
-				Source: STATE_IDLE,
-				Dest:   STATE_FINISHED,
-			},
-		},
-		TIMEOUT: []Transition{
-			// Did not recive Auth within timeout
-			Transition{
-				Source: STATE_INIT,
-				Dest:   STATE_IDLE,
-			},
-			Transition{
-				Source: STATE_AUTH,
-				Dest:   STATE_IDLE,
-			},
-		},
-		MSG_AUTH: []Transition{
-			// Received AUTH
-			Transition{
-				Source:     STATE_INIT,
-				Dest:       STATE_AUTH,
+		STATE_INIT: UserTransitions{
+			MSG_AUTH: Transition{
 				CheckEvent: h.HandleIkeAuth,
 				Action:     h.SendAuth,
+				Dest:       STATE_AUTH,
+			},
+			AUTH_FAIL: Transition{
+				Dest: STATE_IDLE,
 			},
 		},
-		SUCCESS: []Transition{
-			// AUTH SUCCESS
-			Transition{
-				Source:     STATE_AUTH,
-				Dest:       STATE_MATURE,
+		STATE_AUTH: UserTransitions{
+			ENTRY_EVENT: Transition{
 				CheckEvent: h.CheckSa,
 				Action:     h.InstallSa,
+				Dest:       STATE_MATURE,
 			},
 		},
-		AUTH_FAIL: []Transition{
-			// Unable to parse / Handle reply
-			Transition{
-				Source:     STATE_INIT,
-				Dest:       STATE_FINISHED,
-				CheckEvent: h.CheckError,
-			},
-		},
+		STATE_MATURE:   UserTransitions{},
+		STATE_FINISHED: UserTransitions{},
 	}
 }
