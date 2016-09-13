@@ -8,14 +8,16 @@ import (
 	"github.com/msgboxio/log"
 )
 
-type psk struct{ tkm *Tkm }
+type psk struct {
+	*Tkm
+}
 
 func (psk *psk) IdType() protocol.IdType {
-	return psk.tkm.ids.IdType()
+	return psk.Tkm.ids.IdType()
 }
 
 func (psk *psk) Id() []byte {
-	return psk.tkm.ids.ForAuthentication(psk.IdType())
+	return psk.Tkm.ids.ForAuthentication(psk.IdType())
 }
 
 func (psk *psk) AuthMethod() protocol.AuthMethod {
@@ -23,10 +25,10 @@ func (psk *psk) AuthMethod() protocol.AuthMethod {
 }
 
 func (psk *psk) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
-	signB := psk.tkm.signB(signed1, id, flag)
-	secret := psk.tkm.ids.AuthData(id.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
+	signB := psk.Tkm.signB(signed1, id, flag)
+	secret := psk.Tkm.ids.AuthData(id.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	// TODO : tkm.Auth always uses the hash negotiated with prf
-	prf := psk.tkm.suite.Prf
+	prf := psk.Tkm.suite.Prf
 	return prf.Apply(prf.Apply(secret, []byte("Key Pad for IKEv2")), signB)[:prf.Length]
 }
 

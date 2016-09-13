@@ -1,9 +1,7 @@
 package ike
 
 import (
-	"crypto"
 	"crypto/rsa"
-	"crypto/sha1"
 	"crypto/x509"
 
 	"github.com/msgboxio/ike/protocol"
@@ -36,14 +34,15 @@ func (r *RsaCert) Verify(certP protocol.Payload, signed1 []byte, id *protocol.Id
 		log.Errorf("Ike Auth failed: incorrect public key type")
 		return false
 	}
-	// TODO - we ALWAYS assume sha1 function when verifying signatures
-	hash := sha1.Sum(r.tkm.signB(signed1, id, flag))
-	if err = rsa.VerifyPKCS1v15(rsaPublic, crypto.SHA1, hash[:], authData); err == nil {
+	rsaSig := &RsaSig{
+		Tkm:        r.tkm,
+		peerPublic: rsaPublic,
+	}
+	if rsaSig.Verify(signed1, id, flag, authData) {
 		if log.V(2) {
 			log.Infof("Ike CERT Auth of %+v successful", x509Cert.Subject)
 		}
 		return true
 	}
-	log.Errorf("Ike Auth failed: signature could not be verified: %s", err)
 	return false
 }
