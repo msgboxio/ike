@@ -16,6 +16,10 @@ type dhGroup struct {
 	protocol.DhTransformId
 }
 
+func (group *dhGroup) String() string {
+	return group.DhTransformId.String()
+}
+
 func (group *dhGroup) DiffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
 	if theirPublic.Sign() <= 0 || theirPublic.Cmp(group.p) >= 0 {
 		return nil, errors.New("DH parameter out of bounds")

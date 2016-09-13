@@ -1,7 +1,6 @@
 package crypto
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
@@ -16,8 +15,8 @@ type Cipher interface {
 }
 
 type CipherSuite struct {
-	Cipher // aead or nonAead
-	*Prf
+	Cipher  // aead or nonAead
+	Prf     *Prf
 	DhGroup *dhGroup
 
 	// Lengths, in bytes, of the key material needed for each component.
@@ -28,7 +27,6 @@ type CipherSuite struct {
 // TODO - check that the entire suite makes sense
 func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	cs := &CipherSuite{}
-	ok := false
 	// empty variables, filled in later
 	var aead *aeadCipher
 	var cipher *simpleCipher
@@ -36,19 +34,21 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	for _, tr := range trs {
 		switch tr.Transform.Type {
 		case protocol.TRANSFORM_TYPE_DH:
-			cs.DhGroup, ok = kexAlgoMap[protocol.DhTransformId(tr.Transform.TransformId)]
+			dh, ok := kexAlgoMap[protocol.DhTransformId(tr.Transform.TransformId)]
 			if !ok {
 				return nil, fmt.Errorf("Unsupported dh transfom %d", tr.Transform.TransformId)
 			}
+			cs.DhGroup = dh
 		case protocol.TRANSFORM_TYPE_PRF:
 			// for hmac based Prf, preferred key size is size of output
-			var err error
-			cs.Prf, err = prfTranform(tr.Transform.TransformId)
-			if !ok {
+			prf, err := prfTranform(tr.Transform.TransformId)
+			if err != nil {
 				return nil, err
 			}
+			cs.Prf = prf
 		case protocol.TRANSFORM_TYPE_ENCR:
 			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
+			var ok bool
 			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
 				if aead, keyLen, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
 					return nil, fmt.Errorf("Unsupported cipher transfom %d", tr.Transform.TransformId)
@@ -56,6 +56,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 			}
 			cs.KeyLen = keyLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_INTEG:
+			var ok bool
 			if cipher, ok = integrityTransform(tr.Transform.TransformId, cipher); !ok {
 				return nil, fmt.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
 			}
@@ -70,6 +71,9 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	if cipher != nil && aead != nil {
 		return nil, fmt.Errorf("invalid cipher transfoms combination")
 	}
+	if cs.DhGroup == nil || cs.Prf == nil {
+		return nil, fmt.Errorf("invalid cipher transfoms combination")
+	}
 	if cipher != nil {
 		cs.Cipher = cipher
 	}
@@ -77,8 +81,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 		cs.Cipher = aead
 	}
 	if log.V(4) {
-		js, _ := json.Marshal(*cs)
-		log.Infof("Using CipherSuite: %s", js)
+		log.Infof("IKE CipherSuite: %+v", cs)
 	}
 	return cs, nil
 }

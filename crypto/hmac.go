@@ -26,6 +26,7 @@ func integrityTransform(cipherId uint16, cipher *simpleCipher) (*simpleCipher, b
 	cipher.macFunc = macFunc
 	cipher.macKeyLen = macKeyLength
 	cipher.macLen = macLen
+	cipher.AuthTransformId = protocol.AuthTransformId(cipherId)
 	return cipher, true
 }
 

@@ -32,6 +32,7 @@ func cipherTransform(cipherId uint16, keyLen int, cipher *simpleCipher) (*simple
 	cipher.blockLen = blockSize
 	cipher.ivLen = blockSize
 	cipher.cipherFunc = cipherFunc
+	cipher.EncrTransformId = protocol.EncrTransformId(cipherId)
 	return cipher, true
 }
 
@@ -56,6 +57,13 @@ type simpleCipher struct {
 
 	keyLen, ivLen, blockLen int
 	cipherFunc
+
+	protocol.EncrTransformId
+	protocol.AuthTransformId
+}
+
+func (cs *simpleCipher) String() string {
+	return cs.EncrTransformId.String() + "+" + cs.AuthTransformId.String()
 }
 
 func (cs *simpleCipher) Overhead(clear []byte) int {

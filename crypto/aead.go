@@ -98,6 +98,7 @@ func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher
 	cipher.ivLen = ivLen
 	cipher.saltLen = saltLen
 	cipher.icvLen = icvLen
+	cipher.EncrTransformId = protocol.EncrTransformId(cipherId)
 	// return length of key that needs to be derived
 	return cipher, cipher.keyLen + cipher.saltLen, true
 }
@@ -122,6 +123,12 @@ func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen, icvLen int, aead
 type aeadCipher struct {
 	aeadFunc
 	blockLen, keyLen, saltLen, ivLen, icvLen int
+
+	protocol.EncrTransformId
+}
+
+func (cs *aeadCipher) String() string {
+	return cs.EncrTransformId.String()
 }
 
 func (cs *aeadCipher) Overhead(clear []byte) int {
