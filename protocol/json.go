@@ -5,18 +5,6 @@ import (
 	"fmt"
 )
 
-func (p ProtocolId) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
-}
-
-func (p PayloadType) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
-}
-
-func (p NotificationType) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
-}
-
 type ts struct {
 	PayloadType PayloadType
 	Payload
@@ -35,8 +23,4 @@ func (t Transform) MarshalJSON() ([]byte, error) {
 		return []byte(fmt.Sprintf("\"%s\"", str)), nil
 	}
 	return []byte(fmt.Sprintf("\"%s: %d\"", t.Type, t.TransformId)), nil
-}
-
-func (p IkeExchangeType) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf("\"%s\"", p.String())), nil
 }
