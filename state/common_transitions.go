@@ -8,6 +8,11 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 				Action: h.RemoveSa,
 			},
 		},
+		STATE_FINISHED: UserTransitions{
+			ENTRY_EVENT: Transition{
+				Action: h.Finished,
+			},
+		},
 	}
 }
 

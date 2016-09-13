@@ -118,10 +118,10 @@ func (f *Fsm) handleEvent(m StateEvent) {
 	if err := f.runTransition(t, m); err.Data != nil {
 		return
 	}
-	// execute entry action for new state
+	// execute entry action for new state, it does not directly cause state changes
 	tEntry, ok := f.transitions[key(ENTRY_EVENT, t.Dest)]
 	if ok {
-		log.V(1).Infof("Run: Event %s, for State %s", ENTRY_EVENT, tEntry.Dest)
+		log.V(1).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
 		if err := f.runTransition(tEntry, m); err.Data != nil {
 			return
 		}

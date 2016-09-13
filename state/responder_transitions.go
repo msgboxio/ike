@@ -31,7 +31,9 @@ func ResponderTransitions(h FsmHandler) map[State]UserTransitions {
 			ENTRY_EVENT: Transition{
 				CheckEvent: h.CheckSa,
 				Action:     h.InstallSa,
-				Dest:       STATE_MATURE,
+			},
+			SUCCESS: Transition{
+				Dest: STATE_MATURE,
 			},
 		},
 		STATE_MATURE:   UserTransitions{},

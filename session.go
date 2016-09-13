@@ -182,7 +182,6 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 	return
 }
 func (o *Session) RemoveSa() (s state.StateEvent) {
-	o.SendIkeSaDelete()
 	removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
@@ -215,7 +214,10 @@ func (o *Session) Close(err error) {
 	if o.isClosing {
 		return
 	}
-	o.fsm.Event(state.StateEvent{Event: state.FAIL, Data: err})
+	// send to peer, peer should send SA_DELETE message
+	o.SendIkeSaDelete()
+	// TODO - start timeout to delete sa if peers does not reply
+	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
 }
 
 func (o *Session) checkSa(m *Message) (err error) {

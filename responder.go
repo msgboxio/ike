@@ -13,7 +13,7 @@ type Responder struct {
 	Session
 }
 
-// NewResponder creates a Responder session if everything looks OK
+// NewResponder creates a Responder session if incoming message looks OK
 func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Message) (*Responder, error) {
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
@@ -24,6 +24,7 @@ func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Me
 	}
 	// check if config is usable
 	// use new config
+	rcfg.IsTransportMode = cfg.IsTransportMode
 	cfg = rcfg
 
 	tkm, err := newTkmFromInit(initI, cfg, ids)
