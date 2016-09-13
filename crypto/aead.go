@@ -13,7 +13,7 @@ import (
 
 /*
 
-AES-CCM :
+AES-CCM : for iot(802.15.4 requires aes-ccm 128b keys) rfc4307bis-10
 
 AES-GCM :
 cipher - AES block cipher in Counter Mode (AES-CTR).

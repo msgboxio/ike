@@ -250,8 +250,13 @@ func (o *Session) checkSa(m *Message) (err error) {
 	return
 }
 
-func (o *Session) CheckError(m interface{}) (s state.StateEvent) {
-	// evt := m.(state.StateEvent)
+func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
+	if err, ok := msg.(protocol.NotificationType); ok {
+		if iErr, ok := protocol.GetIkeErrorCode(err); ok {
+			o.Notify(iErr)
+			return
+		}
+	}
 	o.Notify(protocol.ERR_INVALID_SYNTAX)
 	return
 }

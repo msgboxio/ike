@@ -434,6 +434,24 @@ type IdPayload struct {
 	Data          []byte
 }
 
+type CertEncodingType uint8
+
+// rfc7296 section 3.6
+const (
+	PKCS_7_WRAPPED_X_509_CERTIFICATE CertEncodingType = 1 // UNSPECIFIED
+	PGP_CERTIFICATE                  CertEncodingType = 2 // UNSPECIFIED
+	DNS_SIGNED_KEY                   CertEncodingType = 3 // UNSPECIFIED
+	X_509_CERTIFICATE_SIGNATURE      CertEncodingType = 4
+	KERBEROS_TOKEN                   CertEncodingType = 6 // UNSPECIFIED
+	CERTIFICATE_REVOCATION_LIST      CertEncodingType = 7
+	AUTHORITY_REVOCATION_LIST        CertEncodingType = 8  // UNSPECIFIED
+	SPKI_CERTIFICATE                 CertEncodingType = 9  // UNSPECIFIED
+	X_509_CERTIFICATE_ATTRIBUTE      CertEncodingType = 10 // UNSPECIFIED
+	RAW_RSA_KEY                      CertEncodingType = 11 // DEPRECATED
+	HASH_URL_OF_X_509_CERTIFICATE    CertEncodingType = 12
+	HASH_URL_OF_X_509_BUNDLE         CertEncodingType = 13
+)
+
 /*
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -447,14 +465,8 @@ type IdPayload struct {
 */
 type CertPayload struct {
 	*PayloadHeader
-}
-
-func (s *CertPayload) Type() PayloadType  { return PayloadTypeCERT }
-func (s *CertPayload) Encode() (b []byte) { return }
-func (s *CertPayload) Decode(b []byte) (err error) {
-	// Header has already been decoded
-	// TODO
-	return
+	CertEncodingType
+	Data []byte
 }
 
 /*

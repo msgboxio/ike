@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/signal"
@@ -68,7 +69,7 @@ func listen(localString string) (p *ipv4.PacketConn, err error) {
 }
 
 func read(p *ipv4.PacketConn) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
-	b = make([]byte, 1500)
+	b = make([]byte, 3000) // section 2
 	n, cm, remoteAddr, err := p.ReadFrom(b)
 	if err == nil {
 		b = b[:n]
@@ -95,7 +96,7 @@ func decode(b []byte) (msg *ike.Message, err error) {
 		return
 	}
 	if len(b) < int(msg.IkeHeader.MsgLength) {
-		err = fmt.Errorf("short packet: %v vs %v", len(b), msg.IkeHeader.MsgLength)
+		err = io.ErrShortBuffer
 		return
 	}
 	// further decode
@@ -197,6 +198,7 @@ func main() {
 		pconn.Close()
 	}()
 
+	var buf []byte
 	for {
 		b, remoteAddr, localIP, err := read(pconn)
 		if err != nil {
@@ -205,7 +207,15 @@ func main() {
 			cancel(err)
 			break
 		}
+		if buf != nil {
+			b = append(buf, b...)
+			buf = nil
+		}
 		msg, err := decode(b)
+		if err == io.ErrShortBuffer {
+			buf = b
+			continue
+		}
 		if err != nil {
 			log.Error(err)
 			continue
