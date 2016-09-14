@@ -2,6 +2,7 @@ package ike
 
 import (
 	"crypto/rand"
+	"crypto/x509"
 	"math/big"
 
 	"github.com/msgboxio/ike/crypto"
@@ -33,6 +34,8 @@ type Tkm struct {
 	dhPrivate, DhPublic *big.Int
 	DhShared            *big.Int
 
+	Roots *x509.CertPool
+
 	// for debug
 	SKEYSEED, KEYMAT []byte
 
@@ -42,11 +45,12 @@ type Tkm struct {
 	skEi, skEr []byte // encryption keys
 }
 
-func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities) (*Tkm, error) {
+func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities, roots *x509.CertPool) (*Tkm, error) {
 	tkm := &Tkm{
 		suite:       suite,
 		isInitiator: true,
 		ids:         ids,
+		Roots:       roots,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
 	ni, err := tkm.ncCreate(suite.Prf.Length * 8)
@@ -61,22 +65,20 @@ func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities) (*Tkm, error) {
 	return tkm, nil
 }
 
-func NewTkmResponder(suite *crypto.CipherSuite, theirPublic, no *big.Int, ids Identities) (tkm *Tkm, err error) {
+func NewTkmResponder(suite *crypto.CipherSuite, no *big.Int, ids Identities, roots *x509.CertPool) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite: suite,
 		Ni:    no,
 		ids:   ids,
+		Roots: roots,
 	}
-	// at least 128 bits & at least half the key size of the negotiated prf
+	// TODO : at least 128 bits & at least half the key size of the negotiated prf
 	if nr, err := tkm.ncCreate(no.BitLen()); err != nil {
 		return nil, err
 	} else {
 		tkm.Nr = nr
 	}
 	if _, err := tkm.dhCreate(); err != nil {
-		return nil, err
-	}
-	if err := tkm.DhGenerateKey(theirPublic); err != nil {
 		return nil, err
 	}
 	return tkm, nil
@@ -258,7 +260,7 @@ func isa_sign(isa_id, lc_id, init_message []byte) (AUTH_loc []byte) { return }
 
 // cert validation
 // start vaildating cert chain
-func cc_set_user_certficate(cc_id, ri_id, au_tha_id, CERT []byte) {}
+func cc_set_user_certficate(cc_id, ri_id, autha_id, CERT []byte) {}
 
 // add remianing certs in chain
 func cc_add_certificate(cc_id, autha_id, CERT []byte) {}

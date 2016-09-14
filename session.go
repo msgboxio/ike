@@ -207,23 +207,122 @@ func (o *Session) Finished() (s state.StateEvent) {
 	return // not used
 }
 
-// utilities
+// handlers
 
-func (o *Session) Close(err error) {
-	log.Info("Close Session")
-	if o.isClosing {
+func (o *Session) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
+	s.Event = state.INIT_FAIL
+	// response
+	m := msg.(*Message)
+	// we know what IKE ciphersuite peer selected
+	// generate keys necessary for IKE SA protection and encryption.
+	// check NAT-T payload to determine if there is a NAT between the two peers
+	// If there is, then all the further communication is perfomed over port 4500 instead of the default port 500
+	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
+	// find traffic selectors
+	// send IKE_AUTH req
+	if err := m.EnsurePayloads(InitPayloads); err != nil {
+		log.Error(err)
+		s.Data = err
 		return
 	}
-	// send to peer, peer should send SA_DELETE message
-	o.SendIkeSaDelete()
-	// TODO - start timeout to delete sa if peers does not reply
-	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
+	// TODO - ensure sa parameters are same
+	// initialize dh shared with their public key
+	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	// set Nr
+	if o.tkm.isInitiator {
+		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+		o.tkm.Nr = no.Nonce
+	}
+	// set spiR
+	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
+	// create rest of ike sa
+	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
+	log.Infof("IKE SA INITIALISED: [%s]%#x<=>%#x[%s]",
+		o.local,
+		o.IkeSpiI,
+		o.IkeSpiR,
+		o.remote)
+	// save Data
+	if o.tkm.isInitiator {
+		o.initRb = m.Data
+	} else {
+		o.initIb = m.Data
+	}
+	s.Event = state.SUCCESS
+	return
 }
 
-func (o *Session) checkSa(m *Message) (err error) {
+func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
+	s.Event = state.AUTH_FAIL
+	// response
+	m := msg.(*Message)
+	if err := o.handleEncryptedMessage(m); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	payloads := AuthIPayloads
+	if o.tkm.isInitiator {
+		payloads = AuthRPayloads
+	}
+	if err := m.EnsurePayloads(payloads); err != nil {
+		// notification is recoverable
+		for _, n := range m.Payloads.GetNotifications() {
+			if err, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+				s.Data = err
+				return
+			}
+		}
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	// authenticate peer
+	authPeer := authenticateI
+	init := o.initIb
+	if o.tkm.isInitiator {
+		authPeer = authenticateR
+		init = o.initRb
+	}
+	if !authPeer(m, init, o.tkm) {
+		log.Error(protocol.AUTHENTICATION_FAILED)
+		s.Data = protocol.AUTHENTICATION_FAILED
+		return
+	}
+	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
+		o.local,
+		o.IkeSpiI,
+		o.IkeSpiR,
+		o.remote)
+	s.Event = state.SUCCESS
+	// move to STATE_MATURE state
+	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
+	return
+}
+
+func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
+	// get message
+	msg := m.(*Message)
+	// get peer spi
+	if espSpi, err := getPeerSpi(msg, protocol.ESP); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	} else {
+		if o.tkm.isInitiator {
+			o.EspSpiR = append([]byte{}, espSpi...)
+		} else {
+			o.EspSpiI = append([]byte{}, espSpi...)
+		}
+	}
 	// check transport mode, and other info payloads
 	wantsTransportMode := false
-	for _, ns := range m.Payloads.GetNotifications() {
+	for _, ns := range msg.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case protocol.AUTH_LIFETIME:
 			lft := ns.NotificationMessage.(time.Duration)
@@ -246,9 +345,19 @@ func (o *Session) checkSa(m *Message) (err error) {
 			log.Info("Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			log.Info("Peer Rejected Transport Mode Config")
-			err = errors.New("Peer Rejected Transport Mode Config")
+			err := errors.New("Peer Rejected Transport Mode Config")
+			log.Error(err)
+			s.Data = err
 		}
 	}
+	// load additional configs
+	if err := o.cfg.AddFromAuth(msg); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	// TODO - check IPSEC selectors & config
+	s.Event = state.SUCCESS
 	return
 }
 
@@ -261,6 +370,19 @@ func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 	}
 	o.Notify(protocol.ERR_INVALID_SYNTAX)
 	return
+}
+
+// utilities
+
+func (o *Session) Close(err error) {
+	log.Info("Close Session")
+	if o.isClosing {
+		return
+	}
+	// send to peer, peer should send SA_DELETE message
+	o.SendIkeSaDelete()
+	// TODO - start timeout to delete sa if peers does not reply
+	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
 }
 
 func (o *Session) Notify(ie protocol.IkeErrorCode) {

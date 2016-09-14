@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"crypto/x509"
 
@@ -8,7 +9,9 @@ import (
 	"github.com/msgboxio/log"
 )
 
-type RsaCert struct{ tkm *Tkm }
+type RsaCert struct {
+	tkm *Tkm
+}
 
 func (r *RsaCert) Verify(certP protocol.Payload, signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags, authData []byte) bool {
 	if certP == nil {
@@ -27,8 +30,20 @@ func (r *RsaCert) Verify(certP protocol.Payload, signed1 []byte, id *protocol.Id
 		return false
 	}
 	// ensure key used to compute a digital signature belongs to the name in the ID payload
-	// TODO
+	if bytes.Compare(id.Data, x509Cert.RawSubject) != 0 {
+		log.Errorf("Ike Auth failed: incorrect id in certificate: %s", err)
+		return false
+	}
+	// TODO - ensure that the ID is authorized
 	// use the public key in the cert to verify auth data
+	opts := x509.VerifyOptions{
+		Roots: r.tkm.Roots,
+	}
+	if _, err := x509Cert.Verify(opts); err != nil {
+		log.Errorf("failed to verify certificate: %s", err)
+		return false
+	}
+	log.Info("verified certificate")
 	rsaPublic, ok := x509Cert.PublicKey.(*rsa.PublicKey)
 	if !ok {
 		log.Errorf("Ike Auth failed: incorrect public key type")

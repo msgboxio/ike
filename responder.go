@@ -1,20 +1,15 @@
 package ike
 
 import (
-	"errors"
-
 	"github.com/msgboxio/context"
+	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
 )
 
-type Responder struct {
-	Session
-}
-
 // NewResponder creates a Responder session if incoming message looks OK
-func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Message) (*Responder, error) {
+func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Message) (*Session, error) {
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
@@ -22,119 +17,58 @@ func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Me
 	if err != nil {
 		return nil, err
 	}
-	// check if config is usable
+	// TODO - check if config is usable
+	// check if transforms are usable
+	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	// make sure dh tranform id is the one that was accepted
+	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
+	if uint16(keI.DhTransformId) != tr {
+		log.Warningf("Using different DH transform than the one configured %s vs %s",
+			tr,
+			keI.DhTransformId)
+	}
+
 	// use new config
 	rcfg.IsTransportMode = cfg.IsTransportMode
+	rcfg.Roots = cfg.Roots
 	cfg = rcfg
 
-	tkm, err := newTkmFromInit(initI, cfg, ids)
+	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		return nil, err
 	}
+
+	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	tkm, err := NewTkmResponder(cs, noI.Nonce, ids, cfg.Roots)
+	if err != nil {
+		return nil, err
+	}
+
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		return nil, err
 	}
+
 	cxt, cancel := context.WithCancel(parent)
-	o := &Responder{
-		Session: Session{
-			Context:  cxt,
-			cancel:   cancel,
-			remote:   initI.RemoteIp,
-			local:    initI.LocalIp,
-			tkm:      tkm,
-			cfg:      cfg,
-			IkeSpiI:  ikeSpiI,
-			IkeSpiR:  MakeSpi(),
-			EspSpiR:  MakeSpi()[:4],
-			incoming: make(chan *Message, 10),
-			outgoing: make(chan []byte, 10),
-		},
+
+	o := &Session{
+		Context:  cxt,
+		cancel:   cancel,
+		remote:   initI.RemoteIp,
+		local:    initI.LocalIp,
+		tkm:      tkm,
+		cfg:      cfg,
+		IkeSpiI:  ikeSpiI,
+		IkeSpiR:  MakeSpi(),
+		EspSpiR:  MakeSpi()[:4],
+		incoming: make(chan *Message, 10),
+		outgoing: make(chan []byte, 10),
 	}
-	go run(&o.Session)
+	go run(o)
 
 	o.fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
 	go o.fsm.Run()
 
 	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
 	return o, nil
-}
-
-func (o *Responder) HandleIkeSaInit(m interface{}) (s state.StateEvent) {
-	s.Event = state.INIT_FAIL
-
-	// TODO Check message
-	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	log.Infof("IKE SA INITIALISED: [%s]%#x<=>%#x[%s]",
-		o.remote,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		o.local)
-
-	msg := m.(*Message)
-	o.initIb = msg.Data
-	s.Event = state.SUCCESS
-	return
-}
-
-func (o *Responder) HandleIkeAuth(m interface{}) (s state.StateEvent) {
-	// initialize return
-	s.Event = state.AUTH_FAIL
-	// get message
-	msg := m.(*Message)
-	// decrypt
-	if err := o.handleEncryptedMessage(msg); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	if err := msg.EnsurePayloads(AuthIPayloads); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	// authenticate peer
-	if !authenticateI(msg, o.initIb, o.tkm) {
-		err := errors.New("could not authenticate")
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
-		o.remote,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		o.local)
-	s.Event = state.SUCCESS
-	// currently in STATE_INIT, move to STATE_AUTH state
-	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
-	return
-}
-
-func (o *Responder) CheckSa(m interface{}) (s state.StateEvent) {
-	// get message
-	msg := m.(*Message)
-	// get peer spi
-	espSpiI, err := getPeerSpi(msg, protocol.ESP)
-	if err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	o.EspSpiI = append([]byte{}, espSpiI...)
-	// final check
-	if err := o.checkSa(msg); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	// load additional configs
-	if err = o.cfg.AddFromAuth(msg); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	// TODO - check IPSEC selectors & config
-	s.Event = state.SUCCESS
-	return
 }

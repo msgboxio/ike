@@ -166,12 +166,11 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 		session, found := sessions[spi]
 		if !found {
 			// create and run session
-			responder, err := ike.NewResponder(context.Background(), ids, config, msg)
+			session, err = ike.NewResponder(context.Background(), ids, config, msg)
 			if err != nil {
 				log.Error(err)
 				continue
 			}
-			session = &responder.Session
 			go runSession(spi, session, pconn, remoteAddr)
 		}
 		session.HandleMessage(msg)
@@ -224,7 +223,7 @@ func main() {
 		remoteAddr, _ := net.ResolveUDPAddr("udp4", remoteString)
 		initiator := ike.NewInitiator(context.Background(), ids, ike.AddrToIp(remoteAddr).To4(), config)
 		spi, _ := packets.ReadB64(initiator.IkeSpiI, 0)
-		go runSession(spi, &initiator.Session, pconn, remoteAddr)
+		go runSession(spi, initiator, pconn, remoteAddr)
 	}
 
 	wg := &sync.WaitGroup{}

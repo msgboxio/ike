@@ -5,9 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 )
 
 func MakeSpi() (ret protocol.Spi) {
@@ -35,23 +33,5 @@ func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err 
 		err = errors.New("Unknown Peer SPI")
 		return
 	}
-	return
-}
-
-func newTkmFromInit(initI *Message, cfg *Config, ids Identities) (tkm *Tkm, err error) {
-	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	// make sure dh tranform id is the one that was accepted
-	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-	if uint16(keI.DhTransformId) != tr {
-		log.Warningf("Using different DH transform than the one configured %s vs %s",
-			tr,
-			keI.DhTransformId)
-	}
-	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
-	if err != nil {
-		return
-	}
-	tkm, err = NewTkmResponder(cs, keI.KeyData, noI.Nonce, ids) // TODO
 	return
 }
