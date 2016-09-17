@@ -6,7 +6,13 @@ import (
 	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/packets"
 )
+
+func SpiToInt(spi protocol.Spi) uint64 {
+	ret, _ := packets.ReadB64(spi, 0)
+	return ret
+}
 
 func MakeSpi() (ret protocol.Spi) {
 	spi, _ := rand.Prime(rand.Reader, 8*8)

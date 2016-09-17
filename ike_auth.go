@@ -7,6 +7,87 @@ import (
 	"github.com/msgboxio/log"
 )
 
+type authParams struct {
+	isInitiator bool
+	spiI, spiR  protocol.Spi
+	proposals   []*protocol.SaProposal
+
+	tsI, tsR []*protocol.Selector
+}
+
+// IKE_AUTH
+// a->b
+//  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Initiator, Message ID=1)
+//  SK {IDi, [CERT,] [CERTREQ,] [IDr,] AUTH, SAi2, TSi, TSr,  N(INITIAL_CONTACT)}
+// b->a
+//  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
+//  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
+// signed1 : init[i/r]B | N[r/i]
+func makeAuth(spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, signed1 []byte, tkm *Tkm, isTransportMode bool) *Message {
+	flags := protocol.RESPONSE
+	idPayloadType := protocol.PayloadTypeIDr
+	if tkm.isInitiator {
+		flags = protocol.INITIATOR
+		idPayloadType = protocol.PayloadTypeIDi
+	}
+	auth := &Message{
+		IkeHeader: &protocol.IkeHeader{
+			SpiI:         spiI,
+			SpiR:         spiR,
+			NextPayload:  protocol.PayloadTypeSK,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.IKE_AUTH,
+			Flags:        flags,
+		},
+		Payloads: protocol.MakePayloads(),
+	}
+	// TODO - handle various other types of ID
+	authenticator := &psk{tkm}
+	iD := &protocol.IdPayload{
+		PayloadHeader: &protocol.PayloadHeader{},
+		IdPayloadType: idPayloadType,
+		IdType:        authenticator.IdType(),
+		Data:          authenticator.Id(),
+	}
+	auth.Payloads.Add(iD)
+	auth.Payloads.Add(&protocol.AuthPayload{
+		PayloadHeader: &protocol.PayloadHeader{},
+		AuthMethod:    authenticator.AuthMethod(),
+		Data:          authenticator.Sign(signed1, iD, flags),
+	})
+	auth.Payloads.Add(&protocol.SaPayload{
+		PayloadHeader: &protocol.PayloadHeader{},
+		Proposals:     proposals,
+	})
+	auth.Payloads.Add(&protocol.TrafficSelectorPayload{
+		PayloadHeader:              &protocol.PayloadHeader{},
+		TrafficSelectorPayloadType: protocol.PayloadTypeTSi,
+		Selectors:                  tsI,
+	})
+	auth.Payloads.Add(&protocol.TrafficSelectorPayload{
+		PayloadHeader:              &protocol.PayloadHeader{},
+		TrafficSelectorPayloadType: protocol.PayloadTypeTSr,
+		Selectors:                  tsR,
+	})
+	// check for transport mode config
+	if isTransportMode {
+		auth.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader: &protocol.PayloadHeader{},
+			// ProtocolId:       IKE,
+			NotificationType: protocol.USE_TRANSPORT_MODE,
+		})
+	}
+	if tkm.isInitiator {
+		auth.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader: &protocol.PayloadHeader{},
+			// ProtocolId:       IKE,
+			NotificationType: protocol.INITIAL_CONTACT,
+		})
+	}
+	return auth
+}
+
 func AuthMsg(
 	tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,

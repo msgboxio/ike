@@ -18,7 +18,6 @@ import (
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
 )
 
 func waitForSignal(cancel context.CancelFunc) {
@@ -48,6 +47,7 @@ func decode(b []byte) (msg *ike.Message, err error) {
 	return
 }
 
+// map of initiator spi -> session
 var sessions = make(map[uint64]*ike.Session)
 
 func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net.Addr) {
@@ -99,7 +99,7 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 		msg.LocalIp = localIP
 		msg.RemoteIp = ike.AddrToIp(remoteAddr)
 		// convert spi to uint64 for map lookup
-		spi, _ := packets.ReadB64(msg.IkeHeader.SpiI, 0)
+		spi := ike.SpiToInt(msg.IkeHeader.SpiI)
 		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
@@ -160,8 +160,7 @@ func main() {
 	if remoteString != "" {
 		remoteAddr, _ := net.ResolveUDPAddr("udp4", remoteString)
 		initiator := ike.NewInitiator(context.Background(), ids, ike.AddrToIp(remoteAddr).To4(), config)
-		spi, _ := packets.ReadB64(initiator.IkeSpiI, 0)
-		go runSession(spi, initiator, pconn, remoteAddr)
+		go runSession(ike.SpiToInt(initiator.IkeSpiI), initiator, pconn, remoteAddr)
 	}
 
 	wg := &sync.WaitGroup{}
