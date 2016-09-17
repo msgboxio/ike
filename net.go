@@ -2,9 +2,14 @@ package ike
 
 import (
 	"bytes"
-	"encoding/hex"
 	"errors"
+	"io"
 	"net"
+	"os"
+	"runtime"
+	"syscall"
+
+	"golang.org/x/net/ipv4"
 
 	"github.com/msgboxio/log"
 )
@@ -76,39 +81,63 @@ func AddrToIp(addr net.Addr) net.IP {
 	return nil
 }
 
-func ReadPacket(conn net.Conn, remote net.Addr, isConnected bool) (b []byte, from net.Addr, err error) {
-	b = make([]byte, 1500)
-	n := 0
-	if isConnected {
-		n, err = conn.Read(b)
-		from = remote
-	} else {
-		udp := conn.(*net.UDPConn)
-		n, from, err = udp.ReadFromUDP(b)
+// copied from golang.org/x/net/internal/nettest
+func protocolNotSupported(err error) bool {
+	switch err := err.(type) {
+	case syscall.Errno:
+		switch err {
+		case syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT:
+			return true
+		}
+	case *os.SyscallError:
+		switch err := err.Err.(type) {
+		case syscall.Errno:
+			switch err {
+			case syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT:
+				return true
+			}
+		}
 	}
-	if err != nil {
-		return nil, nil, err
-	}
-	b = b[:n]
-	log.Infof("%d from %s", n, from)
-	log.V(4).Info("\n" + hex.Dump(b))
-	return b, from, nil
+	return false
 }
 
-func WritePacket(msgB []byte, conn net.Conn, remote net.Addr, isConnected bool) (err error) {
-	var n int
-	if isConnected {
-		n, err = conn.Write(msgB)
-	} else {
-		udp := conn.(*net.UDPConn)
-		addr := remote.(*net.UDPAddr)
-		n, err = udp.WriteToUDP(msgB, addr)
-	}
+func Listen(localString string) (p *ipv4.PacketConn, err error) {
+	udp, err := net.ListenPacket("udp4", localString)
 	if err != nil {
 		return
-	} else {
-		log.Infof("%d to %s", n, remote)
-		log.V(4).Info("\n" + hex.Dump(msgB))
 	}
+	p = ipv4.NewPacketConn(udp)
+
+	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
+	if err := p.SetControlMessage(cf, true); err != nil {
+		if protocolNotSupported(err) {
+			log.Warningf("udp source address detection not supported on %s", runtime.GOOS)
+		} else {
+			p.Close()
+			return nil, err
+		}
+	}
+	return
+}
+
+func ReadPacket(p *ipv4.PacketConn) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
+	b = make([]byte, 3000) // section 2
+	n, cm, remoteAddr, err := p.ReadFrom(b)
+	if err == nil {
+		b = b[:n]
+		localIP = cm.Dst
+	}
+	log.V(1).Infof("%d from %v", n, remoteAddr)
+	return
+}
+
+func WritePacket(p *ipv4.PacketConn, reply []byte, remoteAddr net.Addr) error {
+	n, err := p.WriteTo(reply, nil, remoteAddr)
+	if err != nil {
+		return err
+	} else if n != len(reply) {
+		return io.ErrShortWrite
+	}
+	log.V(1).Infof("%d to %v", n, remoteAddr)
 	return nil
 }

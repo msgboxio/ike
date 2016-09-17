@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
 
@@ -28,67 +27,6 @@ func waitForSignal(cancel context.CancelFunc) {
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel(errors.New("received signal: " + sig.String()))
-}
-
-// copied from golang.org/x/net/internal/nettest
-func protocolNotSupported(err error) bool {
-	switch err := err.(type) {
-	case syscall.Errno:
-		switch err {
-		case syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT:
-			return true
-		}
-	case *os.SyscallError:
-		switch err := err.Err.(type) {
-		case syscall.Errno:
-			switch err {
-			case syscall.EPROTONOSUPPORT, syscall.ENOPROTOOPT:
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func listen(localString string) (p *ipv4.PacketConn, err error) {
-	udp, err := net.ListenPacket("udp4", localString)
-	if err != nil {
-		return
-	}
-	p = ipv4.NewPacketConn(udp)
-
-	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
-	if err := p.SetControlMessage(cf, true); err != nil { // probe before test
-		if protocolNotSupported(err) {
-			log.Warningf("udp source address detection not supported on %s", runtime.GOOS)
-		} else {
-			p.Close()
-			return nil, err
-		}
-	}
-	return
-}
-
-func read(p *ipv4.PacketConn) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
-	b = make([]byte, 3000) // section 2
-	n, cm, remoteAddr, err := p.ReadFrom(b)
-	if err == nil {
-		b = b[:n]
-		localIP = cm.Dst
-	}
-	log.V(1).Infof("%d from %v", n, remoteAddr)
-	return
-}
-
-func write(p *ipv4.PacketConn, reply []byte, remoteAddr net.Addr) error {
-	n, err := p.WriteTo(reply, nil, remoteAddr)
-	if err != nil {
-		return err
-	} else if n != len(reply) {
-		return io.ErrShortWrite
-	}
-	log.V(1).Infof("%d to %v", n, remoteAddr)
-	return nil
 }
 
 func decode(b []byte) (msg *ike.Message, err error) {
@@ -120,7 +58,7 @@ func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net
 			if !ok {
 				break
 			}
-			if err := write(pconn, reply, to); err != nil {
+			if err := ike.WritePacket(pconn, reply, to); err != nil {
 				session.Close(err)
 				break
 			}
@@ -140,7 +78,7 @@ var ids = ike.PskIdentities{
 func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 	var buf []byte
 	for {
-		b, remoteAddr, localIP, err := read(pconn)
+		b, remoteAddr, localIP, err := ike.ReadPacket(pconn)
 		if err != nil {
 			log.Error(err)
 			break
@@ -196,12 +134,6 @@ func main() {
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel)
 
-	pconn, err := listen(localString)
-	if err != nil {
-		log.Fatal(err)
-	}
-	log.Infof("socket listening: %s", pconn.Conn.LocalAddr())
-
 	// this should load the xfrm modules
 	// requires root
 	if xfrm := platform.ListenForEvents(cxt); xfrm != nil {
@@ -213,6 +145,12 @@ func main() {
 			xfrm.Close()
 		}()
 	}
+
+	pconn, err := ike.Listen(localString)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("socket listening: %s", pconn.Conn.LocalAddr())
 
 	// requires root
 	if err := platform.SetSocketBypas(pconn.Conn, syscall.AF_INET); err != nil {
