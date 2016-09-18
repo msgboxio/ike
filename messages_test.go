@@ -147,15 +147,9 @@ func TestDecode(t *testing.T) {
 	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048
 	suite, _ := crypto.NewCipherSuite(transforms)
 
-	ids := PskIdentities{
-		Primary: "ak@msgbox.io",
-		Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-	}
-
 	tkm := &Tkm{
 		suite:       suite,
 		isInitiator: false,
-		ids:         ids,
 		Ni:          no.Nonce,
 		Nr:          no.Nonce,
 		DhShared:    dhShared,

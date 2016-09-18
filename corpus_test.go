@@ -19,17 +19,18 @@ func newConfig() (config *Config) {
 	return
 }
 
+var ids = PskIdentities{
+	Primary: "ak@msgbox.io",
+	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+}
+
 func initiatorTkm(t *testing.T) *Tkm {
 	config := newConfig()
 	suite, err := crypto.NewCipherSuite(config.ProposalIke)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := PskIdentities{
-		Primary: "ak@msgbox.io",
-		Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-	}
-	tkm, err := NewTkmInitiator(suite, ids)
+	tkm, err := NewTkmInitiator(suite, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,14 +69,13 @@ func TestIkeMsgGen(t *testing.T) {
 	}
 
 	// auth
-	signed1 := append(initIb, tkm.Nr.Bytes()...)
-	authI := makeAuth(params.spiI,
-		params.spiR,
-		ProposalFromTransform(protocol.ESP, cfg.ProposalEsp, params.spiR),
-		cfg.TsI,
-		cfg.TsR, signed1,
-		tkm,
-		cfg.IsTransportMode)
+	authI := makeAuth(&authParams{
+		tkm.isInitiator,
+		cfg.IsTransportMode,
+		params.spiI, params.spiR,
+		params.proposals, cfg.TsI, cfg.TsR,
+		&psk{tkm, ids},
+	}, initIb)
 	// overwrite NextPayload
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
 	authI.IkeHeader.MsgId = 43
