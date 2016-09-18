@@ -50,7 +50,7 @@ func makeAuth(params *authParams, initB []byte) *Message {
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		AuthMethod:    params.Authenticator.AuthMethod(),
-		Data:          params.Authenticator.Sign(initB, iD, flags),
+		Data:          params.Authenticator.Sign(initB, iD),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},

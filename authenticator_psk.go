@@ -29,13 +29,13 @@ func (psk *psk) AuthMethod() protocol.AuthMethod {
 // responder: initRB | Ni | prf(SK_pr, IDr')
 // initiator: initIB | Nr | prf(SK_pi, IDi')
 // authB = prf( prf(Shared Secret, "Key Pad for IKEv2"), SignB)
-func (psk *psk) Sign(initB []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
+func (psk *psk) Sign(initB []byte, id *protocol.IdPayload) []byte {
 	secret := psk.id.AuthData(id.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
-		// TODO - this is a potential security risk
+		// could this be a security risk
 		log.Infof("No Secret for %s", string(id.Data))
 	}
-	signB := psk.Tkm.SignB(initB, id.Encode(), flag.IsInitiator())
+	signB := psk.Tkm.SignB(initB, id.Encode(), psk.Tkm.isInitiator)
 	if log.V(2) {
 		log.Infof("Ike PSK Auth as %s", string(id.Data))
 	}
@@ -44,14 +44,14 @@ func (psk *psk) Sign(initB []byte, id *protocol.IdPayload, flag protocol.IkeFlag
 	return prf.Apply(prf.Apply(secret, []byte("Key Pad for IKEv2")), signB)[:prf.Length]
 }
 
-func (psk *psk) Verify(initB []byte, id *protocol.IdPayload, flag protocol.IkeFlags, authData []byte) bool {
+func (psk *psk) Verify(initB []byte, id *protocol.IdPayload, authData []byte) bool {
 	secret := psk.id.AuthData(id.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
 		// CAREFUL here - this could be a potential security risk
 		log.Errorf("Ike PSK Auth of %s failed: No Secret is available", string(id.Data))
 		return false
 	}
-	signB := psk.Tkm.SignB(initB, id.Encode(), flag.IsInitiator())
+	signB := psk.Tkm.SignB(initB, id.Encode(), !psk.Tkm.isInitiator)
 	// TODO : tkm.Auth always uses the hash negotiated with prf
 	prf := psk.Tkm.suite.Prf
 	signedB := prf.Apply(prf.Apply(secret, []byte("Key Pad for IKEv2")), signB)[:prf.Length]

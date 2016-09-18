@@ -13,7 +13,7 @@ type RsaCert struct {
 	tkm *Tkm
 }
 
-func (r *RsaCert) Verify(certP protocol.Payload, signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags, authData []byte) bool {
+func (r *RsaCert) Verify(certP protocol.Payload, initB []byte, id *protocol.IdPayload, authData []byte) bool {
 	if certP == nil {
 		log.Errorf("Ike Auth failed: certificate is required")
 		return false
@@ -53,7 +53,7 @@ func (r *RsaCert) Verify(certP protocol.Payload, signed1 []byte, id *protocol.Id
 		Tkm:        r.tkm,
 		peerPublic: rsaPublic,
 	}
-	if rsaSig.Verify(signed1, id, flag, authData) {
+	if rsaSig.Verify(initB, id, authData) {
 		if log.V(2) {
 			log.Infof("Ike CERT Auth of %+v successful", x509Cert.Subject)
 		}

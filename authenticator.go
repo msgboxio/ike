@@ -7,5 +7,5 @@ type Authenticator interface {
 	IdType() protocol.IdType
 	Id() []byte
 	AuthMethod() protocol.AuthMethod
-	Sign([]byte, *protocol.IdPayload, protocol.IkeFlags) []byte
+	Sign([]byte, *protocol.IdPayload) []byte
 }

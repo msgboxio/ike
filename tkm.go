@@ -226,7 +226,7 @@ func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byt
 // so signB :=
 // responder: initRB | Ni | prf(SK_pr, IDr')
 // initiator: initIB | Nr | prf(SK_pi, IDi')
-// flag is important as this method can be used by sender & receriver
+// boolean is important as this method can be used by signer & verifier
 func (t *Tkm) SignB(initB []byte, id []byte, forInitiator bool) []byte {
 	// ResponderSignedOctets = RealMessage2 | NonceIData | MACedIDForR
 	// InitiatorSignedOctets = RealMessage1 | NonceRData | MACedIDForI

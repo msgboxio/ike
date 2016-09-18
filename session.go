@@ -321,14 +321,17 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 		s.Data = err
 		return
 	}
-	// authenticate peer
-	authPeer := authenticateI
-	init := o.initIb
+	var idP *protocol.IdPayload
+	var initB []byte
 	if o.tkm.isInitiator {
-		authPeer = authenticateR
-		init = o.initRb
+		initB = o.initRb
+		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
+	} else {
+		initB = o.initIb
+		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
-	if !authPeer(m, init, o.tkm, o.idRemote) {
+	// authenticate peer
+	if !authenticate(m, initB, idP, o.tkm, o.idRemote) {
 		log.Error(protocol.AUTHENTICATION_FAILED)
 		s.Data = protocol.AUTHENTICATION_FAILED
 		return

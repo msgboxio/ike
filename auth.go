@@ -18,41 +18,18 @@ import (
 // AUTH_ECDSA_521                         AuthMethod = 11 // RFC4754
 // also RFC 7427 - Signature Authentication in IKEv2
 
-// authenticates Initiator
-func authenticateI(msg *Message, initIb []byte, tkm *Tkm, id Identities) bool {
-	// id payload
-	idI := msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
-	// auth payload
-	authIp := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	switch authIp.AuthMethod {
+// authenticates peer
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, id Identities) bool {
+	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
 		psk := &psk{tkm, id}
-		return psk.Verify(initIb, idI, protocol.INITIATOR, authIp.Data)
+		return psk.Verify(initB, idP, authP.Data)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
 		rsaCert := &RsaCert{tkm}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
-		return rsaCert.Verify(certP, initIb, idI, protocol.INITIATOR, authIp.Data)
+		return rsaCert.Verify(certP, initB, idP, authP.Data)
 	}
-	log.Errorf("Ike Auth failed: auth method not supported: %d", authIp.AuthMethod)
-	return false
-}
-
-// peer is responder
-func authenticateR(msg *Message, initRb []byte, tkm *Tkm, id Identities) bool {
-	// id payload
-	idR := msg.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
-	// auth payload
-	authRp := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	// expected auth
-	switch authRp.AuthMethod {
-	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		psk := &psk{tkm, id}
-		return psk.Verify(initRb, idR, protocol.RESPONSE, authRp.Data)
-	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
-		rsaCert := &RsaCert{tkm}
-		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
-		return rsaCert.Verify(certP, initRb, idR, protocol.RESPONSE, authRp.Data)
-	}
-	log.Errorf("Ike Auth failed: auth method not supported: %v", authRp.AuthMethod)
+	log.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
 	return false
 }

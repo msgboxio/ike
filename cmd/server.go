@@ -78,7 +78,7 @@ var localId = ike.PskIdentities{
 }
 var remoteId = ike.PskIdentities{
 	Primary: "bk@msgbox.io",
-	Ids:     map[string][]byte{"bk@msgbox.io": []byte("boo")},
+	Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
 }
 
 func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
