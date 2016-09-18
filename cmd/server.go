@@ -1,10 +1,12 @@
 package main
 
 import (
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"os/signal"
@@ -115,13 +117,28 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 	}
 }
 
-func main() {
+func loadRoot(caCert string) (*x509.CertPool, error) {
+	roots := x509.NewCertPool()
+	rootPEM, err := ioutil.ReadFile(caCert)
+	if err != nil {
+		return nil, err
+	}
+	if ok := roots.AppendCertsFromPEM([]byte(rootPEM)); !ok {
+		return nil, errors.New("failed to parse root certificate")
+	}
+	return roots, nil
+}
+
+func loadConfig() (*ike.Config, string, string) {
 	var localString, remoteString string
 	flag.StringVar(&localString, "local", "0.0.0.0:5000", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
 
 	var isTunnelMode bool
 	flag.BoolVar(&isTunnelMode, "tunnel", false, "use tunnel mode?")
+
+	var caCert string
+	flag.StringVar(&caCert, "ca", "", "PEM encoded ca certificate")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -130,7 +147,22 @@ func main() {
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
+	if caCert == "" {
+		if roots, err := x509.SystemCertPool(); err != nil {
+			log.Fatal(err)
+		} else {
+			config.Roots = roots
+		}
+	} else if roots, err := loadRoot(caCert); err != nil {
+		log.Fatal(err)
+	} else {
+		config.Roots = roots
+	}
+	return config, localString, remoteString
+}
 
+func main() {
+	config, localString, remoteString := loadConfig()
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel)
 

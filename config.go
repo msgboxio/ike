@@ -18,41 +18,12 @@ type Config struct {
 	Roots           *x509.CertPool
 }
 
-const rootPEM = `
------BEGIN CERTIFICATE-----
-MIIDXTCCAkWgAwIBAgIJAOtVymGwN2rvMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
-BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
-aWRnaXRzIFB0eSBMdGQwHhcNMTYwOTEyMDMwMDQyWhcNMTcwOTEyMDMwMDQyWjBF
-MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50
-ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
-CgKCAQEA3VFk1V/8qI8bW/3RGiYNJVEJxllbRRsGqgpVyGLj5xakRONB/Cmu+LEV
-DoHNQPtVPW2Y/cUcr5kuCHscWqYMC6zs1PcZdY08uli/pMv6+KFE8e1kugc8MwsO
-mWgn8GdPGdc9biV89EXL0OsNCphynnYhSw9Ww7LSJAybODql21vs8kJ0X7y0xfEl
-t7QQWHKiNv8BcsrsrTpQif3gzm0SnZ1avqunRRcGHw0DkDKsocQlLBJbyIBuoRb1
-hVjXH9obaxJXqj6O2wJB3Lzi9rt+q2rANMYWo00qjcwxjxvGqAvxAXJjYFF9+LYL
-F4+oad42HCgauoMMgHX/jO3xLeQG2QIDAQABo1AwTjAdBgNVHQ4EFgQUeYe479Gr
-jUFgoBQ4GebBQLFaKAMwHwYDVR0jBBgwFoAUeYe479GrjUFgoBQ4GebBQLFaKAMw
-DAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAWpWtbyypse6OYLhw3JEq
-Xe0ZNXnHGmgp2pxVU/FSntizcNucS94e58QGmw13rgc/sqixOqkRSKcpmDC0ljoF
-mspogQQ80PYHg6ETzA5M5//5jSRnOJHMupxRbYAna7EbWrhJqnBc3iRVVBIVUJCk
-UOxThKwT2RPlWOKQ+nmre6cUoUHthhGmeN/4pMG7hEw67BPAdr/UhWzmXh9WkEoE
-OQ7eSTDE8H/FdSznADmWIzRV/YYLoeoz6pODZzp5cbupnTSZwVmw2Z4AJWR9Li8j
-vZvgNl+ijE1YGggNGoQnFpiE7jNftxdDif/WFKXT+9ubMCyWKKaQ5GdfsWwjaH5W
-jA==
------END CERTIFICATE-----`
-
 func DefaultConfig() *Config {
-	roots := x509.NewCertPool()
-	ok := roots.AppendCertsFromPEM([]byte(rootPEM))
-	if !ok {
-		panic("failed to parse root certificate")
-	}
 	return &Config{
 		//Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
 		ProposalIke: protocol.IKE_AES_GCM_16_DH_2048,
 		//Transforms: protocol.ESP_AES_CBC_SHA1_96,
 		ProposalEsp: protocol.ESP_AES_GCM_16,
-		Roots:       roots,
 	}
 }
 
