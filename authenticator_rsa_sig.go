@@ -16,9 +16,9 @@ type RsaSig struct {
 	peerPublic *rsa.PublicKey
 }
 
-func (r *RsaSig) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
+func (r *RsaSig) Sign(initB []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
 	rng := rand.Reader
-	hash := sha1.Sum(r.Tkm.signB(signed1, id.Encode(), flag.IsInitiator()))
+	hash := sha1.Sum(r.Tkm.SignB(initB, id.Encode(), flag.IsInitiator()))
 	signature, err := rsa.SignPKCS1v15(rng, r.ourPrivate, crypto.SHA1, hash[:])
 	if err == nil {
 		return signature
@@ -27,9 +27,9 @@ func (r *RsaSig) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeF
 	return nil
 }
 
-func (r *RsaSig) Verify(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags, authData []byte) bool {
+func (r *RsaSig) Verify(initB []byte, id *protocol.IdPayload, flag protocol.IkeFlags, authData []byte) bool {
 	// TODO - sha1 assumed when verifying signatures
-	hash := sha1.Sum(r.Tkm.signB(signed1, id.Encode(), flag.IsInitiator()))
+	hash := sha1.Sum(r.Tkm.SignB(initB, id.Encode(), flag.IsInitiator()))
 	err := rsa.VerifyPKCS1v15(r.peerPublic, crypto.SHA1, hash[:], authData)
 	if err == nil {
 		return true

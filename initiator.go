@@ -9,14 +9,14 @@ import (
 	"github.com/msgboxio/log"
 )
 
-func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Config) *Session {
+func NewInitiator(parent context.Context, localId, remoteId Identities, remote net.IP, cfg *Config) *Session {
 	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
 		return nil
 	}
 
-	tkm, err := NewTkmInitiator(suite, ids, cfg.Roots)
+	tkm, err := NewTkmInitiator(suite, cfg.Roots)
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -25,11 +25,13 @@ func NewInitiator(parent context.Context, ids Identities, remote net.IP, cfg *Co
 	cxt, cancel := context.WithCancel(parent)
 
 	o := &Session{
-		Context: cxt,
-		cancel:  cancel,
-		tkm:     tkm,
-		cfg:     cfg,
-		remote:  remote,
+		Context:  cxt,
+		cancel:   cancel,
+		tkm:      tkm,
+		cfg:      cfg,
+		idLocal:  localId,
+		idRemote: remoteId,
+		remote:   remote,
 		// local:    local,
 		IkeSpiI:  MakeSpi(),
 		EspSpiI:  MakeSpi()[:4],

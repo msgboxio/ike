@@ -24,7 +24,8 @@ func ResponderTransitions(h FsmHandler) map[State]UserTransitions {
 				Dest:       STATE_AUTH,
 			},
 			AUTH_FAIL: Transition{
-				Dest: STATE_IDLE,
+				CheckEvent: h.CheckError,
+				Dest:       STATE_FINISHED,
 			},
 		},
 		STATE_AUTH: UserTransitions{

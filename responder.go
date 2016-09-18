@@ -9,7 +9,7 @@ import (
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
-func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Message) (*Session, error) {
+func NewResponder(parent context.Context, localId, remoteID Identities, cfg *Config, initI *Message) (*Session, error) {
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Me
 	}
 
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	tkm, err := NewTkmResponder(cs, noI.Nonce, ids, cfg.Roots)
+	tkm, err := NewTkmResponder(cs, noI.Nonce, cfg.Roots)
 	if err != nil {
 		return nil, err
 	}
@@ -54,6 +54,8 @@ func NewResponder(parent context.Context, ids Identities, cfg *Config, initI *Me
 	o := &Session{
 		Context:  cxt,
 		cancel:   cancel,
+		idLocal:  localId,
+		idRemote: remoteID,
 		remote:   initI.RemoteIp,
 		local:    initI.LocalIp,
 		tkm:      tkm,

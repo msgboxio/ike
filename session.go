@@ -28,7 +28,8 @@ type Session struct {
 	tkm *Tkm
 	cfg *Config
 
-	remote, local net.IP
+	idRemote, idLocal Identities
+	remote, local     net.IP
 
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
@@ -162,12 +163,50 @@ func (o *Session) SendInit() (s state.StateEvent) {
 }
 
 func (o *Session) SendAuth() (s state.StateEvent) {
-	return o.sendMsg(AuthMsg(o.tkm,
-		o.IkeSpiI, o.IkeSpiR,
-		o.EspSpiI, o.EspSpiR,
-		o.initIb, o.initRb,
-		o.msgId, o.cfg,
-		o.local, o.remote))
+	// IKE_AUTH
+	// make sure selectors are present
+	if o.cfg.TsI == nil || o.cfg.TsR == nil {
+		log.Infoln("Adding host based selectors")
+		// add host based selectors by default
+		slen := len(o.local) * 8
+		ini := o.remote
+		res := o.local
+		if o.tkm.isInitiator {
+			ini = o.local
+			res = o.remote
+		}
+		o.cfg.AddSelector(
+			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
+			&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
+	}
+	log.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+
+	// proposal
+	var prop []*protocol.SaProposal
+	// part of signed octet
+	var initB []byte
+	if o.tkm.isInitiator {
+		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
+		// intiators's signed octet
+		// initI | Nr | prf(sk_pi | IDi )
+		initB = o.initIb
+	} else {
+		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
+		// responder's signed octet
+		// initR | Ni | prf(sk_pr | IDr )
+		initB = o.initRb
+	}
+	auth := makeAuth(
+		&authParams{
+			o.tkm.isInitiator,
+			o.cfg.IsTransportMode,
+			o.IkeSpiI, o.IkeSpiR,
+			prop, o.cfg.TsI, o.cfg.TsR,
+			&psk{o.tkm, o.idLocal},
+		}, initB)
+	auth.IkeHeader.MsgId = o.msgId
+	// encode
+	return o.sendMsg(auth.Encode(o.tkm))
 }
 
 func (o *Session) InstallSa() (s state.StateEvent) {
@@ -289,7 +328,7 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 		authPeer = authenticateR
 		init = o.initRb
 	}
-	if !authPeer(m, init, o.tkm) {
+	if !authPeer(m, init, o.tkm, o.idRemote) {
 		log.Error(protocol.AUTHENTICATION_FAILED)
 		s.Data = protocol.AUTHENTICATION_FAILED
 		return

@@ -26,8 +26,6 @@ type Tkm struct {
 	suite       *crypto.CipherSuite
 	isInitiator bool
 
-	ids Identities
-
 	Nr, Ni *big.Int
 
 	dhPrivate, DhPublic *big.Int
@@ -44,11 +42,10 @@ type Tkm struct {
 	skEi, skEr []byte // encryption keys
 }
 
-func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities, roots *x509.CertPool) (*Tkm, error) {
+func NewTkmInitiator(suite *crypto.CipherSuite, roots *x509.CertPool) (*Tkm, error) {
 	tkm := &Tkm{
 		suite:       suite,
 		isInitiator: true,
-		ids:         ids,
 		Roots:       roots,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
@@ -64,11 +61,10 @@ func NewTkmInitiator(suite *crypto.CipherSuite, ids Identities, roots *x509.Cert
 	return tkm, nil
 }
 
-func NewTkmResponder(suite *crypto.CipherSuite, no *big.Int, ids Identities, roots *x509.CertPool) (tkm *Tkm, err error) {
+func NewTkmResponder(suite *crypto.CipherSuite, no *big.Int, roots *x509.CertPool) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite: suite,
 		Ni:    no,
-		ids:   ids,
 		Roots: roots,
 	}
 	// TODO : at least 128 bits & at least half the key size of the negotiated prf
@@ -108,11 +104,11 @@ func (t *Tkm) DhGenerateKey(theirPublic *big.Int) (err error) {
 
 func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 	var ret, prev []byte
-	var round int = 1
+	var round = 1
 	for len(ret) < bits {
 		prev = t.suite.Prf.Apply(key, append(append(prev, data...), byte(round)))
 		ret = append(ret, prev...)
-		round += 1
+		round++
 	}
 	return ret[:bits]
 }
@@ -218,6 +214,7 @@ func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byt
 	return
 }
 
+// SignB gets signed data from tkm
 // section 2.15
 // For the responder, the octets to be signed
 // start with the first octet of the first SPI in the
@@ -229,22 +226,20 @@ func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byt
 // so signB :=
 // responder: initRB | Ni | prf(SK_pr, IDr')
 // initiator: initIB | Nr | prf(SK_pi, IDi')
-// authB = prf( prf(Shared Secret, "Key Pad for IKEv2"), SignB)
 // flag is important as this method can be used by sender & receriver
-func (tkm *Tkm) signB(signed1 []byte, id []byte, forInitiator bool) []byte {
+func (t *Tkm) SignB(initB []byte, id []byte, forInitiator bool) []byte {
 	// ResponderSignedOctets = RealMessage2 | NonceIData | MACedIDForR
 	// InitiatorSignedOctets = RealMessage1 | NonceRData | MACedIDForI
-	key := tkm.skPr
+	key := t.skPr
+	nonce := t.Ni
 	if forInitiator {
-		key = tkm.skPi
+		key = t.skPi
+		nonce = t.Nr
 	}
-	macedID := tkm.suite.Prf.Apply(key, id)
-	signB := append(signed1, macedID...)
+	macedID := t.suite.Prf.Apply(key, id)
+	signB := append(append(initB, nonce.Bytes()...), macedID...)
 	return signB
 }
-
-// request signed data from tkm
-func isa_sign(isa_id, lc_id, init_message []byte) (AUTH_loc []byte) { return }
 
 // cert validation
 // start vaildating cert chain

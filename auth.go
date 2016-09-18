@@ -18,44 +18,40 @@ import (
 // AUTH_ECDSA_521                         AuthMethod = 11 // RFC4754
 // also RFC 7427 - Signature Authentication in IKEv2
 
-func authenticateI(msg *Message, initIb []byte, tkm *Tkm) bool {
+// authenticates Initiator
+func authenticateI(msg *Message, initIb []byte, tkm *Tkm, id Identities) bool {
 	// id payload
 	idI := msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	// auth payload
 	authIp := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	signed1 := append(initIb, tkm.Nr.Bytes()...)
 	switch authIp.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		psk := &psk{tkm}
-		// intiators's signed octet
-		// initI | Nr | prf(sk_pi | IDi )
-		return psk.Verify(signed1, idI, protocol.INITIATOR, authIp.Data)
+		psk := &psk{tkm, id}
+		return psk.Verify(initIb, idI, protocol.INITIATOR, authIp.Data)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
 		rsaCert := &RsaCert{tkm}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
-		return rsaCert.Verify(certP, signed1, idI, protocol.INITIATOR, authIp.Data)
+		return rsaCert.Verify(certP, initIb, idI, protocol.INITIATOR, authIp.Data)
 	}
 	log.Errorf("Ike Auth failed: auth method not supported: %d", authIp.AuthMethod)
 	return false
 }
 
-func authenticateR(msg *Message, initRb []byte, tkm *Tkm) bool {
+// peer is responder
+func authenticateR(msg *Message, initRb []byte, tkm *Tkm, id Identities) bool {
 	// id payload
 	idR := msg.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	// auth payload
 	authRp := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	signed1 := append(initRb, tkm.Ni.Bytes()...)
 	// expected auth
 	switch authRp.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		psk := &psk{tkm}
-		// responders's signed octet
-		// initR | Ni | prf(sk_pr | IDr )
-		return psk.Verify(signed1, idR, protocol.RESPONSE, authRp.Data)
+		psk := &psk{tkm, id}
+		return psk.Verify(initRb, idR, protocol.RESPONSE, authRp.Data)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
 		rsaCert := &RsaCert{tkm}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
-		return rsaCert.Verify(certP, signed1, idR, protocol.RESPONSE, authRp.Data)
+		return rsaCert.Verify(certP, initRb, idR, protocol.RESPONSE, authRp.Data)
 	}
 	log.Errorf("Ike Auth failed: auth method not supported: %v", authRp.AuthMethod)
 	return false

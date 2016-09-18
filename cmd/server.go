@@ -72,9 +72,13 @@ func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net
 	}
 }
 
-var ids = ike.PskIdentities{
+var localId = ike.PskIdentities{
 	Primary: "ak@msgbox.io",
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+}
+var remoteId = ike.PskIdentities{
+	Primary: "bk@msgbox.io",
+	Ids:     map[string][]byte{"bk@msgbox.io": []byte("boo")},
 }
 
 func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
@@ -106,7 +110,7 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 		session, found := sessions[spi]
 		if !found {
 			// create and run session
-			session, err = ike.NewResponder(context.Background(), ids, config, msg)
+			session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
 			if err != nil {
 				log.Error(err)
 				continue
@@ -191,7 +195,7 @@ func main() {
 
 	if remoteString != "" {
 		remoteAddr, _ := net.ResolveUDPAddr("udp4", remoteString)
-		initiator := ike.NewInitiator(context.Background(), ids, ike.AddrToIp(remoteAddr).To4(), config)
+		initiator := ike.NewInitiator(context.Background(), localId, remoteId, ike.AddrToIp(remoteAddr).To4(), config)
 		go runSession(ike.SpiToInt(initiator.IkeSpiI), initiator, pconn, remoteAddr)
 	}
 
