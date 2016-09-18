@@ -69,7 +69,23 @@ func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
 			err = errors.New("cant encrypt, no tkm found")
 			return
 		}
-		b, err = tkm.EncryptMac(s)
+		payload := protocol.EncodePayloads(s.Payloads)
+		plen := len(payload) + tkm.CryptoOverhead(payload)
+		// payload header
+		firstPayload := protocol.PayloadTypeNone // no payloads are one possibility
+		if len(s.Payloads.Array) > 0 {
+			firstPayload = s.Payloads.Array[0].Type()
+		}
+		ph := protocol.PayloadHeader{
+			NextPayload:   firstPayload,
+			PayloadLength: uint16(plen),
+		}.Encode()
+		// prepare proper ike header
+		s.IkeHeader.MsgLength = uint32(protocol.IKE_HEADER_LEN + len(ph) + plen)
+		// encode ike header, and add to protocol header
+		headers := append(s.IkeHeader.Encode(), ph...)
+		// finally ask the tkm to apply secrets
+		b, err = tkm.EncryptMac(headers, payload)
 	} else {
 		b = protocol.EncodePayloads(s.Payloads)
 		s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)

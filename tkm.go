@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	"github.com/msgboxio/ike/crypto"
-	"github.com/msgboxio/ike/protocol"
 )
 
 // ike-seperation.pdf
@@ -129,7 +128,7 @@ func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
 }
 
 // create ike sa
-func (t *Tkm) IsaCreate(spiI, spiR protocol.Spi, old_SK_D []byte) {
+func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
 	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
 	// 	hex.Dump(spiI), hex.Dump(spiR))
@@ -184,32 +183,21 @@ func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
 	return
 }
 
+func (t *Tkm) CryptoOverhead(b []byte) int {
+	return t.suite.Overhead(b)
+}
+
 // encrypt-then-MAC
-func (t *Tkm) EncryptMac(s *Message) (b []byte, err error) {
+func (t *Tkm) EncryptMac(headers, payload []byte) (b []byte, err error) {
 	skA, skE := t.skAr, t.skEr
 	if t.isInitiator {
 		skA, skE = t.skAi, t.skEi
 	}
-	payload := protocol.EncodePayloads(s.Payloads)
-	plen := len(payload) + t.suite.Overhead(payload)
-	// payload header
-	firstPayload := protocol.PayloadTypeNone // no payloads are one possibility
-	if len(s.Payloads.Array) > 0 {
-		firstPayload = s.Payloads.Array[0].Type()
-	}
-	ph := protocol.PayloadHeader{
-		NextPayload:   firstPayload,
-		PayloadLength: uint16(plen),
-	}.Encode()
-	// prepare proper ike header
-	s.IkeHeader.MsgLength = uint32(protocol.IKE_HEADER_LEN + len(ph) + plen)
-	// encode ike header
-	headers := append(s.IkeHeader.Encode(), ph...)
 	b, err = t.suite.EncryptMac(headers, payload, skA, skE)
 	return
 }
 
-func (t *Tkm) IpsecSaCreate(spiI, spiR protocol.Spi) (espEi, espAi, espEr, espAr []byte) {
+func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byte) {
 	kmLen := 2*t.suite.KeyLen + 2*t.suite.MacKeyLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(t.Ni.Bytes(), t.Nr.Bytes()...),
@@ -243,14 +231,14 @@ func (t *Tkm) IpsecSaCreate(spiI, spiR protocol.Spi) (espEi, espAi, espEr, espAr
 // initiator: initIB | Nr | prf(SK_pi, IDi')
 // authB = prf( prf(Shared Secret, "Key Pad for IKEv2"), SignB)
 // flag is important as this method can be used by sender & receriver
-func (tkm *Tkm) signB(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
+func (tkm *Tkm) signB(signed1 []byte, id []byte, forInitiator bool) []byte {
 	// ResponderSignedOctets = RealMessage2 | NonceIData | MACedIDForR
 	// InitiatorSignedOctets = RealMessage1 | NonceRData | MACedIDForI
 	key := tkm.skPr
-	if flag.IsInitiator() {
+	if forInitiator {
 		key = tkm.skPi
 	}
-	macedID := tkm.suite.Prf.Apply(key, id.Encode())
+	macedID := tkm.suite.Prf.Apply(key, id)
 	signB := append(signed1, macedID...)
 	return signB
 }

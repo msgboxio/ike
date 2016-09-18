@@ -18,7 +18,7 @@ type RsaSig struct {
 
 func (r *RsaSig) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
 	rng := rand.Reader
-	hash := sha1.Sum(r.Tkm.signB(signed1, id, flag))
+	hash := sha1.Sum(r.Tkm.signB(signed1, id.Encode(), flag.IsInitiator()))
 	signature, err := rsa.SignPKCS1v15(rng, r.ourPrivate, crypto.SHA1, hash[:])
 	if err == nil {
 		return signature
@@ -29,7 +29,7 @@ func (r *RsaSig) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeF
 
 func (r *RsaSig) Verify(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags, authData []byte) bool {
 	// TODO - sha1 assumed when verifying signatures
-	hash := sha1.Sum(r.Tkm.signB(signed1, id, flag))
+	hash := sha1.Sum(r.Tkm.signB(signed1, id.Encode(), flag.IsInitiator()))
 	err := rsa.VerifyPKCS1v15(r.peerPublic, crypto.SHA1, hash[:], authData)
 	if err == nil {
 		return true

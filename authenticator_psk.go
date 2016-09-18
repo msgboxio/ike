@@ -25,7 +25,7 @@ func (psk *psk) AuthMethod() protocol.AuthMethod {
 }
 
 func (psk *psk) Sign(signed1 []byte, id *protocol.IdPayload, flag protocol.IkeFlags) []byte {
-	signB := psk.Tkm.signB(signed1, id, flag)
+	signB := psk.Tkm.signB(signed1, id.Encode(), flag.IsInitiator())
 	secret := psk.Tkm.ids.AuthData(id.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	// TODO : tkm.Auth always uses the hash negotiated with prf
 	prf := psk.Tkm.suite.Prf
