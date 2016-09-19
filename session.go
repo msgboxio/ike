@@ -20,6 +20,14 @@ const (
 	removeChildSa
 )
 
+// Session is closed by us by
+// 1> calling Close() it sends a N[D] if not already closing
+// 2> We wait for N[D], then remove SA
+// 3> move to finished
+// When receive N[D]
+// 1> we remove SA
+// 2> call Close() which sends N[D]
+// 3> move to finished
 type Session struct {
 	context.Context
 	cancel    context.CancelFunc
@@ -227,6 +235,7 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
 		o.local, o.remote)
+	o.Close(context.Canceled)
 	return
 }
 
@@ -234,8 +243,8 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 	return
 }
 
+// Finished is called by state machine upon entering finished state
 func (o *Session) Finished() (s state.StateEvent) {
-	o.isClosing = true
 	close(o.incoming)
 	if len(o.outgoing) > 0 {
 		// let the queue drain
@@ -417,11 +426,13 @@ func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 
 // utilities
 
+// Close
 func (o *Session) Close(err error) {
 	log.Info("Close Session")
 	if o.isClosing {
 		return
 	}
+	o.isClosing = true
 	// send to peer, peer should send SA_DELETE message
 	o.SendIkeSaDelete()
 	// TODO - start timeout to delete sa if peers does not reply
