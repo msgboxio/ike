@@ -14,6 +14,12 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 			MSG_CHILD_SA: Transition{
 				CheckEvent: h.HandleCreateChildSa,
 			},
+			INIT_FAIL: Transition{
+				CheckEvent: h.CheckError,
+			},
+			AUTH_FAIL: Transition{
+				CheckEvent: h.CheckError,
+			},
 		},
 		STATE_FINISHED: UserTransitions{
 			ENTRY_EVENT: Transition{

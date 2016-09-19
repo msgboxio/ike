@@ -154,22 +154,6 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 
 // callbacks
 
-func (o *Session) SendInit() (s state.StateEvent) {
-	initMsg := func() ([]byte, error) {
-		initB, err := InitMsg(o.tkm, o.IkeSpiI, o.IkeSpiR, o.msgId, o.cfg)
-		if err != nil {
-			return nil, err
-		}
-		if o.tkm.isInitiator {
-			o.initIb = initB
-		} else {
-			o.initRb = initB
-		}
-		return initB, nil
-	}
-	return o.sendMsg(initMsg())
-}
-
 func (o *Session) InstallSa() (s state.StateEvent) {
 	if err := addSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
@@ -210,54 +194,6 @@ func (o *Session) Finished() (s state.StateEvent) {
 }
 
 // handlers
-
-func (o *Session) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
-	s.Event = state.INIT_FAIL
-	// response
-	m := msg.(*Message)
-	// we know what IKE ciphersuite peer selected
-	// generate keys necessary for IKE SA protection and encryption.
-	// check NAT-T payload to determine if there is a NAT between the two peers
-	// If there is, then all the further communication is perfomed over port 4500 instead of the default port 500
-	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
-	// find traffic selectors
-	// send IKE_AUTH req
-	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	// TODO - ensure sa parameters are same
-	// initialize dh shared with their public key
-	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	// set Nr
-	if o.tkm.isInitiator {
-		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-		o.tkm.Nr = no.Nonce
-	}
-	// set spiR
-	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
-	// create rest of ike sa
-	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	log.Infof("IKE SA INITIALISED: [%s]%#x<=>%#x[%s]",
-		o.local,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		o.remote)
-	// save Data
-	if o.tkm.isInitiator {
-		o.initRb = m.Data
-	} else {
-		o.initIb = m.Data
-	}
-	s.Event = state.SUCCESS
-	return
-}
 
 func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 	// get message
@@ -316,11 +252,24 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 }
 
 func (o *Session) HandleCreateChildSa(msg interface{}) (s state.StateEvent) {
-	// send NO_ADDITIONAL_SAS
-	o.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
+	s.Event = state.AUTH_FAIL
+	m := msg.(*Message)
+	if err := o.handleEncryptedMessage(m); err != nil {
+		log.Error(err)
+		// send NO_ADDITIONAL_SAS
+		s.Data = protocol.NO_ADDITIONAL_SAS
+		return
+	}
+	if err := m.EnsurePayloads(InitPayloads); err == nil {
+		log.Infof("peer requests IKE rekey")
+	} else {
+		log.Infof("peer requests IPSEC rekey")
+	}
+	s.Data = protocol.NO_ADDITIONAL_SAS
 	return
 }
 
+// CheckError checks for received errors from local actions & checks
 func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 	if err, ok := msg.(protocol.NotificationType); ok {
 		if iErr, ok := protocol.GetIkeErrorCode(err); ok {
