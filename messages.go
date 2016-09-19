@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
@@ -34,10 +35,30 @@ var (
 )
 
 type Message struct {
-	IkeHeader         *protocol.IkeHeader
-	Payloads          *protocol.Payloads
-	Data              []byte // used to carry raw bytes
-	LocalIp, RemoteIp net.IP
+	IkeHeader  *protocol.IkeHeader
+	Payloads   *protocol.Payloads
+	LocalIp    net.IP
+	RemoteAddr net.Addr
+
+	Data []byte // used to carry raw bytes
+}
+
+func DecodeMessage(b []byte) (msg *Message, err error) {
+	msg = &Message{}
+	if err = msg.DecodeHeader(b); err != nil {
+		return
+	}
+	if len(b) < int(msg.IkeHeader.MsgLength) {
+		err = io.ErrShortBuffer
+		return
+	}
+	// further decode
+	if err = msg.DecodePayloads(b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+		return
+	}
+	// decrypt later
+	msg.Data = b
+	return
 }
 
 func (s *Message) DecodeHeader(b []byte) (err error) {

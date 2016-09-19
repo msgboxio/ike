@@ -49,8 +49,8 @@ func isMessageValid(m *Message, o *Session) error {
 		return fmt.Errorf("different initiator Spi %s", spi)
 	}
 	// Dont check Responder SPI. initiator IKE_INTI does not have it
-	if !o.remote.Equal(m.RemoteIp) {
-		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteIp)
+	if !o.remote.Equal(AddrToIp(m.RemoteAddr)) {
+		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
 	}
 	// local IP is not set initially for initiator
 	if o.local == nil {

@@ -141,3 +141,29 @@ func WritePacket(p *ipv4.PacketConn, reply []byte, remoteAddr net.Addr) error {
 	log.V(1).Infof("%d to %v", n, remoteAddr)
 	return nil
 }
+
+func ReadMessage(pconn *ipv4.PacketConn) (*Message, error) {
+	var buf []byte
+	for {
+		b, remoteAddr, localIP, err := ReadPacket(pconn)
+		if err != nil {
+			return nil, err
+		}
+		if buf != nil {
+			b = append(buf, b...)
+			buf = nil
+		}
+		msg, err := DecodeMessage(b)
+		if err == io.ErrShortBuffer {
+			buf = b
+			continue
+		}
+		if err != nil {
+			log.Error(err)
+			continue
+		}
+		msg.LocalIp = localIP
+		msg.RemoteAddr = remoteAddr
+		return msg, nil
+	}
+}

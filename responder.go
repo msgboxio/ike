@@ -56,7 +56,7 @@ func NewResponder(parent context.Context, localId, remoteID Identities, cfg *Con
 		cancel:   cancel,
 		idLocal:  localId,
 		idRemote: remoteID,
-		remote:   initI.RemoteIp,
+		remote:   AddrToIp(initI.RemoteAddr),
 		local:    initI.LocalIp,
 		tkm:      tkm,
 		cfg:      cfg,
