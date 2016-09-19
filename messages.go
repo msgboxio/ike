@@ -32,6 +32,33 @@ var (
 		protocol.PayloadTypeTSi,
 		protocol.PayloadTypeTSr,
 	}
+
+	NewChilSaIPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeNonce,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+	NewChilSaRPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeNonce,
+	}
+
+	RekeyIkeSaPaylods = InitPayloads
+
+	RekeyChildSaIPaylods = []protocol.PayloadType{
+		protocol.PayloadTypeN,
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeNonce,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+	RekeyChildSaRPaylods = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeNonce,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
 )
 
 type Message struct {
