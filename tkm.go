@@ -3,6 +3,7 @@ package ike
 import (
 	"crypto/rand"
 	"crypto/x509"
+	"errors"
 	"math/big"
 
 	"github.com/msgboxio/ike/crypto"
@@ -41,6 +42,8 @@ type Tkm struct {
 	skAi, skAr []byte // integrity protection keys
 	skEi, skEr []byte // encryption keys
 }
+
+var ErrorMissingCryptoKeys = errors.New("Missing crypto keys")
 
 func NewTkmInitiator(suite *crypto.CipherSuite, roots *x509.CertPool) (*Tkm, error) {
 	tkm := &Tkm{
@@ -188,6 +191,9 @@ func (t *Tkm) EncryptMac(headers, payload []byte) (b []byte, err error) {
 	skA, skE := t.skAr, t.skEr
 	if t.isInitiator {
 		skA, skE = t.skAi, t.skEi
+	}
+	if skA == nil || skE == nil {
+		return nil, ErrorMissingCryptoKeys
 	}
 	b, err = t.suite.EncryptMac(headers, payload, skA, skE)
 	return

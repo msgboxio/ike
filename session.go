@@ -114,13 +114,13 @@ done:
 				if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
 					dp := del.(*protocol.DeletePayload)
 					if dp.ProtocolId == protocol.IKE {
-						log.Infof("Peer removed IKE SA : %#x", msg.IkeHeader.SpiI)
-						evt.Event = state.DELETE_IKE_SA
+						log.Infof("Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
+						evt.Event = state.MSG_DELETE_IKE_SA
 						o.fsm.Event(evt)
 					}
 					for _, spi := range dp.Spis {
 						if dp.ProtocolId == protocol.ESP {
-							log.Info("removed ESP SA : %#x", spi)
+							log.Infof("Peer remove ESP SA : %#x", spi)
 							// TODO
 						}
 					}
@@ -170,54 +170,6 @@ func (o *Session) SendInit() (s state.StateEvent) {
 	return o.sendMsg(initMsg())
 }
 
-func (o *Session) SendAuth() (s state.StateEvent) {
-	// IKE_AUTH
-	// make sure selectors are present
-	if o.cfg.TsI == nil || o.cfg.TsR == nil {
-		log.Infoln("Adding host based selectors")
-		// add host based selectors by default
-		slen := len(o.local) * 8
-		ini := o.remote
-		res := o.local
-		if o.tkm.isInitiator {
-			ini = o.local
-			res = o.remote
-		}
-		o.cfg.AddSelector(
-			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
-			&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
-	}
-	log.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
-
-	// proposal
-	var prop []*protocol.SaProposal
-	// part of signed octet
-	var initB []byte
-	if o.tkm.isInitiator {
-		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
-		// intiators's signed octet
-		// initI | Nr | prf(sk_pi | IDi )
-		initB = o.initIb
-	} else {
-		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
-		// responder's signed octet
-		// initR | Ni | prf(sk_pr | IDr )
-		initB = o.initRb
-	}
-	auth := makeAuth(
-		&authParams{
-			o.tkm.isInitiator,
-			o.cfg.IsTransportMode,
-			o.IkeSpiI, o.IkeSpiR,
-			prop, o.cfg.TsI, o.cfg.TsR,
-			o.idLocal,
-			&psk{o.tkm},
-		}, initB)
-	auth.IkeHeader.MsgId = o.msgId
-	// encode
-	return o.sendMsg(auth.Encode(o.tkm))
-}
-
 func (o *Session) InstallSa() (s state.StateEvent) {
 	if err := addSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
@@ -229,6 +181,7 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 	}
 	return
 }
+
 func (o *Session) RemoveSa() (s state.StateEvent) {
 	removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
@@ -306,57 +259,6 @@ func (o *Session) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
 	return
 }
 
-func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
-	s.Event = state.AUTH_FAIL
-	// response
-	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	payloads := AuthIPayloads
-	if o.tkm.isInitiator {
-		payloads = AuthRPayloads
-	}
-	if err := m.EnsurePayloads(payloads); err != nil {
-		// notification is recoverable
-		for _, n := range m.Payloads.GetNotifications() {
-			if err, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				s.Data = err
-				return
-			}
-		}
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	var idP *protocol.IdPayload
-	var initB []byte
-	if o.tkm.isInitiator {
-		initB = o.initRb
-		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
-	} else {
-		initB = o.initIb
-		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
-	}
-	// authenticate peer
-	if !authenticate(m, initB, idP, o.tkm, o.idRemote) {
-		log.Error(protocol.AUTHENTICATION_FAILED)
-		s.Data = protocol.AUTHENTICATION_FAILED
-		return
-	}
-	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
-		o.local,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		o.remote)
-	s.Event = state.SUCCESS
-	// move to STATE_MATURE state
-	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
-	return
-}
-
 func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 	// get message
 	msg := m.(*Message)
@@ -410,6 +312,12 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 	}
 	// TODO - check IPSEC selectors & config
 	s.Event = state.SUCCESS
+	return
+}
+
+func (o *Session) HandleCreateChildSa(msg interface{}) (s state.StateEvent) {
+	// send NO_ADDITIONAL_SAS
+	o.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
 	return
 }
 
@@ -478,6 +386,7 @@ func (o *Session) SendIkeSaDelete() {
 	o.sendMsg(info.Encode(o.tkm))
 }
 
+// SendEmptyInformational can be used for periodic keepalive
 func (o *Session) SendEmptyInformational() {
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
@@ -488,13 +397,6 @@ func (o *Session) SendEmptyInformational() {
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm))
-}
-
-func (o *Session) HandleSaRekey(msg interface{}) {
-	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA})
-}
-func (o *Session) SendIkeSaRekey() {
-	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA})
 }
 
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {

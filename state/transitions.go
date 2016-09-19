@@ -126,7 +126,10 @@ func (f *Fsm) handleEvent(m StateEvent) {
 			return
 		}
 	}
-	// change state
+	// change state if required
+	if t.Dest == STATE_IDLE {
+		return
+	}
 	log.V(1).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
 	f.State = t.Dest
 	return

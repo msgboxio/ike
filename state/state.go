@@ -18,6 +18,7 @@ const (
 	MSG_INIT
 	MSG_AUTH
 	MSG_CHILD_SA
+	MSG_DELETE_IKE_SA // a notification really
 
 	SMI_START
 	REKEY_START
@@ -45,6 +46,7 @@ type FsmHandler interface {
 	HandleIkeSaInit(interface{}) StateEvent
 	HandleIkeAuth(interface{}) StateEvent
 	CheckSa(interface{}) StateEvent
+	HandleCreateChildSa(interface{}) StateEvent
 
 	CheckError(interface{}) StateEvent
 }

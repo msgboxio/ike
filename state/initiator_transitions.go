@@ -18,6 +18,9 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 			INIT_FAIL: Transition{
 				Dest: STATE_FINISHED,
 			},
+			DELETE_IKE_SA: Transition{
+				Dest: STATE_FINISHED,
+			},
 		},
 		STATE_INIT: UserTransitions{
 			ENTRY_EVENT: Transition{
@@ -31,6 +34,9 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 				CheckEvent: h.CheckError,
 				Dest:       STATE_FINISHED,
 			},
+			DELETE_IKE_SA: Transition{
+				Dest: STATE_FINISHED,
+			},
 		},
 		STATE_AUTH: UserTransitions{
 			ENTRY_EVENT: Transition{
@@ -39,6 +45,9 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 			},
 			SUCCESS: Transition{
 				Dest: STATE_MATURE,
+			},
+			DELETE_IKE_SA: Transition{
+				Dest: STATE_FINISHED,
 			},
 		},
 		STATE_MATURE:   UserTransitions{},

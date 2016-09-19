@@ -1,6 +1,12 @@
 package ike
 
-import "github.com/msgboxio/ike/protocol"
+import (
+	"net"
+
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
+	"github.com/msgboxio/log"
+)
 
 type authParams struct {
 	isInitiator     bool
@@ -83,4 +89,134 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		})
 	}
 	return auth
+}
+
+// SendAuth callback from state machine
+func (o *Session) SendAuth() (s state.StateEvent) {
+	// IKE_AUTH
+	// make sure selectors are present
+	if o.cfg.TsI == nil || o.cfg.TsR == nil {
+		log.Infoln("Adding host based selectors")
+		// add host based selectors by default
+		slen := len(o.local) * 8
+		ini := o.remote
+		res := o.local
+		if o.tkm.isInitiator {
+			ini = o.local
+			res = o.remote
+		}
+		o.cfg.AddSelector(
+			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
+			&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
+	}
+	log.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+
+	// proposal
+	var prop []*protocol.SaProposal
+	// part of signed octet
+	var initB []byte
+	if o.tkm.isInitiator {
+		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
+		// intiators's signed octet
+		// initI | Nr | prf(sk_pi | IDi )
+		initB = o.initIb
+	} else {
+		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
+		// responder's signed octet
+		// initR | Ni | prf(sk_pr | IDr )
+		initB = o.initRb
+	}
+	auth := makeAuth(
+		&authParams{
+			o.tkm.isInitiator,
+			o.cfg.IsTransportMode,
+			o.IkeSpiI, o.IkeSpiR,
+			prop, o.cfg.TsI, o.cfg.TsR,
+			o.idLocal,
+			&psk{o.tkm},
+		}, initB)
+	auth.IkeHeader.MsgId = o.msgId
+	// encode
+	return o.sendMsg(auth.Encode(o.tkm))
+}
+
+// TODO:
+// currently support for signature authenticaiton is limited to
+// AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
+// &
+// AUTH_RSA_DIGITAL_SIGNATURE with certificates
+// tkm.Auth always uses the hash negotiated with prf
+// TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
+// TODO: implement ECDSA from RFC4754
+// AUTH_ECDSA_256                         AuthMethod = 9  // RFC4754
+// AUTH_ECDSA_384                         AuthMethod = 10 // RFC4754
+// AUTH_ECDSA_521                         AuthMethod = 11 // RFC4754
+// also RFC 7427 - Signature Authentication in IKEv2
+
+// authenticates peer
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identities) bool {
+	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	switch authP.AuthMethod {
+	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
+		psk := &psk{tkm}
+		return psk.Verify(initB, idP, authP.Data, idRemote)
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
+		rsaCert := &RsaCert{tkm}
+		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
+		return rsaCert.Verify(certP, initB, idP, authP.Data)
+	}
+	log.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
+	return false
+}
+
+// HandleIkeAuth callback from state machine
+func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
+	s.Event = state.AUTH_FAIL
+	// response
+	m := msg.(*Message)
+	if err := o.handleEncryptedMessage(m); err != nil {
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	payloads := AuthIPayloads
+	if o.tkm.isInitiator {
+		payloads = AuthRPayloads
+	}
+	if err := m.EnsurePayloads(payloads); err != nil {
+		// notification is recoverable
+		for _, n := range m.Payloads.GetNotifications() {
+			if err, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+				s.Data = err
+				return
+			}
+		}
+		log.Error(err)
+		s.Data = err
+		return
+	}
+	var idP *protocol.IdPayload
+	var initB []byte
+	if o.tkm.isInitiator {
+		initB = o.initRb
+		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
+	} else {
+		initB = o.initIb
+		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
+	}
+	// authenticate peer
+	if !authenticate(m, initB, idP, o.tkm, o.idRemote) {
+		log.Error(protocol.AUTHENTICATION_FAILED)
+		s.Data = protocol.AUTHENTICATION_FAILED
+		return
+	}
+	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
+		o.local,
+		o.IkeSpiI,
+		o.IkeSpiR,
+		o.remote)
+	s.Event = state.SUCCESS
+	// move to STATE_MATURE state
+	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
+	return
 }

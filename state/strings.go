@@ -15,9 +15,9 @@ func (i State) String() string {
 	return _State_name[_State_index[i]:_State_index[i+1]]
 }
 
-const _Event_name = "SUCCESSFAILMSG_INITMSG_AUTHMSG_CHILD_SASMI_STARTREKEY_STARTTIMEOUTINIT_FAILAUTH_FAILDELETE_IKE_SAFINISHEDENTRY_EVENT"
+const _Event_name = "SUCCESSFAILMSG_INITMSG_AUTHMSG_CHILD_SAMSG_DELETE_IKE_SASMI_STARTREKEY_STARTTIMEOUTINIT_FAILAUTH_FAILDELETE_IKE_SAFINISHEDENTRY_EVENT"
 
-var _Event_index = [...]uint8{0, 7, 11, 19, 27, 39, 48, 59, 66, 75, 84, 97, 105, 116}
+var _Event_index = [...]uint8{0, 7, 11, 19, 27, 39, 56, 65, 76, 83, 92, 101, 114, 122, 133}
 
 func (i Event) String() string {
 	if i >= Event(len(_Event_index)-1) {
