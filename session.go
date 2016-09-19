@@ -202,7 +202,8 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			o.cfg.IsTransportMode,
 			o.IkeSpiI, o.IkeSpiR,
 			prop, o.cfg.TsI, o.cfg.TsR,
-			&psk{o.tkm, o.idLocal},
+			o.idLocal,
+			&psk{o.tkm},
 		}, initB)
 	auth.IkeHeader.MsgId = o.msgId
 	// encode

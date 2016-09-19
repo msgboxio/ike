@@ -8,6 +8,7 @@ type authParams struct {
 	spiI, spiR      protocol.Spi
 	proposals       []*protocol.SaProposal
 	tsI, tsR        []*protocol.Selector
+	Identities
 	Authenticator
 }
 
@@ -43,14 +44,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 	iD := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
-		IdType:        params.Authenticator.IdType(),
-		Data:          params.Authenticator.Id(),
+		IdType:        params.Identities.IdType(),
+		Data:          params.Identities.Id(),
 	}
 	auth.Payloads.Add(iD)
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		AuthMethod:    params.Authenticator.AuthMethod(),
-		Data:          params.Authenticator.Sign(initB, iD),
+		Data:          params.Authenticator.Sign(initB, iD, params.Identities),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},

@@ -4,7 +4,7 @@ import "github.com/msgboxio/ike/protocol"
 
 type Identities interface {
 	IdType() protocol.IdType
-	ForAuthentication(protocol.IdType) []byte
+	Id() []byte
 	AuthData(id []byte, method protocol.AuthMethod) []byte
 }
 
@@ -17,10 +17,7 @@ func (psk PskIdentities) IdType() protocol.IdType {
 	return protocol.ID_RFC822_ADDR
 }
 
-func (psk PskIdentities) ForAuthentication(idType protocol.IdType) []byte {
-	if idType != protocol.ID_RFC822_ADDR {
-		return nil
-	}
+func (psk PskIdentities) Id() []byte {
 	return []byte(psk.Primary)
 }
 

@@ -19,12 +19,12 @@ import (
 // also RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
-func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, id Identities) bool {
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identities) bool {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		psk := &psk{tkm, id}
-		return psk.Verify(initB, idP, authP.Data)
+		psk := &psk{tkm}
+		return psk.Verify(initB, idP, authP.Data, idRemote)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
 		rsaCert := &RsaCert{tkm}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
