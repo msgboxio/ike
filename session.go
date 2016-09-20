@@ -130,7 +130,7 @@ done:
 					if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
 						log.Errorf("Received Error: %v", err)
 						evt.Event = state.FAIL
-						evt.Data = err
+						evt.Data = np.NotificationType
 						o.fsm.Event(evt)
 					}
 				}
@@ -271,13 +271,16 @@ func (o *Session) HandleCreateChildSa(msg interface{}) (s state.StateEvent) {
 
 // CheckError checks for received errors from local actions & checks
 func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
-	if err, ok := msg.(protocol.NotificationType); ok {
-		if iErr, ok := protocol.GetIkeErrorCode(err); ok {
-			o.Notify(iErr)
+	if notif, ok := msg.(protocol.NotificationType); ok {
+		// check if the received notification was an error
+		if _, ok := protocol.GetIkeErrorCode(notif); ok {
+			// ignore it
 			return
 		}
+	} else if iErr, ok := msg.(protocol.IkeErrorCode); ok {
+		o.Notify(iErr)
+		return
 	}
-	o.Notify(protocol.ERR_INVALID_SYNTAX)
 	return
 }
 

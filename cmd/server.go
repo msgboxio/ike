@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rsa"
 	"crypto/x509"
 	"errors"
 	"flag"
@@ -27,7 +28,7 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New("received signal: " + sig.String()))
 }
 
-func loadConfig() (*ike.Config, string, string, *x509.CertPool) {
+func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certificate, *rsa.PrivateKey) {
 	var localString, remoteString string
 	flag.StringVar(&localString, "local", "0.0.0.0:5000", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
@@ -35,8 +36,10 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool) {
 	var isTunnelMode bool
 	flag.BoolVar(&isTunnelMode, "tunnel", false, "use tunnel mode?")
 
-	var caCert string
-	flag.StringVar(&caCert, "ca", "", "PEM encoded ca certificate")
+	var caFile, certFile, keyFile string
+	flag.StringVar(&caFile, "ca", "", "PEM encoded ca certificate")
+	flag.StringVar(&certFile, "cert", "", "PEM encoded peer certificate")
+	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -45,11 +48,20 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool) {
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
-	roots, err := ike.LoadRoot(caCert)
+	roots, err := ike.LoadRoot(caFile)
 	if err != nil {
 		log.Fatal(err)
 	}
-	return config, localString, remoteString, roots
+	certs, err := ike.LoadCerts(certFile)
+	if err != nil {
+		log.Warningf("Cert: %s", err)
+	}
+	key, err := ike.LoadKey(keyFile)
+	if err != nil {
+		log.Warningf("Key: %s", err)
+	}
+
+	return config, localString, remoteString, roots, certs, key
 }
 
 // map of initiator spi -> session
@@ -78,10 +90,11 @@ func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net
 	}
 }
 
-var localId = &ike.PskIdentities{
-	Primary: "ak@msgbox.io",
-	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-}
+// var localId = &ike.PskIdentities{
+// Primary: "ak@msgbox.io",
+// Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+// }
+var localId = &ike.RsaCertIdentity{}
 
 // var remoteId = &ike.PskIdentities{
 // Primary: "bk@msgbox.io",
@@ -116,10 +129,14 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 }
 
 func main() {
-	config, localString, remoteString, roots := loadConfig()
+	config, localString, remoteString, roots, cert, key := loadConfig()
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel)
 
+	if cert != nil {
+		localId.Certificate = cert[0]
+	}
+	localId.PrivateKey = key
 	remoteId.Roots = roots
 
 	// this should load the xfrm modules

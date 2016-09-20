@@ -20,6 +20,10 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 			AUTH_FAIL: Transition{
 				CheckEvent: h.CheckError,
 			},
+			FAIL: Transition{
+				Dest:   STATE_FINISHED,
+				Action: h.RemoveSa,
+			},
 		},
 		STATE_FINISHED: UserTransitions{
 			ENTRY_EVENT: Transition{

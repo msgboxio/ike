@@ -47,7 +47,27 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	// TODO - handle various other types of ID
+	if params.Authenticator.AuthMethod() == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
+		certId, ok := params.Identity.(*RsaCertIdentity)
+		if !ok {
+			// should never happen
+			panic("EEk")
+		}
+		if certId.Certificate == nil {
+			log.Info("missing cert")
+			return nil
+		}
+		if certId.PrivateKey == nil {
+			log.Info("missing key")
+			return nil
+		}
+		log.Info("sending cert")
+		auth.Payloads.Add(&protocol.CertPayload{
+			PayloadHeader:    &protocol.PayloadHeader{},
+			CertEncodingType: protocol.X_509_CERTIFICATE_SIGNATURE,
+			Data:             certId.Certificate.Raw,
+		})
+	}
 	iD := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
@@ -136,6 +156,12 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			o.idLocal,
 			authenticator(o.idLocal, o.tkm),
 		}, initB)
+	if auth == nil {
+		return state.StateEvent{
+			Event: state.AUTH_FAIL,
+			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
+		}
+	}
 	auth.IkeHeader.MsgId = o.msgId
 	// encode
 	return o.sendMsg(auth.Encode(o.tkm))
@@ -212,8 +238,9 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 	if err := m.EnsurePayloads(payloads); err != nil {
 		// notification is recoverable
 		for _, n := range m.Payloads.GetNotifications() {
-			if err, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				s.Data = err
+			if _, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+				// if notification was an error,  pass it along
+				s.Data = n.NotificationType
 				return
 			}
 		}
@@ -233,7 +260,8 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 	// authenticate peer
 	if !authenticate(m, initB, idP, o.tkm, o.idRemote) {
 		log.Error(protocol.AUTHENTICATION_FAILED)
-		s.Data = protocol.AUTHENTICATION_FAILED
+		// IkeErrorCode instead of NotificationType
+		s.Data = protocol.ERR_AUTHENTICATION_FAILED
 		return
 	}
 	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
