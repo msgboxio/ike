@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,15 +19,6 @@ import (
 	"github.com/msgboxio/log"
 )
 
-var localId = ike.PskIdentities{
-	Primary: "ak@msgbox.io",
-	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-}
-var remoteId = ike.PskIdentities{
-	Primary: "bk@msgbox.io",
-	Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
-}
-
 func waitForSignal(cancel context.CancelFunc) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -35,7 +27,7 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New("received signal: " + sig.String()))
 }
 
-func loadConfig() (*ike.Config, string, string) {
+func loadConfig() (*ike.Config, string, string, *x509.CertPool) {
 	var localString, remoteString string
 	flag.StringVar(&localString, "local", "0.0.0.0:5000", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
@@ -53,12 +45,11 @@ func loadConfig() (*ike.Config, string, string) {
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
-	if roots, err := ike.LoadRoot(caCert); err != nil {
+	roots, err := ike.LoadRoot(caCert)
+	if err != nil {
 		log.Fatal(err)
-	} else {
-		config.Roots = roots
 	}
-	return config, localString, remoteString
+	return config, localString, remoteString, roots
 }
 
 // map of initiator spi -> session
@@ -87,6 +78,17 @@ func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net
 	}
 }
 
+var localId = &ike.PskIdentities{
+	Primary: "ak@msgbox.io",
+	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+}
+
+// var remoteId = &ike.PskIdentities{
+// Primary: "bk@msgbox.io",
+// Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
+// }
+var remoteId = &ike.RsaCertIdentity{}
+
 // runs on main thread
 // loops until there is a socket error
 func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
@@ -114,9 +116,11 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 }
 
 func main() {
-	config, localString, remoteString := loadConfig()
+	config, localString, remoteString, roots := loadConfig()
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel)
+
+	remoteId.Roots = roots
 
 	// this should load the xfrm modules
 	// requires root

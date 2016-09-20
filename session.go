@@ -36,7 +36,7 @@ type Session struct {
 	tkm *Tkm
 	cfg *Config
 
-	idRemote, idLocal Identities
+	idRemote, idLocal Identity
 	remote, local     net.IP
 
 	IkeSpiI, IkeSpiR protocol.Spi

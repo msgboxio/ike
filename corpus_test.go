@@ -74,7 +74,8 @@ func TestIkeMsgGen(t *testing.T) {
 		cfg.IsTransportMode,
 		params.spiI, params.spiR,
 		params.proposals, cfg.TsI, cfg.TsR,
-		&psk{tkm, ids},
+		ids,
+		&PskAuthenticator{tkm},
 	}, initIb)
 	// overwrite NextPayload
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi

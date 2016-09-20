@@ -32,6 +32,7 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 			},
 			AUTH_FAIL: Transition{
 				CheckEvent: h.CheckError,
+				Action:     h.RemoveSa,
 				Dest:       STATE_FINISHED,
 			},
 			DELETE_IKE_SA: Transition{

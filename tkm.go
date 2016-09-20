@@ -2,7 +2,6 @@ package ike
 
 import (
 	"crypto/rand"
-	"crypto/x509"
 	"errors"
 	"math/big"
 
@@ -32,8 +31,6 @@ type Tkm struct {
 	dhPrivate, DhPublic *big.Int
 	DhShared            *big.Int
 
-	Roots *x509.CertPool
-
 	// for debug
 	SKEYSEED, KEYMAT []byte
 
@@ -45,11 +42,10 @@ type Tkm struct {
 
 var ErrorMissingCryptoKeys = errors.New("Missing crypto keys")
 
-func NewTkmInitiator(suite *crypto.CipherSuite, roots *x509.CertPool) (*Tkm, error) {
+func NewTkmInitiator(suite *crypto.CipherSuite) (*Tkm, error) {
 	tkm := &Tkm{
 		suite:       suite,
 		isInitiator: true,
-		Roots:       roots,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
 	ni, err := tkm.ncCreate(suite.Prf.Length * 8)
@@ -64,11 +60,10 @@ func NewTkmInitiator(suite *crypto.CipherSuite, roots *x509.CertPool) (*Tkm, err
 	return tkm, nil
 }
 
-func NewTkmResponder(suite *crypto.CipherSuite, no *big.Int, roots *x509.CertPool) (tkm *Tkm, err error) {
+func NewTkmResponder(suite *crypto.CipherSuite, no *big.Int) (tkm *Tkm, err error) {
 	tkm = &Tkm{
 		suite: suite,
 		Ni:    no,
-		Roots: roots,
 	}
 	// TODO : at least 128 bits & at least half the key size of the negotiated prf
 	if nr, err := tkm.ncCreate(no.BitLen()); err != nil {

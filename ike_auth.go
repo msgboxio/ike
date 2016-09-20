@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"crypto/x509"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
@@ -14,7 +15,7 @@ type authParams struct {
 	spiI, spiR      protocol.Spi
 	proposals       []*protocol.SaProposal
 	tsI, tsR        []*protocol.Selector
-	Identities
+	Identity
 	Authenticator
 }
 
@@ -50,14 +51,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 	iD := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
-		IdType:        params.Identities.IdType(),
-		Data:          params.Identities.Id(),
+		IdType:        params.Identity.IdType(),
+		Data:          params.Identity.Id(),
 	}
 	auth.Payloads.Add(iD)
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		AuthMethod:    params.Authenticator.AuthMethod(),
-		Data:          params.Authenticator.Sign(initB, iD, params.Identities),
+		Data:          params.Authenticator.Sign(initB, iD, params.Identity),
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
@@ -133,7 +134,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			o.IkeSpiI, o.IkeSpiR,
 			prop, o.cfg.TsI, o.cfg.TsR,
 			o.idLocal,
-			&psk{o.tkm},
+			authenticator(o.idLocal, o.tkm),
 		}, initB)
 	auth.IkeHeader.MsgId = o.msgId
 	// encode
@@ -151,19 +152,44 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 // AUTH_ECDSA_256                         AuthMethod = 9  // RFC4754
 // AUTH_ECDSA_384                         AuthMethod = 10 // RFC4754
 // AUTH_ECDSA_521                         AuthMethod = 11 // RFC4754
-// also RFC 7427 - Signature Authentication in IKEv2
+// TODO: RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
-func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identities) bool {
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identity) bool {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	authenticator := authenticator(idRemote, tkm)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		psk := &psk{tkm}
-		return psk.Verify(initB, idP, authP.Data, idRemote)
+		pskId, ok := idRemote.(*PskIdentities)
+		if !ok {
+			log.Errorf("Ike Auth failed: PSK not configured for peer")
+			return false
+		}
+		return authenticator.Verify(initB, idP, authP.Data, pskId)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
-		rsaCert := &RsaCert{tkm}
+		certId, ok := idRemote.(*RsaCertIdentity)
+		if !ok {
+			log.Errorf("Ike Auth failed: RSA certificate not configured for peer")
+			return false
+		}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
-		return rsaCert.Verify(certP, initB, idP, authP.Data)
+		if certP == nil {
+			log.Errorf("Ike Auth failed: certificate is required")
+			return false
+		}
+		cert := certP.(*protocol.CertPayload)
+		if cert.CertEncodingType != protocol.X_509_CERTIFICATE_SIGNATURE {
+			log.Errorf("Ike Auth failed: cert encoding not supported: %v", cert.CertEncodingType)
+			return false
+		}
+		// cert.data is DER-encoded X.509 certificate
+		x509Cert, err := x509.ParseCertificate(cert.Data)
+		if err != nil {
+			log.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
+			return false
+		}
+		certId.Certificate = x509Cert
+		return authenticator.Verify(initB, idP, authP.Data, certId)
 	}
 	log.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
 	return false

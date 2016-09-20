@@ -1,7 +1,6 @@
 package ike
 
 import (
-	"crypto/x509"
 	"errors"
 	"net"
 
@@ -15,7 +14,6 @@ type Config struct {
 	TsI, TsR []*protocol.Selector
 
 	IsTransportMode bool
-	Roots           *x509.CertPool
 }
 
 func DefaultConfig() *Config {

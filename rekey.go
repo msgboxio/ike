@@ -26,7 +26,7 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		o.cancel(err)
 		return
 	}
-	if o.newTkm, err = NewTkmInitiator(suite, o.cfg.Roots); err != nil {
+	if o.newTkm, err = NewTkmInitiator(suite); err != nil {
 		log.Error(err)
 		o.cancel(err)
 		return

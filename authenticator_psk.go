@@ -8,11 +8,12 @@ import (
 	"github.com/msgboxio/log"
 )
 
-type psk struct {
+// psk implemments Authenticator interface
+type PskAuthenticator struct {
 	*Tkm
 }
 
-func (psk *psk) AuthMethod() protocol.AuthMethod {
+func (psk *PskAuthenticator) AuthMethod() protocol.AuthMethod {
 	return protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE
 }
 
@@ -20,7 +21,7 @@ func (psk *psk) AuthMethod() protocol.AuthMethod {
 // responder: initRB | Ni | prf(SK_pr, IDr')
 // initiator: initIB | Nr | prf(SK_pi, IDi')
 // authB = prf( prf(Shared Secret, "Key Pad for IKEv2"), SignB)
-func (psk *psk) Sign(initB []byte, idP *protocol.IdPayload, idLocal Identities) []byte {
+func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, idLocal Identity) []byte {
 	secret := idLocal.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
 		// could this be a security risk
@@ -35,7 +36,7 @@ func (psk *psk) Sign(initB []byte, idP *protocol.IdPayload, idLocal Identities) 
 	return prf.Apply(prf.Apply(secret, []byte("Key Pad for IKEv2")), signB)[:prf.Length]
 }
 
-func (psk *psk) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identities) bool {
+func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) bool {
 	secret := idRemote.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
 		// CAREFUL here - this could be a potential security risk

@@ -9,7 +9,7 @@ import (
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
-func NewResponder(parent context.Context, localId, remoteID Identities, cfg *Config, initI *Message) (*Session, error) {
+func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Config, initI *Message) (*Session, error) {
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
@@ -30,7 +30,6 @@ func NewResponder(parent context.Context, localId, remoteID Identities, cfg *Con
 
 	// use new config
 	rcfg.IsTransportMode = cfg.IsTransportMode
-	rcfg.Roots = cfg.Roots
 	cfg = rcfg
 
 	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
@@ -39,7 +38,7 @@ func NewResponder(parent context.Context, localId, remoteID Identities, cfg *Con
 	}
 
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	tkm, err := NewTkmResponder(cs, noI.Nonce, cfg.Roots)
+	tkm, err := NewTkmResponder(cs, noI.Nonce)
 	if err != nil {
 		return nil, err
 	}
