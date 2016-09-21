@@ -67,27 +67,16 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certific
 // map of initiator spi -> session
 var sessions = make(map[uint64]*ike.Session)
 
-// runs in goroutine.
-// TODO - need exclusive access to sessions map
-// TODO - merge into session.run goroutine; reduce from 3 -> 2 per conn
 func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net.Addr) {
+	// sesions map has some data race - worth fixing ?
 	sessions[spi] = session
-	for {
-		select {
-		case reply, ok := <-session.Replies():
-			if !ok {
-				break
-			}
-			if err := ike.WritePacket(pconn, reply, to); err != nil {
-				session.Close(err)
-				break
-			}
-		case <-session.Done():
-			delete(sessions, spi)
-			log.Infof("Finished SA 0x%x", spi)
-			return
-		}
-	}
+	go session.Run(pconn, to)
+	// wait for session to finish
+	go func() {
+		<-session.Done()
+		delete(sessions, spi)
+		log.Infof("Removed SA 0x%x", spi)
+	}()
 }
 
 // var localId = &ike.PskIdentities{
@@ -122,9 +111,9 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 				log.Error(err)
 				continue
 			}
-			go runSession(spi, session, pconn, msg.RemoteAddr)
+			runSession(spi, session, pconn, msg.RemoteAddr)
 		}
-		session.HandleMessage(msg)
+		session.PostMessage(msg)
 	}
 }
 

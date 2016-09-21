@@ -7,6 +7,8 @@ import (
 	"net"
 	"time"
 
+	"golang.org/x/net/ipv4"
+
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
@@ -30,7 +32,9 @@ const (
 // 3> move to finished
 type Session struct {
 	context.Context
-	cancel    context.CancelFunc
+	cancel context.CancelFunc
+	*state.Fsm
+
 	isClosing bool
 
 	tkm *Tkm
@@ -45,32 +49,58 @@ type Session struct {
 	incoming chan *Message
 	outgoing chan []byte
 
-	fsm *state.Fsm
-
 	msgId uint32
 
 	initIb, initRb []byte
 }
 
-func isMessageValid(m *Message, o *Session) error {
-	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
-		return fmt.Errorf("different initiator Spi %s", spi)
+// Housekeeping
+
+func (o *Session) Run(pconn *ipv4.PacketConn, to net.Addr) {
+	for {
+		select {
+		case reply, ok := <-o.outgoing:
+			if !ok {
+				break
+			}
+			if err := WritePacket(pconn, reply, to); err != nil {
+				o.Close(err)
+				break
+			}
+		case msg, ok := <-o.incoming:
+			if !ok {
+				break
+			}
+			if evt := o.handleMessage(msg); evt != nil {
+				o.PostEvent(*evt)
+			}
+		case evt, ok := <-o.Events():
+			if !ok {
+				break
+			}
+			o.HandleEvent(evt)
+		case <-o.Done():
+			log.Infof("Finished IKE SA : %#x => %#x", o.IkeSpiI, o.IkeSpiR)
+			return
+		}
 	}
-	// Dont check Responder SPI. initiator IKE_INTI does not have it
-	if !o.remote.Equal(AddrToIp(m.RemoteAddr)) {
-		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
-	}
-	// local IP is not set initially for initiator
-	if o.local == nil {
-		o.local = m.LocalIp
-	} else if !o.local.Equal(m.LocalIp) {
-		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
-	}
-	return nil
 }
 
-func (o *Session) HandleMessage(m *Message) {
-	if err := isMessageValid(m, o); err != nil {
+// Close is called to shutdown this session
+func (o *Session) Close(err error) {
+	log.Info("Close Session")
+	if o.isClosing {
+		return
+	}
+	o.isClosing = true
+	// send to peer, peer should send SA_DELETE message
+	o.SendIkeSaDelete()
+	// TODO - start timeout to delete sa if peers does not reply
+	o.PostEvent(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
+}
+
+func (o *Session) PostMessage(m *Message) {
+	if err := o.isMessageValid(m); err != nil {
 		log.Error("Drop Message: ", err)
 		return
 	}
@@ -81,63 +111,50 @@ func (o *Session) HandleMessage(m *Message) {
 	o.incoming <- m
 }
 
-func (o *Session) Replies() <-chan []byte { return o.outgoing }
-
-func run(o *Session) {
-done:
-	for {
-		select {
-		case <-o.Done():
-			break done
-		case msg, ok := <-o.incoming:
-			if !ok {
-				break done
+func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
+	evt = &state.StateEvent{Data: msg}
+	// make sure they are responses - TODO
+	switch msg.IkeHeader.ExchangeType {
+	case protocol.IKE_SA_INIT:
+		evt.Event = state.MSG_INIT
+		return
+	case protocol.IKE_AUTH:
+		evt.Event = state.MSG_AUTH
+		return
+	case protocol.CREATE_CHILD_SA:
+		evt.Event = state.MSG_CHILD_SA
+		return
+	case protocol.INFORMATIONAL:
+		// TODO - it can be an error
+		// handle in all states ?
+		if err := o.handleEncryptedMessage(msg); err != nil {
+			log.Error(err)
+		}
+		if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
+			dp := del.(*protocol.DeletePayload)
+			if dp.ProtocolId == protocol.IKE {
+				log.Infof("Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
+				evt.Event = state.MSG_DELETE_IKE_SA
+				return
 			}
-			evt := state.StateEvent{Data: msg}
-			// make sure they are responses - TODO
-			switch msg.IkeHeader.ExchangeType {
-			case protocol.IKE_SA_INIT:
-				evt.Event = state.MSG_INIT
-				o.fsm.Event(evt)
-			case protocol.IKE_AUTH:
-				evt.Event = state.MSG_AUTH
-				o.fsm.Event(evt)
-			case protocol.CREATE_CHILD_SA:
-				evt.Event = state.MSG_CHILD_SA
-				o.fsm.Event(evt)
-			case protocol.INFORMATIONAL:
-				// TODO - it can be an error
-				// handle in all states ?
-				if err := o.handleEncryptedMessage(msg); err != nil {
-					log.Error(err)
+			for _, spi := range dp.Spis {
+				if dp.ProtocolId == protocol.ESP {
+					log.Infof("Peer remove ESP SA : %#x", spi)
+					// TODO
 				}
-				if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
-					dp := del.(*protocol.DeletePayload)
-					if dp.ProtocolId == protocol.IKE {
-						log.Infof("Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
-						evt.Event = state.MSG_DELETE_IKE_SA
-						o.fsm.Event(evt)
-					}
-					for _, spi := range dp.Spis {
-						if dp.ProtocolId == protocol.ESP {
-							log.Infof("Peer remove ESP SA : %#x", spi)
-							// TODO
-						}
-					}
-				} // del
-				if note := msg.Payloads.Get(protocol.PayloadTypeN); note != nil {
-					np := note.(*protocol.NotifyPayload)
-					if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-						log.Errorf("Received Error: %v", err)
-						evt.Event = state.FAIL
-						evt.Data = np.NotificationType
-						o.fsm.Event(evt)
-					}
-				}
-				// TODO cp
-			} // ExchangeType
-		} // select
-	} // for
+			}
+		} // del
+		if note := msg.Payloads.Get(protocol.PayloadTypeN); note != nil {
+			np := note.(*protocol.NotifyPayload)
+			if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
+				log.Errorf("Received Error: %v", err)
+				evt.Event = state.FAIL
+				evt.Data = np.NotificationType
+				return
+			}
+		}
+	}
+	return nil
 }
 
 func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
@@ -183,12 +200,13 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 // Finished is called by state machine upon entering finished state
 func (o *Session) Finished() (s state.StateEvent) {
 	close(o.incoming)
-	if len(o.outgoing) > 0 {
-		// let the queue drain
-		time.Sleep(100 * time.Millisecond)
+	if queued := len(o.outgoing); queued > 0 {
+		// TODO : let the queue drain
+		log.Warningf("Finished; may drop messages: %s", queued)
 	}
 	close(o.outgoing)
-	log.Info("Finishing; cancel context")
+	o.CloseEvents()
+	log.Info("Finished; cancel context")
 	o.cancel(context.Canceled)
 	return // not used
 }
@@ -222,7 +240,7 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 			}
 			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
-				o.fsm.Event(state.StateEvent{Event: state.REKEY_START})
+				o.PostEvent(state.StateEvent{Event: state.REKEY_START})
 			})
 		case protocol.USE_TRANSPORT_MODE:
 			wantsTransportMode = true
@@ -286,19 +304,6 @@ func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 
 // utilities
 
-// Close
-func (o *Session) Close(err error) {
-	log.Info("Close Session")
-	if o.isClosing {
-		return
-	}
-	o.isClosing = true
-	// send to peer, peer should send SA_DELETE message
-	o.SendIkeSaDelete()
-	// TODO - start timeout to delete sa if peers does not reply
-	o.fsm.Event(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
-}
-
 func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	spi := o.IkeSpiI
 	if o.tkm.isInitiator {
@@ -349,6 +354,23 @@ func (o *Session) SendEmptyInformational() {
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm))
+}
+
+func (o *Session) isMessageValid(m *Message) error {
+	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
+		return fmt.Errorf("different initiator Spi %s", spi)
+	}
+	// Dont check Responder SPI. initiator IKE_INTI does not have it
+	if !o.remote.Equal(AddrToIp(m.RemoteAddr)) {
+		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
+	}
+	// local IP is not set initially for initiator
+	if o.local == nil {
+		o.local = m.LocalIp
+	} else if !o.local.Equal(m.LocalIp) {
+		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
+	}
+	return nil
 }
 
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {

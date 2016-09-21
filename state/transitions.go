@@ -1,7 +1,6 @@
 package state
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/msgboxio/log"
@@ -51,9 +50,6 @@ type Fsm struct {
 	State
 
 	messages chan StateEvent
-
-	context.Context
-	cancel context.CancelFunc
 }
 
 func NewFsm(inputs ...map[State]UserTransitions) *Fsm {
@@ -61,31 +57,24 @@ func NewFsm(inputs ...map[State]UserTransitions) *Fsm {
 	for _, tr := range inputs {
 		trs.addTransitions(tr)
 	}
-	cxt, cancel := context.WithCancel(context.Background())
 	return &Fsm{
 		transitions: trs,
 		State:       STATE_IDLE,
 		messages:    make(chan StateEvent, 10),
-		Context:     cxt,
-		cancel:      cancel,
 	}
 }
 
-func (f *Fsm) Event(m StateEvent) {
+func (f *Fsm) PostEvent(m StateEvent) {
 	f.messages <- m
 }
 
-func (f *Fsm) Run() {
-	for {
-		if m, ok := <-f.messages; ok {
-			f.handleEvent(m)
-			if f.State == STATE_FINISHED {
-				break
-			}
-		}
-	}
+func (f *Fsm) Events() <-chan StateEvent { return f.messages }
+
+func (f *Fsm) CloseEvents() {
 	close(f.messages)
-	f.cancel()
+	if f.State != STATE_FINISHED {
+		log.Warningf("Fsm Closed in State %s", f.State)
+	}
 }
 
 func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
@@ -93,7 +82,7 @@ func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
 		if err := t.CheckEvent(m.Data); err.Data != nil {
 			log.V(1).Infof("Check Error: %s", err.Data)
 			// dont transition, handle error in same state
-			f.Event(err)
+			f.PostEvent(err)
 			return err
 		}
 	}
@@ -101,14 +90,14 @@ func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
 		if err := t.Action(); err.Data != nil {
 			log.V(1).Infof("Action Error: %s", err.Data)
 			// dont transition, handle error in same state
-			f.Event(err)
+			f.PostEvent(err)
 			return err
 		}
 	}
 	return
 }
 
-func (f *Fsm) handleEvent(m StateEvent) {
+func (f *Fsm) HandleEvent(m StateEvent) {
 	t, ok := f.transitions[key(m.Event, f.State)]
 	if !ok {
 		log.V(1).Infof("Ignoring event %s, in State %s", m.Event, f.State)

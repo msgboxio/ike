@@ -65,11 +65,8 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 		incoming: make(chan *Message, 10),
 		outgoing: make(chan []byte, 10),
 	}
-	go run(o)
 
-	o.fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
-	go o.fsm.Run()
-
-	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
+	o.Fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
+	o.PostEvent(state.StateEvent{Event: state.SMI_START})
 	return o, nil
 }

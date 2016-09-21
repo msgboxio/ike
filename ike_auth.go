@@ -271,6 +271,6 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 		o.remote)
 	s.Event = state.SUCCESS
 	// move to STATE_MATURE state
-	o.fsm.Event(state.StateEvent{Event: state.SUCCESS, Data: m})
+	o.PostEvent(state.StateEvent{Event: state.SUCCESS, Data: m})
 	return
 }

@@ -38,11 +38,8 @@ func NewInitiator(parent context.Context, localId, remoteId Identity, remote net
 		incoming: make(chan *Message, 10),
 		outgoing: make(chan []byte, 10),
 	}
-	go run(o)
 
-	o.fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
-	go o.fsm.Run()
-
-	o.fsm.Event(state.StateEvent{Event: state.SMI_START})
+	o.Fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
+	o.PostEvent(state.StateEvent{Event: state.SMI_START})
 	return o
 }

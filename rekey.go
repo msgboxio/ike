@@ -95,5 +95,5 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		o.remote)
 	// save Data
 	o.initRb = m.Data
-	o.fsm.Event(state.StateEvent{})
+	o.PostEvent(state.StateEvent{})
 }
