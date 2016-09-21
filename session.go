@@ -430,6 +430,7 @@ func (o *Session) isMessageValid(m *Message) error {
 	if !o.remote.Equal(AddrToIp(m.RemoteAddr)) {
 		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
 	}
+	// TODO - make sure messages are encrypted after the initial init
 	// local IP is not set initially for initiator
 	if o.local == nil {
 		o.local = m.LocalIp

@@ -202,8 +202,7 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 		if err != nil {
 			return fmt.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
 		}
-		// TODO - this is bad, maybe add to authenticator which is ephemeral
-		certId.Certificate = x509Cert
+		authenticator.SetUserCertificate(x509Cert)
 		if ok := authenticator.Verify(initB, idP, authP.Data, certId); ok {
 			return nil
 		}

@@ -11,7 +11,8 @@ import (
 )
 
 type RsaCert struct {
-	tkm *Tkm
+	tkm  *Tkm
+	cert *x509.Certificate
 }
 
 func (r *RsaCert) AuthMethod() protocol.AuthMethod {
@@ -46,15 +47,15 @@ func (r *RsaCert) Sign(initB []byte, idP *protocol.IdPayload, idLocal Identity) 
 }
 
 func (r *RsaCert) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) bool {
+	if r.cert == nil {
+		return false
+	}
+	x509Cert := r.cert
 	certId, ok := idRemote.(*RsaCertIdentity)
 	if !ok {
 		// should never happen
 		return false
 	}
-	if certId.Certificate == nil {
-		return false
-	}
-	x509Cert := certId.Certificate
 	// ensure key used to compute a digital signature belongs to the name in the ID payload
 	if bytes.Compare(idP.Data, x509Cert.RawSubject) != 0 {
 		log.Errorf("Ike Auth failed: incorrect id in certificate: %s",
@@ -88,4 +89,8 @@ func (r *RsaCert) Verify(initB []byte, idP *protocol.IdPayload, authData []byte,
 		log.Infof("Ike CERT Auth of %+v successful", x509Cert.Subject)
 	}
 	return true
+}
+
+func (r *RsaCert) SetUserCertificate(cert *x509.Certificate) {
+	r.cert = cert
 }

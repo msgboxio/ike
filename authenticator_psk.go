@@ -2,6 +2,7 @@ package ike
 
 import (
 	"crypto/hmac"
+	"crypto/x509"
 	"encoding/hex"
 
 	"github.com/msgboxio/ike/protocol"
@@ -10,7 +11,7 @@ import (
 
 // psk implemments Authenticator interface
 type PskAuthenticator struct {
-	*Tkm
+	tkm *Tkm
 }
 
 func (psk *PskAuthenticator) AuthMethod() protocol.AuthMethod {
@@ -27,12 +28,12 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, idLocal
 		// could this be a security risk
 		log.Infof("No Secret for %s", string(idP.Data))
 	}
-	signB := psk.Tkm.SignB(initB, idP.Encode(), psk.Tkm.isInitiator)
+	signB := psk.tkm.SignB(initB, idP.Encode(), psk.tkm.isInitiator)
 	if log.V(2) {
 		log.Infof("Ike PSK Auth as %s", string(idP.Data))
 	}
 	// TODO : tkm.Auth always uses the hash negotiated with prf
-	prf := psk.Tkm.suite.Prf
+	prf := psk.tkm.suite.Prf
 	return prf.Apply(prf.Apply(secret, []byte("Key Pad for IKEv2")), signB)[:prf.Length]
 }
 
@@ -43,9 +44,9 @@ func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authD
 		log.Errorf("Ike PSK Auth of %s failed: No Secret is available", string(idP.Data))
 		return false
 	}
-	signB := psk.Tkm.SignB(initB, idP.Encode(), !psk.Tkm.isInitiator)
+	signB := psk.tkm.SignB(initB, idP.Encode(), !psk.tkm.isInitiator)
 	// TODO : tkm.Auth always uses the hash negotiated with prf
-	prf := psk.Tkm.suite.Prf
+	prf := psk.tkm.suite.Prf
 	signedB := prf.Apply(prf.Apply(secret, []byte("Key Pad for IKEv2")), signB)[:prf.Length]
 	// compare
 	if hmac.Equal(signedB, authData) {
@@ -58,4 +59,8 @@ func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authD
 		log.Errorf("Ike PSK Auth of %s failed: \n%s vs \n%s", string(idP.Data), hex.Dump(signedB), hex.Dump(authData))
 	}
 	return false
+}
+
+func (psk *PskAuthenticator) SetUserCertificate(*x509.Certificate) {
+	panic("Logic Error")
 }
