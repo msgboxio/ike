@@ -246,12 +246,12 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 
 // Finished is called by state machine upon entering finished state
 func (o *Session) Finished() (s state.StateEvent) {
-	close(o.incoming)
 	if queued := len(o.outgoing); queued > 0 {
-		// log.Warningf(o.Tag()+"Finished; may drop messages: %d", queued)
-		// draining the queue by sleeping seems to work
-		time.Sleep(time.Millisecond)
+		// drain queue by going round the block again
+		o.PostEvent(state.StateEvent{Event: state.FINISHED})
+		return
 	}
+	close(o.incoming)
 	close(o.outgoing)
 	o.CloseEvents()
 	log.Info(o.Tag() + "Finished; cancel context")

@@ -29,6 +29,9 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 			ENTRY_EVENT: Transition{
 				Action: h.Finished,
 			},
+			FINISHED: Transition{
+				Action: h.Finished,
+			},
 		},
 	}
 }
