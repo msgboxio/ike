@@ -57,7 +57,7 @@ func (l *Listener) Close() {
 }
 
 func (l *Listener) runReader() {
-	log.Infoln("Started listening for xfrm messages from kernel")
+	log.V(2).Infoln("Started listening for xfrm messages from kernel")
 done:
 	for {
 		select {
@@ -70,7 +70,7 @@ done:
 			}
 		}
 	}
-	log.Infoln("Stopped listening for xfrm messages from kernel")
+	log.V(2).Infoln("Stopped listening for xfrm messages from kernel")
 }
 
 func processMsg(nsock *nl.NetlinkSocket) error {
@@ -79,31 +79,31 @@ func processMsg(nsock *nl.NetlinkSocket) error {
 		return err
 	}
 	if len(msgs) == 0 {
-		log.Error("len 0")
+		log.Error("xfrm len 0")
 	}
 	for _, msg := range msgs {
 		// log.Infof("msg: %+v", msg)
 		switch msg.Header.Type {
 		case nl.XFRM_MSG_ACQUIRE:
-			log.Infof("xfrm acquire: %+v", msg.Header)
+			log.V(3).Infof("xfrm acquire: %+v", msg.Header)
 		case nl.XFRM_MSG_EXPIRE:
-			log.Infof("xfrm expire: %+v", msg.Header)
+			log.V(3).Infof("xfrm expire: %+v", msg.Header)
 		case nl.XFRM_MSG_NEWPOLICY:
 			policy, _ := netlink.ParseXfrmPolicy(msg.Data, netlink.FAMILY_ALL)
-			log.Infof("xfrm new policy: %+v", policy)
+			log.V(3).Infof("xfrm new policy: %+v", policy)
 		case nl.XFRM_MSG_DELPOLICY:
 			policy, _ := netlink.ParseXfrmPolicy(msg.Data, netlink.FAMILY_ALL)
-			log.Infof("xfrm delete policy: %+v", policy)
+			log.V(3).Infof("xfrm delete policy: %+v", policy)
 		case nl.XFRM_MSG_NEWSA:
 			sa, _ := netlink.ParseXfrmState(msg.Data, netlink.FAMILY_ALL)
-			log.Infof("xfrm new sa: %+v", sa)
+			log.V(3).Infof("xfrm new sa: %+v", sa)
 		case nl.XFRM_MSG_DELSA:
 			sa, _ := netlink.ParseXfrmState(msg.Data, netlink.FAMILY_ALL)
-			log.Infof("xfrm del sa: %+v", sa)
+			log.V(3).Infof("xfrm del sa: %+v", sa)
 		case nl.XFRM_MSG_REPORT:
-			log.Infof("xfrm report: %+v", msg.Header)
+			log.V(3).Infof("xfrm report: %+v", msg.Header)
 		default:
-			log.Infof("xfrm unknown type: %+v", msg.Header)
+			log.V(3).Infof("xfrm unknown type: %+v", msg.Header)
 		}
 	}
 	return nil

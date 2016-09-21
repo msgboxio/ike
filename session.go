@@ -53,6 +53,19 @@ type Session struct {
 }
 
 // Housekeeping
+func (o *Session) Tag() string {
+	ini := o.local
+	res := o.remote
+	if !o.tkm.isInitiator {
+		ini = o.remote
+		res = o.local
+	}
+	return fmt.Sprintf("[%s]%#x<=>%#x[%s]: ",
+		ini,
+		o.IkeSpiI,
+		o.IkeSpiR,
+		res)
+}
 
 type WriteData func([]byte) error
 
@@ -71,6 +84,11 @@ func (o *Session) Run(writeData WriteData) {
 			if !ok {
 				break
 			}
+			// TODO - ensure messages other than IKE_SA_INIT are encrypted
+			if err := o.handleEncryptedMessage(msg); err != nil {
+				log.Warning(err)
+				break
+			}
 			if evt := o.handleMessage(msg); evt != nil {
 				o.PostEvent(*evt)
 			}
@@ -80,7 +98,7 @@ func (o *Session) Run(writeData WriteData) {
 			}
 			o.HandleEvent(evt)
 		case <-o.Done():
-			log.Infof("Finished IKE SA : %#x => %#x", o.IkeSpiI, o.IkeSpiR)
+			log.Info(o.Tag() + "Finished IKE SA")
 			return
 		}
 	}
@@ -88,7 +106,7 @@ func (o *Session) Run(writeData WriteData) {
 
 // Close is called to shutdown this session
 func (o *Session) Close(err error) {
-	log.Info("Close Session")
+	log.Info(o.Tag() + "Close Session")
 	if o.isClosing {
 		return
 	}
@@ -101,11 +119,11 @@ func (o *Session) Close(err error) {
 
 func (o *Session) PostMessage(m *Message) {
 	if err := o.isMessageValid(m); err != nil {
-		log.Error("Drop Message: ", err)
+		log.Error(o.Tag()+"Drop Message: ", err)
 		return
 	}
 	if o.isClosing {
-		log.Error("Drop Message: Closing")
+		log.Error(o.Tag() + "Drop Message: Closing")
 		return
 	}
 	o.incoming <- m
@@ -113,7 +131,6 @@ func (o *Session) PostMessage(m *Message) {
 
 func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
 	evt = &state.StateEvent{Data: msg}
-	// make sure they are responses - TODO
 	switch msg.IkeHeader.ExchangeType {
 	case protocol.IKE_SA_INIT:
 		evt.Event = state.MSG_INIT
@@ -125,29 +142,26 @@ func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
 		evt.Event = state.MSG_CHILD_SA
 		return
 	case protocol.INFORMATIONAL:
-		// TODO - it can be an error
-		// handle in all states ?
-		if err := o.handleEncryptedMessage(msg); err != nil {
-			log.Error(err)
-		}
 		if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
 			dp := del.(*protocol.DeletePayload)
 			if dp.ProtocolId == protocol.IKE {
-				log.Infof("Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
+				log.Infof(o.Tag()+"Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
 				evt.Event = state.MSG_DELETE_IKE_SA
 				return
 			}
 			for _, spi := range dp.Spis {
 				if dp.ProtocolId == protocol.ESP {
-					log.Infof("Peer remove ESP SA : %#x", spi)
+					log.Infof(o.Tag()+"Peer remove ESP SA : %#x", spi)
 					// TODO
 				}
 			}
 		} // del
+		// delete the ike sa if notification is one of following
+		// UNSUPPORTED_CRITICAL_PAYLOAD, INVALID_SYNTAX, an AUTHENTICATION_FAILED
 		if note := msg.Payloads.Get(protocol.PayloadTypeN); note != nil {
 			np := note.(*protocol.NotifyPayload)
 			if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-				log.Errorf("Received Error: %v", err)
+				log.Errorf(o.Tag()+"Received Error: %v", err)
 				evt.Event = state.FAIL
 				evt.Data = np.NotificationType
 				return
@@ -170,6 +184,39 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 }
 
 // callbacks
+
+// SendInit callback from state machine
+func (o *Session) SendInit() (s state.StateEvent) {
+	initMsg := func() ([]byte, error) {
+		init := InitFromSession(o.tkm, o.IkeSpiI, o.IkeSpiR, o.cfg)
+		init.IkeHeader.MsgId = o.msgId
+		// encode
+		initB, err := init.Encode(o.tkm)
+		if err != nil {
+			return nil, err
+		}
+		if o.tkm.isInitiator {
+			o.initIb = initB
+		} else {
+			o.initRb = initB
+		}
+		return initB, nil
+	}
+	return o.sendMsg(initMsg())
+}
+
+// SendAuth callback from state machine
+func (o *Session) SendAuth() (s state.StateEvent) {
+	auth := AuthFromSession(o)
+	if auth == nil {
+		return state.StateEvent{
+			Event: state.AUTH_FAIL,
+			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
+		}
+	}
+	auth.IkeHeader.MsgId = o.msgId
+	return o.sendMsg(auth.Encode(o.tkm))
+}
 
 func (o *Session) InstallSa() (s state.StateEvent) {
 	if err := addSa(o.tkm,
@@ -201,32 +248,58 @@ func (o *Session) StartRetryTimeout() (s state.StateEvent) {
 func (o *Session) Finished() (s state.StateEvent) {
 	close(o.incoming)
 	if queued := len(o.outgoing); queued > 0 {
-		// TODO : let the queue drain
-		log.Warningf("Finished; may drop messages: %s", queued)
+		// log.Warningf(o.Tag()+"Finished; may drop messages: %d", queued)
+		// draining the queue by sleeping seems to work
+		time.Sleep(time.Millisecond)
 	}
 	close(o.outgoing)
 	o.CloseEvents()
-	log.Info("Finished; cancel context")
+	log.Info(o.Tag() + "Finished; cancel context")
 	o.cancel(context.Canceled)
-	return // not used
+	return
 }
 
 // handlers
 
+// HandleIkeSaInit callback from state machine
+func (o *Session) HandleIkeSaInit(msg interface{}) state.StateEvent {
+	// response
+	m := msg.(*Message)
+	if err := HandleInitForSession(o, m); err != nil {
+		log.Error(err)
+		return state.StateEvent{Event: state.INIT_FAIL, Data: err}
+	}
+	return state.StateEvent{Event: state.SUCCESS}
+}
+
+// HandleIkeAuth callback from state machine
+func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
+	// response
+	m := msg.(*Message)
+	if err := HandleAuthForSession(o, m); err != nil {
+		log.Error(err)
+		return state.StateEvent{Event: state.AUTH_FAIL, Data: err}
+	}
+	// move to STATE_MATURE state
+	o.PostEvent(state.StateEvent{Event: state.SUCCESS, Data: m})
+	return state.StateEvent{Event: state.SUCCESS}
+}
+
+// CheckSa callback from state machine
 func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 	// get message
 	msg := m.(*Message)
 	// get peer spi
-	if espSpi, err := getPeerSpi(msg, protocol.ESP); err != nil {
+	espSpi, err := getPeerSpi(msg, protocol.ESP)
+	if err != nil {
 		log.Error(err)
 		s.Data = err
 		return
+	}
+	if o.tkm.isInitiator {
+		o.EspSpiR = append([]byte{}, espSpi...)
 	} else {
-		if o.tkm.isInitiator {
-			o.EspSpiR = append([]byte{}, espSpi...)
-		} else {
-			o.EspSpiI = append([]byte{}, espSpi...)
-		}
+		o.EspSpiI = append([]byte{}, espSpi...)
 	}
 	// check transport mode, and other info payloads
 	wantsTransportMode := false
@@ -238,7 +311,7 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 			if lft <= 2*time.Second {
 				reauth = 0
 			}
-			log.Infof("Lifetime: %s; reauth in %s", lft, reauth)
+			log.Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
 				o.PostEvent(state.StateEvent{Event: state.REKEY_START})
 			})
@@ -247,14 +320,13 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 		}
 	}
 	if wantsTransportMode && o.cfg.IsTransportMode {
-		log.Info("Using Transport Mode")
+		log.Info(o.Tag() + "Using Transport Mode")
 	} else {
 		if wantsTransportMode {
-			log.Info("Peer wanted Transport mode, forcing Tunnel mode")
+			log.Info(o.Tag() + "Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
-			log.Info("Peer Rejected Transport Mode Config")
 			err := errors.New("Peer Rejected Transport Mode Config")
-			log.Error(err)
+			log.Error(o.Tag() + err.Error())
 			s.Data = err
 		}
 	}
@@ -272,16 +344,10 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 func (o *Session) HandleCreateChildSa(msg interface{}) (s state.StateEvent) {
 	s.Event = state.AUTH_FAIL
 	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		log.Error(err)
-		// send NO_ADDITIONAL_SAS
-		s.Data = protocol.NO_ADDITIONAL_SAS
-		return
-	}
 	if err := m.EnsurePayloads(InitPayloads); err == nil {
-		log.Infof("peer requests IKE rekey")
+		log.Infof(o.Tag() + "peer requests IKE rekey")
 	} else {
-		log.Infof("peer requests IPSEC rekey")
+		log.Infof(o.Tag() + "peer requests IPSEC rekey")
 	}
 	s.Data = protocol.NO_ADDITIONAL_SAS
 	return
@@ -360,7 +426,7 @@ func (o *Session) isMessageValid(m *Message) error {
 	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
 		return fmt.Errorf("different initiator Spi %s", spi)
 	}
-	// Dont check Responder SPI. initiator IKE_INTI does not have it
+	// Dont check Responder SPI. initiator IKE_SA_INIT does not have it
 	if !o.remote.Equal(AddrToIp(m.RemoteAddr)) {
 		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
 	}

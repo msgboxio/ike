@@ -2,6 +2,7 @@ package state
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/msgboxio/log"
 )
@@ -73,7 +74,9 @@ func (f *Fsm) Events() <-chan StateEvent { return f.messages }
 func (f *Fsm) CloseEvents() {
 	close(f.messages)
 	if f.State != STATE_FINISHED {
-		log.Warningf("Fsm Closed in State %s", f.State)
+		// log.Warningf("Fsm Closed in State %s", f.State)
+		// draining the queue by sleeping seems to work
+		time.Sleep(time.Millisecond)
 	}
 }
 

@@ -2,10 +2,11 @@ package ike
 
 import (
 	"crypto/x509"
+	"errors"
+	"fmt"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
 )
 
@@ -61,7 +62,6 @@ func makeAuth(params *authParams, initB []byte) *Message {
 			log.Info("missing key")
 			return nil
 		}
-		log.Info("sending cert")
 		auth.Payloads.Add(&protocol.CertPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			CertEncodingType: protocol.X_509_CERTIFICATE_SIGNATURE,
@@ -113,11 +113,11 @@ func makeAuth(params *authParams, initB []byte) *Message {
 }
 
 // SendAuth callback from state machine
-func (o *Session) SendAuth() (s state.StateEvent) {
+func AuthFromSession(o *Session) *Message {
 	// IKE_AUTH
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
-		log.Infoln("Adding host based selectors")
+		log.Infoln(o.Tag() + "Adding host based selectors")
 		// add host based selectors by default
 		slen := len(o.local) * 8
 		ini := o.remote
@@ -130,8 +130,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
 			&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
 	}
-	log.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
-
+	log.Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// proposal
 	var prop []*protocol.SaProposal
 	// part of signed octet
@@ -147,7 +146,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 		// initR | Ni | prf(sk_pr | IDr )
 		initB = o.initRb
 	}
-	auth := makeAuth(
+	return makeAuth(
 		&authParams{
 			o.tkm.isInitiator,
 			o.cfg.IsTransportMode,
@@ -156,15 +155,6 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			o.idLocal,
 			authenticator(o.idLocal, o.tkm),
 		}, initB)
-	if auth == nil {
-		return state.StateEvent{
-			Event: state.AUTH_FAIL,
-			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
-		}
-	}
-	auth.IkeHeader.MsgId = o.msgId
-	// encode
-	return o.sendMsg(auth.Encode(o.tkm))
 }
 
 // TODO:
@@ -181,72 +171,63 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 // TODO: RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
-func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identity) bool {
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identity) error {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	authenticator := authenticator(idRemote, tkm)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
 		pskId, ok := idRemote.(*PskIdentities)
 		if !ok {
-			log.Errorf("Ike Auth failed: PSK not configured for peer")
-			return false
+			return errors.New("Ike Auth failed: PSK not configured for peer")
 		}
-		return authenticator.Verify(initB, idP, authP.Data, pskId)
+		if ok := authenticator.Verify(initB, idP, authP.Data, pskId); ok {
+			return nil
+		}
+		return errors.New("Ike Auth failed: verify signature")
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
 		certId, ok := idRemote.(*RsaCertIdentity)
 		if !ok {
-			log.Errorf("Ike Auth failed: RSA certificate not configured for peer")
-			return false
+			return errors.New("Ike Auth failed: RSA certificate not configured for peer")
 		}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
 		if certP == nil {
-			log.Errorf("Ike Auth failed: certificate is required")
-			return false
+			return errors.New("Ike Auth failed: certificate is required")
 		}
 		cert := certP.(*protocol.CertPayload)
 		if cert.CertEncodingType != protocol.X_509_CERTIFICATE_SIGNATURE {
-			log.Errorf("Ike Auth failed: cert encoding not supported: %v", cert.CertEncodingType)
-			return false
+			return fmt.Errorf("Ike Auth failed: cert encoding not supported: %v", cert.CertEncodingType)
 		}
 		// cert.data is DER-encoded X.509 certificate
 		x509Cert, err := x509.ParseCertificate(cert.Data)
 		if err != nil {
-			log.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
-			return false
+			return fmt.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
 		}
+		// TODO - this is bad, maybe add to authenticator which is ephemeral
 		certId.Certificate = x509Cert
-		return authenticator.Verify(initB, idP, authP.Data, certId)
+		if ok := authenticator.Verify(initB, idP, authP.Data, certId); ok {
+			return nil
+		}
+		return errors.New("Ike Auth failed: verify signature")
+	default:
+		return fmt.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
 	}
-	log.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
-	return false
 }
 
-// HandleIkeAuth callback from state machine
-func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
-	s.Event = state.AUTH_FAIL
-	// response
-	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
+func HandleAuthForSession(o *Session, m *Message) error {
 	payloads := AuthIPayloads
 	if o.tkm.isInitiator {
 		payloads = AuthRPayloads
 	}
 	if err := m.EnsurePayloads(payloads); err != nil {
-		// notification is recoverable
 		for _, n := range m.Payloads.GetNotifications() {
-			if _, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				// if notification was an error,  pass it along
-				s.Data = n.NotificationType
-				return
+			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+				log.Warning(o.Tag() + "peer notifying : auth succeeded, but child sa was not created")
+				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN etc
+				// TODO - for now, we should simply end the IKE_SA
+				return nErr
 			}
 		}
-		log.Error(err)
-		s.Data = err
-		return
+		return err
 	}
 	var idP *protocol.IdPayload
 	var initB []byte
@@ -258,19 +239,10 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
 	// authenticate peer
-	if !authenticate(m, initB, idP, o.tkm, o.idRemote) {
-		log.Error(protocol.AUTHENTICATION_FAILED)
-		// IkeErrorCode instead of NotificationType
-		s.Data = protocol.ERR_AUTHENTICATION_FAILED
-		return
+	if err := authenticate(m, initB, idP, o.tkm, o.idRemote); err != nil {
+		log.Info(o.Tag() + err.Error())
+		return protocol.ERR_AUTHENTICATION_FAILED
 	}
-	log.Infof("IKE SA CREATED: [%s]%#x<=>%#x[%s]",
-		o.local,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		o.remote)
-	s.Event = state.SUCCESS
-	// move to STATE_MATURE state
-	o.PostEvent(state.StateEvent{Event: state.SUCCESS, Data: m})
-	return
+	log.Info(o.Tag() + "IKE SA AUTHENTICATED")
+	return nil
 }

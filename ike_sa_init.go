@@ -4,7 +4,6 @@ import (
 	"math/big"
 
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
 )
 
@@ -60,12 +59,12 @@ func makeInit(p initParams) *Message {
 	return init
 }
 
-func InitMsg(tkm *Tkm, ikeSpiI, ikeSpiR []byte, msgID uint32, cfg *Config) ([]byte, error) {
+func InitFromSession(tkm *Tkm, ikeSpiI, ikeSpiR []byte, cfg *Config) *Message {
 	nonce := tkm.Ni
 	if !tkm.isInitiator {
 		nonce = tkm.Nr
 	}
-	init := makeInit(initParams{
+	return makeInit(initParams{
 		isInitiator:   tkm.isInitiator,
 		spiI:          ikeSpiI,
 		spiR:          ikeSpiR,
@@ -74,37 +73,9 @@ func InitMsg(tkm *Tkm, ikeSpiI, ikeSpiR []byte, msgID uint32, cfg *Config) ([]by
 		dhTransformId: tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      tkm.DhPublic,
 	})
-	init.IkeHeader.MsgId = msgID
-	// encode
-	initB, err := init.Encode(tkm)
-	if err != nil {
-		return nil, err
-	}
-	return initB, nil
 }
 
-// SendInit callback from state machine
-func (o *Session) SendInit() (s state.StateEvent) {
-	initMsg := func() ([]byte, error) {
-		initB, err := InitMsg(o.tkm, o.IkeSpiI, o.IkeSpiR, o.msgId, o.cfg)
-		if err != nil {
-			return nil, err
-		}
-		if o.tkm.isInitiator {
-			o.initIb = initB
-		} else {
-			o.initRb = initB
-		}
-		return initB, nil
-	}
-	return o.sendMsg(initMsg())
-}
-
-// HandleIkeSaInit callback from state machine
-func (o *Session) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
-	s.Event = state.INIT_FAIL
-	// response
-	m := msg.(*Message)
+func HandleInitForSession(o *Session, m *Message) error {
 	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// check NAT-T payload to determine if there is a NAT between the two peers
@@ -113,38 +84,29 @@ func (o *Session) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
 	// find traffic selectors
 	// send IKE_AUTH req
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
+		return err
 	}
 	// TODO - ensure sa parameters are same
 	// initialize dh shared with their public key
 	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
+		return err
 	}
 	// set Nr
 	if o.tkm.isInitiator {
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		o.tkm.Nr = no.Nonce
+		// set spiR
+		o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	}
-	// set spiR
-	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	log.Infof("IKE SA INITIALISED: [%s]%#x<=>%#x[%s]",
-		o.local,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		o.remote)
+	log.Infof(o.Tag() + "IKE SA INITIALISED")
 	// save Data
 	if o.tkm.isInitiator {
 		o.initRb = m.Data
 	} else {
 		o.initIb = m.Data
 	}
-	s.Event = state.SUCCESS
-	return
+	return nil
 }
