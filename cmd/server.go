@@ -70,7 +70,10 @@ var sessions = make(map[uint64]*ike.Session)
 func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net.Addr) {
 	// sesions map has some data race - worth fixing ?
 	sessions[spi] = session
-	go session.Run(pconn, to)
+	pacetWriter := func(reply []byte) error {
+		return ike.WritePacket(pconn, reply, to)
+	}
+	go session.Run(pacetWriter)
 	// wait for session to finish
 	go func() {
 		<-session.Done()

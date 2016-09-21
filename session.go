@@ -7,8 +7,6 @@ import (
 	"net"
 	"time"
 
-	"golang.org/x/net/ipv4"
-
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
@@ -56,14 +54,16 @@ type Session struct {
 
 // Housekeeping
 
-func (o *Session) Run(pconn *ipv4.PacketConn, to net.Addr) {
+type WriteData func([]byte) error
+
+func (o *Session) Run(writeData WriteData) {
 	for {
 		select {
 		case reply, ok := <-o.outgoing:
 			if !ok {
 				break
 			}
-			if err := WritePacket(pconn, reply, to); err != nil {
+			if err := writeData(reply); err != nil {
 				o.Close(err)
 				break
 			}
