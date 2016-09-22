@@ -52,14 +52,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		certId, ok := params.Identity.(*RsaCertIdentity)
 		if !ok {
 			// should never happen
-			panic("EEk")
+			panic("Logic Error")
 		}
 		if certId.Certificate == nil {
-			log.Info("missing cert")
+			log.Error("missing cert")
 			return nil
 		}
 		if certId.PrivateKey == nil {
-			log.Info("missing key")
+			log.Error("missing key")
 			return nil
 		}
 		auth.Payloads.Add(&protocol.CertPayload{
@@ -75,10 +75,15 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		Data:          params.Identity.Id(),
 	}
 	auth.Payloads.Add(iD)
+	signature, err := params.Authenticator.Sign(initB, iD, params.Identity)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		AuthMethod:    params.Authenticator.AuthMethod(),
-		Data:          params.Authenticator.Sign(initB, iD, params.Identity),
+		Data:          signature,
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
@@ -180,10 +185,10 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 		if !ok {
 			return errors.New("Ike Auth failed: PSK not configured for peer")
 		}
-		if ok := authenticator.Verify(initB, idP, authP.Data, pskId); ok {
-			return nil
+		if err := authenticator.Verify(initB, idP, authP.Data, pskId); err != nil {
+			return err
 		}
-		return errors.New("Ike Auth failed: verify signature")
+		return nil
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
 		certId, ok := idRemote.(*RsaCertIdentity)
 		if !ok {
@@ -203,10 +208,10 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 			return fmt.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
 		}
 		authenticator.SetUserCertificate(x509Cert)
-		if ok := authenticator.Verify(initB, idP, authP.Data, certId); ok {
-			return nil
+		if err := authenticator.Verify(initB, idP, authP.Data, certId); err != nil {
+			return err
 		}
-		return errors.New("Ike Auth failed: verify signature")
+		return nil
 	default:
 		return fmt.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
 	}

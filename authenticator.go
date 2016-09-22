@@ -9,8 +9,8 @@ import (
 // Authenticator interface is used to authenticate / create AUTH payloads
 type Authenticator interface {
 	AuthMethod() protocol.AuthMethod
-	Sign([]byte, *protocol.IdPayload, Identity) []byte
-	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) bool
+	Sign([]byte, *protocol.IdPayload, Identity) ([]byte, error)
+	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) error
 	SetUserCertificate(*x509.Certificate)
 }
 
