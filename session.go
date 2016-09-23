@@ -189,8 +189,11 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 // callbacks
 
 // SetHashAlgorithms callback from ike sa init
-func (o *Session) SetHashAlgorithms() {
-	o.rfc7427Signatures = true
+func (o *Session) SetHashAlgorithms(isEnabled bool) {
+	if !isEnabled && o.rfc7427Signatures {
+		log.Warningln("Peer is not using secure signatures")
+	}
+	o.rfc7427Signatures = isEnabled
 }
 
 // SendInit callback from state machine

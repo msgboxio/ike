@@ -126,12 +126,14 @@ func HandleInitForSession(o *Session, m *Message) error {
 		o.initIb = m.Data
 	}
 	// process notifications
+	var rfc7427Signatures = false
 	for _, ns := range m.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
 			log.V(2).Infof(o.Tag()+"received hash algos: %+v", ns.NotificationMessage.([]protocol.HashAlgorithmId))
-			o.SetHashAlgorithms()
+			rfc7427Signatures = true
 		}
 	}
+	o.SetHashAlgorithms(rfc7427Signatures)
 	return nil
 }

@@ -33,10 +33,11 @@ func NewInitiator(parent context.Context, localId, remoteId Identity, remote net
 		idRemote: remoteId,
 		remote:   remote,
 		// local:    local,
-		IkeSpiI:  MakeSpi(),
-		EspSpiI:  MakeSpi()[:4],
-		incoming: make(chan *Message, 10),
-		outgoing: make(chan []byte, 10),
+		IkeSpiI:           MakeSpi(),
+		EspSpiI:           MakeSpi()[:4],
+		incoming:          make(chan *Message, 10),
+		outgoing:          make(chan []byte, 10),
+		rfc7427Signatures: true,
 	}
 
 	o.Fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))

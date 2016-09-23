@@ -38,12 +38,12 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	}
 
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	tkm, err := NewTkmResponder(cs, noI.Nonce)
+	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		return nil, err
 	}
-
-	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
+	// creating tkm is expensive, should come after checks are positive
+	tkm, err := NewTkmResponder(cs, noI.Nonce)
 	if err != nil {
 		return nil, err
 	}
@@ -51,19 +51,20 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	cxt, cancel := context.WithCancel(parent)
 
 	o := &Session{
-		Context:  cxt,
-		cancel:   cancel,
-		idLocal:  localId,
-		idRemote: remoteID,
-		remote:   AddrToIp(initI.RemoteAddr),
-		local:    initI.LocalIp,
-		tkm:      tkm,
-		cfg:      cfg,
-		IkeSpiI:  ikeSpiI,
-		IkeSpiR:  MakeSpi(),
-		EspSpiR:  MakeSpi()[:4],
-		incoming: make(chan *Message, 10),
-		outgoing: make(chan []byte, 10),
+		Context:           cxt,
+		cancel:            cancel,
+		idLocal:           localId,
+		idRemote:          remoteID,
+		remote:            AddrToIp(initI.RemoteAddr),
+		local:             initI.LocalIp,
+		tkm:               tkm,
+		cfg:               cfg,
+		IkeSpiI:           ikeSpiI,
+		IkeSpiR:           MakeSpi(),
+		EspSpiR:           MakeSpi()[:4],
+		incoming:          make(chan *Message, 10),
+		outgoing:          make(chan []byte, 10),
+		rfc7427Signatures: true,
 	}
 
 	o.Fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
