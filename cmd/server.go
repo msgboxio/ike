@@ -70,10 +70,22 @@ var sessions = make(map[uint64]*ike.Session)
 func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net.Addr) {
 	// sesions map has some data race - worth fixing ?
 	sessions[spi] = session
-	pacetWriter := func(reply []byte) error {
+	packetWriter := func(reply []byte) error {
 		return ike.WritePacket(pconn, reply, to)
 	}
-	go session.Run(pacetWriter)
+	saInstaller := func(sa *platform.SaParams) error {
+		log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
+			sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
+		err := platform.InstallChildSa(sa)
+		log.Info("Installed Child SA; error:", err)
+		return err
+	}
+	saRemover := func(sa *platform.SaParams) error {
+		err := platform.RemoveChildSa(sa)
+		log.Info("Removed child SA")
+		return err
+	}
+	go session.Run(packetWriter, saInstaller, saRemover)
 	// wait for session to finish
 	go func() {
 		<-session.Done()

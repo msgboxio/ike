@@ -8,17 +8,13 @@ import (
 	"time"
 
 	"github.com/msgboxio/context"
+	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
 )
 
-type stateEvents int
-
-const (
-	installChildSa stateEvents = iota + 1
-	removeChildSa
-)
+type SaCallback func(sa *platform.SaParams) error
 
 // Session is closed by us by
 // 1> calling Close() it sends a N[D] if not already closing
@@ -53,26 +49,37 @@ type Session struct {
 	rfc7427Signatures bool
 
 	initIb, initRb []byte
+
+	onAddSaCallback, onRemoveSaCallback SaCallback
 }
 
 // Housekeeping
+
+var _tag string
+
 func (o *Session) Tag() string {
+	if _tag != "" {
+		return _tag
+	}
 	ini := o.local
 	res := o.remote
 	if !o.tkm.isInitiator {
 		ini = o.remote
 		res = o.local
 	}
-	return fmt.Sprintf("[%s]%#x<=>%#x[%s]: ",
+	_tag = fmt.Sprintf("[%s]%#x<=>%#x[%s]: ",
 		ini,
 		o.IkeSpiI,
 		o.IkeSpiR,
 		res)
+	return _tag
 }
 
 type WriteData func([]byte) error
 
-func (o *Session) Run(writeData WriteData) {
+func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
+	o.onAddSaCallback = onAddSa
+	o.onRemoveSaCallback = onRemoveSa
 	for {
 		select {
 		case reply, ok := <-o.outgoing:
@@ -230,23 +237,26 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 }
 
 func (o *Session) InstallSa() (s state.StateEvent) {
-	if err := addSa(o.tkm,
+	sa := addSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		o.local, o.remote); err != nil {
-		s.Event = state.FAIL
-		s.Data = err
+		o.local, o.remote)
+	if o.onAddSaCallback != nil {
+		o.onAddSaCallback(sa)
 	}
 	return
 }
 
 func (o *Session) RemoveSa() (s state.StateEvent) {
-	removeSa(o.tkm,
+	sa := removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
 		o.local, o.remote)
+	if o.onRemoveSaCallback != nil {
+		o.onRemoveSaCallback(sa)
+	}
 	o.Close(context.Canceled)
 	return
 }
