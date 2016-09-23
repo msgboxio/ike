@@ -445,6 +445,12 @@ func (o *Session) isMessageValid(m *Message) error {
 	} else if !o.local.Equal(m.LocalIp) {
 		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
 	}
+	// for un-encrypted payloads, make sure that the state is correct
+	if m.IkeHeader.NextPayload != protocol.PayloadTypeSK {
+		if o.Fsm.State != state.STATE_IDLE && o.Fsm.State != state.STATE_START {
+			return fmt.Errorf("unexpected unencrypted message in state: %s", o.Fsm.State)
+		}
+	}
 	return nil
 }
 

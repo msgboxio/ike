@@ -47,7 +47,7 @@ var _asnCertAuthTypes = map[string]x509.SignatureAlgorithm{
 	AsnECDSAWithSHA512: x509.ECDSAWithSHA512,
 	// AsnRsaSsaPss:       nil,
 	// AsnRsaSsaPssDefault:        nil,
-	// AsnRsaSsaPssSha256: x509.SHA256WithRSAPSS,
+	// AsnRsaSsaPssSha256: x509.SHA256WithRSAPSS, // go 1.8
 }
 
 func init() {
@@ -99,7 +99,7 @@ func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey
 	switch algo {
 	case x509.SHA1WithRSA, x509.DSAWithSHA1, x509.ECDSAWithSHA1:
 		hashType = crypto.SHA1
-	case x509.SHA256WithRSA /*x509.SHA256WithRSAPSS, x509.DSAWithSHA256,*/, x509.ECDSAWithSHA256:
+	case x509.SHA256WithRSA /*x509.SHA256WithRSAPSS*/, x509.DSAWithSHA256, x509.ECDSAWithSHA256:
 		hashType = crypto.SHA256
 	case x509.SHA384WithRSA /*x509.SHA384WithRSAPSS,*/, x509.ECDSAWithSHA384:
 		hashType = crypto.SHA384
