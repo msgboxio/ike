@@ -36,20 +36,20 @@ func (psk *PskIdentities) AuthData(id []byte, method protocol.AuthMethod) []byte
 	return nil
 }
 
-type RsaCertIdentity struct {
+type CertIdentity struct {
 	Certificate *x509.Certificate
 	PrivateKey  *rsa.PrivateKey
 	Roots       *x509.CertPool
 }
 
-func (c *RsaCertIdentity) IdType() protocol.IdType {
+func (c *CertIdentity) IdType() protocol.IdType {
 	return protocol.ID_DER_ASN1_DN
 }
 
-func (c *RsaCertIdentity) Id() []byte {
+func (c *CertIdentity) Id() []byte {
 	return c.Certificate.RawSubject
 }
 
-func (c *RsaCertIdentity) AuthData(id []byte, method protocol.AuthMethod) []byte {
+func (c *CertIdentity) AuthData(id []byte, method protocol.AuthMethod) []byte {
 	return nil
 }

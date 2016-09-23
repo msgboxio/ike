@@ -5,6 +5,7 @@ import (
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
 )
 
 type initParams struct {
@@ -12,9 +13,11 @@ type initParams struct {
 	spiI, spiR  protocol.Spi
 	proposals   []*protocol.SaProposal
 
-	nonce         *big.Int
-	dhTransformId protocol.DhTransformId
-	dhPublic      *big.Int
+	nonce *big.Int
+	protocol.DhTransformId
+	dhPublic *big.Int
+
+	rfc7427Signatures bool
 }
 
 // IKE_SA_INIT
@@ -49,29 +52,43 @@ func makeInit(p initParams) *Message {
 	})
 	init.Payloads.Add(&protocol.KePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: p.dhTransformId,
+		DhTransformId: p.DhTransformId,
 		KeyData:       p.dhPublic,
 	})
 	init.Payloads.Add(&protocol.NoncePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		Nonce:         p.nonce,
 	})
+	// HashAlgorithmId has been set
+	if p.rfc7427Signatures {
+		buf := [8]byte{}
+		packets.WriteB16(buf[:], 0, uint16(protocol.HASH_SHA1))
+		packets.WriteB16(buf[:], 2, uint16(protocol.HASH_SHA2_256))
+		packets.WriteB16(buf[:], 4, uint16(protocol.HASH_SHA2_384))
+		packets.WriteB16(buf[:], 6, uint16(protocol.HASH_SHA2_512))
+		init.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader:    &protocol.PayloadHeader{},
+			NotificationType: protocol.SIGNATURE_HASH_ALGORITHMS,
+			Data:             buf[:],
+		})
+	}
 	return init
 }
 
-func InitFromSession(tkm *Tkm, ikeSpiI, ikeSpiR []byte, cfg *Config) *Message {
-	nonce := tkm.Ni
-	if !tkm.isInitiator {
-		nonce = tkm.Nr
+func InitFromSession(o *Session) *Message {
+	nonce := o.tkm.Ni
+	if !o.tkm.isInitiator {
+		nonce = o.tkm.Nr
 	}
 	return makeInit(initParams{
-		isInitiator:   tkm.isInitiator,
-		spiI:          ikeSpiI,
-		spiR:          ikeSpiR,
-		proposals:     ProposalFromTransform(protocol.IKE, cfg.ProposalIke, ikeSpiI),
-		nonce:         nonce,
-		dhTransformId: tkm.suite.DhGroup.DhTransformId,
-		dhPublic:      tkm.DhPublic,
+		isInitiator:       o.tkm.isInitiator,
+		spiI:              o.IkeSpiI,
+		spiR:              o.IkeSpiR,
+		proposals:         ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
+		nonce:             nonce,
+		DhTransformId:     o.tkm.suite.DhGroup.DhTransformId,
+		dhPublic:          o.tkm.DhPublic,
+		rfc7427Signatures: o.rfc7427Signatures,
 	})
 }
 
@@ -107,6 +124,14 @@ func HandleInitForSession(o *Session, m *Message) error {
 		o.initRb = m.Data
 	} else {
 		o.initIb = m.Data
+	}
+	// process notifications
+	for _, ns := range m.Payloads.GetNotifications() {
+		switch ns.NotificationType {
+		case protocol.SIGNATURE_HASH_ALGORITHMS:
+			log.V(2).Infof(o.Tag()+"received hash algos: %+v", ns.NotificationMessage.([]protocol.HashAlgorithmId))
+			o.SetHashAlgorithms()
+		}
 	}
 	return nil
 }

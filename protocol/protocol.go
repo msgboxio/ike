@@ -220,11 +220,21 @@ const (
 	// 1024-65535	Reserved for Private Use		[RFC7296]
 )
 
-type EsnTransformid uint16
+type EsnTransformId uint16
 
 const (
-	ESN_NONE EsnTransformid = 0
-	ESN      EsnTransformid = 1
+	ESN_NONE EsnTransformId = 0
+	ESN      EsnTransformId = 1
+)
+
+type HashAlgorithmId uint16
+
+const (
+	HASH_RESERVED HashAlgorithmId = 0
+	HASH_SHA1     HashAlgorithmId = 1
+	HASH_SHA2_256 HashAlgorithmId = 2
+	HASH_SHA2_384 HashAlgorithmId = 3
+	HASH_SHA2_512 HashAlgorithmId = 4
 )
 
 /*
@@ -510,12 +520,36 @@ const (
 	AUTH_RSA_DIGITAL_SIGNATURE             AuthMethod = 1
 	AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE AuthMethod = 2
 	AUTH_DSS_DIGITAL_SIGNATURE             AuthMethod = 3
+	AUTH_ECDSA_256                         AuthMethod = 9  // RFC4754
+	AUTH_ECDSA_384                         AuthMethod = 10 // RFC4754
+	AUTH_ECDSA_521                         AuthMethod = 11 // RFC4754
+	AUTH_DIGITAL_SIGNATURE                 AuthMethod = 14 // RFC7427
 )
 
 type AuthPayload struct {
 	*PayloadHeader
 	AuthMethod AuthMethod
 	Data       []byte
+}
+
+/*
+                        1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   | ASN.1 Length  | AlgorithmIdentifier ASN.1 object              |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~        AlgorithmIdentifier ASN.1 object continuing            ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                         Signature Value                       ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type SignatureAuth struct {
+	Asn1Data  []byte
+	Signature []byte
 }
 
 /*

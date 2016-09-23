@@ -30,7 +30,7 @@ func initiatorTkm(t *testing.T) *Tkm {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tkm, err := NewTkmInitiator(suite, nil)
+	tkm, err := NewTkmInitiator(suite)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestIkeMsgGen(t *testing.T) {
 		spiR:          MakeSpi(),
 		proposals:     ProposalFromTransform(protocol.IKE, cfg.ProposalIke, ikeSpi),
 		nonce:         tkm.Ni,
-		dhTransformId: tkm.suite.DhGroup.DhTransformId,
+		DhTransformId: tkm.suite.DhGroup.DhTransformId,
 		dhPublic:      tkm.DhPublic,
 	}
 	// init msg
@@ -67,7 +67,8 @@ func TestIkeMsgGen(t *testing.T) {
 	if err := ioutil.WriteFile("protocol/fuzz/corpus/corpus/sa_init_gen", initIb, 0644); err != nil {
 		t.Fatal(err)
 	}
-
+	// PskIdentities
+	ids := &PskIdentities{}
 	// auth
 	authI := makeAuth(&authParams{
 		tkm.isInitiator,

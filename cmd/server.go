@@ -86,13 +86,13 @@ func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net
 // Primary: "ak@msgbox.io",
 // Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 // }
-var localId = &ike.RsaCertIdentity{}
+var localId = &ike.CertIdentity{}
 
 // var remoteId = &ike.PskIdentities{
 // Primary: "bk@msgbox.io",
 // Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
 // }
-var remoteId = &ike.RsaCertIdentity{}
+var remoteId = &ike.CertIdentity{}
 
 // runs on main thread
 // loops until there is a socket error

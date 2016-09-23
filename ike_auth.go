@@ -2,6 +2,7 @@ package ike
 
 import (
 	"crypto/x509"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -48,18 +49,15 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	if params.Authenticator.AuthMethod() == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
-		certId, ok := params.Identity.(*RsaCertIdentity)
+	switch params.Authenticator.AuthMethod() {
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
+		certId, ok := params.Identity.(*CertIdentity)
 		if !ok {
 			// should never happen
 			panic("Logic Error")
 		}
 		if certId.Certificate == nil {
 			log.Error("missing cert")
-			return nil
-		}
-		if certId.PrivateKey == nil {
-			log.Error("missing key")
 			return nil
 		}
 		auth.Payloads.Add(&protocol.CertPayload{
@@ -79,6 +77,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 	if err != nil {
 		log.Error(err)
 		return nil
+	}
+	if params.Authenticator.AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE {
+		certAuth := params.Authenticator.(*CertAuthenticator)
+		sigAuth := &protocol.SignatureAuth{
+			Asn1Data:  []byte(signatureAlgorithmToAsn1[certAuth.signatureAlgorithm]),
+			Signature: signature,
+		}
+		signature = sigAuth.Encode()
 	}
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
@@ -158,7 +164,7 @@ func AuthFromSession(o *Session) *Message {
 			o.IkeSpiI, o.IkeSpiR,
 			prop, o.cfg.TsI, o.cfg.TsR,
 			o.idLocal,
-			authenticator(o.idLocal, o.tkm),
+			authenticator(o.idLocal, o.tkm, o.rfc7427Signatures),
 		}, initB)
 }
 
@@ -170,15 +176,12 @@ func AuthFromSession(o *Session) *Message {
 // tkm.Auth always uses the hash negotiated with prf
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
-// AUTH_ECDSA_256                         AuthMethod = 9  // RFC4754
-// AUTH_ECDSA_384                         AuthMethod = 10 // RFC4754
-// AUTH_ECDSA_521                         AuthMethod = 11 // RFC4754
 // TODO: RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
 func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identity) error {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	authenticator := authenticator(idRemote, tkm)
+	authenticator := authenticator(idRemote, tkm, false)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
 		pskId, ok := idRemote.(*PskIdentities)
@@ -189,8 +192,8 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 			return err
 		}
 		return nil
-	case protocol.AUTH_RSA_DIGITAL_SIGNATURE:
-		certId, ok := idRemote.(*RsaCertIdentity)
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
+		certId, ok := idRemote.(*CertIdentity)
 		if !ok {
 			return errors.New("Ike Auth failed: RSA certificate not configured for peer")
 		}
@@ -207,13 +210,31 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 		if err != nil {
 			return fmt.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
 		}
-		authenticator.SetUserCertificate(x509Cert)
-		if err := authenticator.Verify(initB, idP, authP.Data, certId); err != nil {
-			return err
+		rsaCertAuth := authenticator.(*CertAuthenticator)
+		rsaCertAuth.SetUserCertificate(x509Cert)
+		if authP.AuthMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
+			// rsaCertAuth.signatureAlgorithm = x509.SHA1WithRSA // set by default
+			if err := rsaCertAuth.Verify(initB, idP, authP.Data, certId); err != nil {
+				return err
+			}
+		} else { // AUTH_DIGITAL_SIGNATURE
+			// further parse authP.Data
+			sigAuth := &protocol.SignatureAuth{}
+			if err := sigAuth.Decode(authP.Data); err != nil {
+				return err
+			}
+			if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
+				rsaCertAuth.signatureAlgorithm = method
+				if err := rsaCertAuth.Verify(initB, idP, sigAuth.Signature, certId); err != nil {
+					return fmt.Errorf("Ike Auth failed: with method %s, %s", method, err)
+				}
+			} else {
+				return fmt.Errorf("Ike Auth failed: auth method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
+			}
 		}
 		return nil
 	default:
-		return fmt.Errorf("Ike Auth failed: auth method not supported: %d", authP.AuthMethod)
+		return fmt.Errorf("Ike Auth failed: auth method not supported: %s", authP.AuthMethod)
 	}
 }
 

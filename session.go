@@ -49,6 +49,9 @@ type Session struct {
 
 	msgId uint32
 
+	// should we use rfc7427 signature algos?
+	rfc7427Signatures bool
+
 	initIb, initRb []byte
 }
 
@@ -185,10 +188,15 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 
 // callbacks
 
+// SetHashAlgorithms callback from ike sa init
+func (o *Session) SetHashAlgorithms() {
+	o.rfc7427Signatures = true
+}
+
 // SendInit callback from state machine
 func (o *Session) SendInit() (s state.StateEvent) {
 	initMsg := func() ([]byte, error) {
-		init := InitFromSession(o.tkm, o.IkeSpiI, o.IkeSpiR, o.cfg)
+		init := InitFromSession(o)
 		init.IkeHeader.MsgId = o.msgId
 		// encode
 		initB, err := init.Encode(o.tkm)

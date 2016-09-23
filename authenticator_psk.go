@@ -2,7 +2,6 @@ package ike
 
 import (
 	"crypto/hmac"
-	"crypto/x509"
 	"encoding/hex"
 	"fmt"
 
@@ -56,8 +55,4 @@ func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authD
 		return nil
 	}
 	return fmt.Errorf("Ike PSK Auth of %s failed: \n%s vs \n%s", string(idP.Data), hex.Dump(signedB), hex.Dump(authData))
-}
-
-func (psk *PskAuthenticator) SetUserCertificate(*x509.Certificate) {
-	panic("Logic Error")
 }

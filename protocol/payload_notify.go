@@ -11,7 +11,7 @@ func (s *NotifyPayload) Type() PayloadType {
 	return PayloadTypeN
 }
 func (s *NotifyPayload) Encode() (b []byte) {
-	b = []byte{uint8(s.ProtocolId), uint8(len(s.Spi) + len(s.Data)), 0, 0}
+	b = []byte{uint8(s.ProtocolId), uint8(len(s.Spi)), 0, 0}
 	packets.WriteB16(b, 2, uint16(s.NotificationType))
 	b = append(b, s.Spi...)
 	b = append(b, s.Data...)
@@ -44,6 +44,20 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 		} else {
 			s.NotificationMessage = time.Second * time.Duration(ltime)
 		}
+	case SIGNATURE_HASH_ALGORITHMS:
+		// list of 16-bit hash algorithm identifiers
+		if len(s.Data)%2 != 0 {
+			log.V(LOG_CODEC_ERR).Info("SIGNATURE_HASH_ALGORITHMS data is bad")
+			err = ERR_INVALID_SYNTAX
+			return
+		}
+		var algos []HashAlgorithmId
+		numAlgs := len(s.Data) / 2
+		for i := 0; i < numAlgs; i++ {
+			alg, _ := packets.ReadB16(s.Data, i*2)
+			algos = append(algos, HashAlgorithmId(alg))
+		}
+		s.NotificationMessage = algos
 	}
 	return
 }
