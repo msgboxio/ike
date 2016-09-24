@@ -77,11 +77,11 @@ func makeInit(p initParams) *Message {
 
 func InitFromSession(o *Session) *Message {
 	nonce := o.tkm.Ni
-	if !o.tkm.isInitiator {
+	if !o.isInitiator {
 		nonce = o.tkm.Nr
 	}
 	return makeInit(initParams{
-		isInitiator:       o.tkm.isInitiator,
+		isInitiator:       o.isInitiator,
 		spiI:              o.IkeSpiI,
 		spiR:              o.IkeSpiR,
 		proposals:         ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
@@ -110,7 +110,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 		return err
 	}
 	// set Nr
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		o.tkm.Nr = no.Nonce
 		// set spiR
@@ -120,7 +120,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
 	log.Infof(o.Tag() + "IKE SA INITIALISED")
 	// save Data
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		o.initRb = m.Data
 	} else {
 		o.initIb = m.Data

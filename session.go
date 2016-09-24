@@ -15,6 +15,7 @@ import (
 )
 
 type SaCallback func(sa *platform.SaParams) error
+type WriteData func([]byte) error
 
 // Session is closed by us by
 // 1> calling Close() it sends a N[D] if not already closing
@@ -28,6 +29,7 @@ type Session struct {
 	context.Context
 	cancel context.CancelFunc
 	*state.Fsm
+	isInitiator bool
 
 	isClosing bool
 
@@ -63,7 +65,7 @@ func (o *Session) Tag() string {
 	}
 	ini := o.local
 	res := o.remote
-	if !o.tkm.isInitiator {
+	if !o.isInitiator {
 		ini = o.remote
 		res = o.local
 	}
@@ -74,8 +76,6 @@ func (o *Session) Tag() string {
 		res)
 	return _tag
 }
-
-type WriteData func([]byte) error
 
 func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
 	o.onAddSaCallback = onAddSa
@@ -209,11 +209,11 @@ func (o *Session) SendInit() (s state.StateEvent) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgId = o.msgId
 		// encode
-		initB, err := init.Encode(o.tkm)
+		initB, err := init.Encode(o.tkm, o.isInitiator)
 		if err != nil {
 			return nil, err
 		}
-		if o.tkm.isInitiator {
+		if o.isInitiator {
 			o.initIb = initB
 		} else {
 			o.initRb = initB
@@ -233,7 +233,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 		}
 	}
 	auth.IkeHeader.MsgId = o.msgId
-	return o.sendMsg(auth.Encode(o.tkm))
+	return o.sendMsg(auth.Encode(o.tkm, o.isInitiator))
 }
 
 func (o *Session) InstallSa() (s state.StateEvent) {
@@ -241,7 +241,8 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		o.local, o.remote)
+		o.local, o.remote,
+		o.isInitiator)
 	if o.onAddSaCallback != nil {
 		o.onAddSaCallback(sa)
 	}
@@ -253,7 +254,8 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		o.local, o.remote)
+		o.local, o.remote,
+		o.isInitiator)
 	if o.onRemoveSaCallback != nil {
 		o.onRemoveSaCallback(sa)
 	}
@@ -317,7 +319,7 @@ func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
 		s.Data = err
 		return
 	}
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		o.EspSpiR = append([]byte{}, espSpi...)
 	} else {
 		o.EspSpiI = append([]byte{}, espSpi...)
@@ -393,12 +395,12 @@ func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 
 func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	spi := o.IkeSpiI
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		spi = o.IkeSpiR
 	}
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
-		isInitiator: o.tkm.isInitiator,
+		isInitiator: o.isInitiator,
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
 		payload: &protocol.NotifyPayload{
@@ -410,13 +412,13 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
-	o.sendMsg(info.Encode(o.tkm))
+	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
 func (o *Session) SendIkeSaDelete() {
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
-		isInitiator: o.tkm.isInitiator,
+		isInitiator: o.isInitiator,
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
 		payload: &protocol.DeletePayload{
@@ -427,20 +429,20 @@ func (o *Session) SendIkeSaDelete() {
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
-	o.sendMsg(info.Encode(o.tkm))
+	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
 // SendEmptyInformational can be used for periodic keepalive
 func (o *Session) SendEmptyInformational() {
 	// INFORMATIONAL
 	info := makeInformational(infoParams{
-		isInitiator: o.tkm.isInitiator,
+		isInitiator: o.isInitiator,
 		spiI:        o.IkeSpiI,
 		spiR:        o.IkeSpiR,
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send
-	o.sendMsg(info.Encode(o.tkm))
+	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
 func (o *Session) isMessageValid(m *Message) error {
@@ -470,7 +472,7 @@ func (o *Session) isMessageValid(m *Message) error {
 func (o *Session) handleEncryptedMessage(m *Message) (err error) {
 	if m.IkeHeader.NextPayload == protocol.PayloadTypeSK {
 		var b []byte
-		if b, err = o.tkm.VerifyDecrypt(m.Data); err != nil {
+		if b, err = o.tkm.VerifyDecrypt(m.Data, o.isInitiator); err != nil {
 			return err
 		}
 		sk := m.Payloads.Get(protocol.PayloadTypeSK)

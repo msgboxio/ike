@@ -11,7 +11,8 @@ func addSa(tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
-	local, remote net.IP) *platform.SaParams {
+	local, remote net.IP,
+	forInitiator bool) *platform.SaParams {
 	// sa processing
 	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ikeSpiI, ikeSpiR)
 	SpiI, _ := packets.ReadB32(espSpiI, 0)
@@ -37,7 +38,7 @@ func addSa(tkm *Tkm,
 		SpiR:            int(SpiR),
 		IsTransportMode: cfg.IsTransportMode,
 	}
-	if !tkm.isInitiator {
+	if !forInitiator {
 		sa.Ini = remote
 		sa.Res = local
 		sa.IsResponder = true
@@ -49,7 +50,8 @@ func removeSa(tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
-	local, remote net.IP) *platform.SaParams {
+	local, remote net.IP,
+	forInitiator bool) *platform.SaParams {
 	// sa processing
 	SpiI, _ := packets.ReadB32(espSpiI, 0)
 	SpiR, _ := packets.ReadB32(espSpiR, 0)
@@ -68,7 +70,7 @@ func removeSa(tkm *Tkm,
 		SpiR:            int(SpiR),
 		IsTransportMode: cfg.IsTransportMode,
 	}
-	if !tkm.isInitiator {
+	if !forInitiator {
 		sa.Ini = remote
 		sa.Res = local
 		sa.IsResponder = true

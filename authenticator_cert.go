@@ -60,8 +60,10 @@ func init() {
 
 // CertAuthenticator is an Authenticator
 type CertAuthenticator struct {
-	tkm        *Tkm
-	authMethod protocol.AuthMethod
+	tkm          *Tkm
+	forInitiator bool
+	identity     Identity
+	authMethod   protocol.AuthMethod
 
 	userCertificate    *x509.Certificate
 	signatureAlgorithm x509.SignatureAlgorithm
@@ -71,8 +73,8 @@ func (r *CertAuthenticator) AuthMethod() protocol.AuthMethod {
 	return r.authMethod
 }
 
-func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, idLocal Identity) ([]byte, error) {
-	certId, ok := idLocal.(*CertIdentity)
+func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte, error) {
+	certId, ok := r.identity.(*CertIdentity)
 	if !ok {
 		// should never happen
 		panic("Logic Error")
@@ -87,12 +89,10 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, idLocal 
 	}
 	log.V(1).Infof("Signing SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
 		certId.Certificate.SignatureAlgorithm, r.signatureAlgorithm)
-	signed := r.tkm.SignB(initB, idP.Encode(), r.tkm.isInitiator)
+	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
 	return sign(r.signatureAlgorithm, signed, certId.PrivateKey)
 }
 
-// CheckSignature verifies that signature is a valid signature over signed from
-// a crypto.PublicKey.
 func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey) (signature []byte, err error) {
 	var hashType crypto.Hash
 
@@ -129,8 +129,8 @@ func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey
 	return nil, x509.ErrUnsupportedAlgorithm
 }
 
-func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) error {
-	certId, ok := idRemote.(*CertIdentity)
+func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error {
+	certId, ok := r.identity.(*CertIdentity)
 	if !ok {
 		// should never happen
 		panic("logic error")
@@ -154,7 +154,7 @@ func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 	}
 	log.V(1).Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
 		r.userCertificate.SignatureAlgorithm, r.signatureAlgorithm)
-	signed := r.tkm.SignB(initB, idP.Encode(), !r.tkm.isInitiator)
+	signed := r.tkm.SignB(initB, idP.Encode(), !r.forInitiator)
 	if err := r.userCertificate.CheckSignature(r.signatureAlgorithm, signed, authData); err != nil {
 		return err
 	}

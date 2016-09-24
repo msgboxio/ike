@@ -23,8 +23,7 @@ import (
 // tkm creates SK, Ni, [KEi]
 
 type Tkm struct {
-	suite       *crypto.CipherSuite
-	isInitiator bool
+	suite *crypto.CipherSuite
 
 	Nr, Ni *big.Int
 
@@ -44,8 +43,7 @@ var ErrorMissingCryptoKeys = errors.New("Missing crypto keys")
 
 func NewTkmInitiator(suite *crypto.CipherSuite) (*Tkm, error) {
 	tkm := &Tkm{
-		suite:       suite,
-		isInitiator: true,
+		suite: suite,
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
 	ni, err := tkm.ncCreate(suite.Prf.Length * 8)
@@ -168,9 +166,9 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 }
 
 // MAC-then-decrypt
-func (t *Tkm) VerifyDecrypt(ike []byte) (dec []byte, err error) {
+func (t *Tkm) VerifyDecrypt(ike []byte, forInitiator bool) (dec []byte, err error) {
 	skA, skE := t.skAi, t.skEi
-	if t.isInitiator {
+	if forInitiator {
 		skA, skE = t.skAr, t.skEr
 	}
 	dec, err = t.suite.VerifyDecrypt(ike, skA, skE)
@@ -182,9 +180,9 @@ func (t *Tkm) CryptoOverhead(b []byte) int {
 }
 
 // encrypt-then-MAC
-func (t *Tkm) EncryptMac(headers, payload []byte) (b []byte, err error) {
+func (t *Tkm) EncryptMac(headers, payload []byte, forInitiator bool) (b []byte, err error) {
 	skA, skE := t.skAr, t.skEr
-	if t.isInitiator {
+	if forInitiator {
 		skA, skE = t.skAi, t.skEi
 	}
 	if skA == nil || skE == nil {

@@ -105,7 +105,7 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType) (er
 	return
 }
 
-func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
+func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
 	log.V(1).Infof("Sending %s: payloads %s", s.IkeHeader.ExchangeType, s.Payloads)
 	if log.V(protocol.LOG_PACKET_JS) {
 		js, _ := json.MarshalIndent(s, " ", " ")
@@ -133,7 +133,7 @@ func (s *Message) Encode(tkm *Tkm) (b []byte, err error) {
 		// encode ike header, and add to protocol header
 		headers := append(s.IkeHeader.Encode(), ph...)
 		// finally ask the tkm to apply secrets
-		b, err = tkm.EncryptMac(headers, payload)
+		b, err = tkm.EncryptMac(headers, payload, forInitiator)
 	} else {
 		b = protocol.EncodePayloads(s.Payloads)
 		s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)

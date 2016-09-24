@@ -13,7 +13,9 @@ var _Keypad = []byte("Key Pad for IKEv2")
 
 // PskAuthenticator is an Authenticator
 type PskAuthenticator struct {
-	tkm *Tkm
+	tkm          *Tkm
+	forInitiator bool
+	identity     Identity
 }
 
 func (psk *PskAuthenticator) AuthMethod() protocol.AuthMethod {
@@ -24,12 +26,12 @@ func (psk *PskAuthenticator) AuthMethod() protocol.AuthMethod {
 // responder: initRB | Ni | prf(SK_pr, IDr')
 // initiator: initIB | Nr | prf(SK_pi, IDi')
 // authB = prf( prf(Shared Secret, "Key Pad for IKEv2"), SignB)
-func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, idLocal Identity) ([]byte, error) {
-	secret := idLocal.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
+func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte, error) {
+	secret := psk.identity.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
 		return nil, fmt.Errorf("No Secret for %s", string(idP.Data))
 	}
-	signB := psk.tkm.SignB(initB, idP.Encode(), psk.tkm.isInitiator)
+	signB := psk.tkm.SignB(initB, idP.Encode(), psk.forInitiator)
 	if log.V(2) {
 		log.Infof("Ike PSK Auth as %s", string(idP.Data))
 	}
@@ -38,12 +40,12 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, idLocal
 	return prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length], nil
 }
 
-func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) error {
-	secret := idRemote.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
+func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error {
+	secret := psk.identity.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
 		return fmt.Errorf("Ike PSK Auth of %s failed: No Secret is available", string(idP.Data))
 	}
-	signB := psk.tkm.SignB(initB, idP.Encode(), !psk.tkm.isInitiator)
+	signB := psk.tkm.SignB(initB, idP.Encode(), !psk.forInitiator)
 	// TODO : tkm.Auth always uses the hash negotiated with prf
 	prf := psk.tkm.suite.Prf
 	signedB := prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length]

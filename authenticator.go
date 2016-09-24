@@ -9,17 +9,23 @@ import (
 // Authenticator interface is used to authenticate / create AUTH payloads
 type Authenticator interface {
 	AuthMethod() protocol.AuthMethod
-	Sign([]byte, *protocol.IdPayload, Identity) ([]byte, error)
-	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, idRemote Identity) error
+	Sign([]byte, *protocol.IdPayload) ([]byte, error)
+	Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error
 }
 
-func authenticator(id Identity, tkm *Tkm, rfc7427Signatures bool) Authenticator {
+func authenticator(id Identity, tkm *Tkm, rfc7427Signatures bool, forInitiator bool) Authenticator {
 	switch id.(type) {
 	case *PskIdentities:
-		return &PskAuthenticator{tkm: tkm}
+		return &PskAuthenticator{
+			tkm:          tkm,
+			forInitiator: forInitiator,
+			identity:     id,
+		}
 	case *CertIdentity:
 		cid := &CertAuthenticator{
 			tkm:                tkm,
+			forInitiator:       forInitiator,
+			identity:           id,
 			authMethod:         protocol.AUTH_RSA_DIGITAL_SIGNATURE,
 			signatureAlgorithm: x509.SHA1WithRSA, // cant be changed
 		}

@@ -73,7 +73,7 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		Data:          params.Identity.Id(),
 	}
 	auth.Payloads.Add(iD)
-	signature, err := params.Authenticator.Sign(initB, iD, params.Identity)
+	signature, err := params.Authenticator.Sign(initB, iD)
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -133,7 +133,7 @@ func AuthFromSession(o *Session) *Message {
 		slen := len(o.local) * 8
 		ini := o.remote
 		res := o.local
-		if o.tkm.isInitiator {
+		if o.isInitiator {
 			ini = o.local
 			res = o.remote
 		}
@@ -146,7 +146,7 @@ func AuthFromSession(o *Session) *Message {
 	var prop []*protocol.SaProposal
 	// part of signed octet
 	var initB []byte
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
 		// intiators's signed octet
 		// initI | Nr | prf(sk_pi | IDi )
@@ -159,12 +159,12 @@ func AuthFromSession(o *Session) *Message {
 	}
 	return makeAuth(
 		&authParams{
-			o.tkm.isInitiator,
+			o.isInitiator,
 			o.cfg.IsTransportMode,
 			o.IkeSpiI, o.IkeSpiR,
 			prop, o.cfg.TsI, o.cfg.TsR,
 			o.idLocal,
-			authenticator(o.idLocal, o.tkm, o.rfc7427Signatures),
+			authenticator(o.idLocal, o.tkm, o.rfc7427Signatures, o.isInitiator),
 		}, initB)
 }
 
@@ -179,24 +179,15 @@ func AuthFromSession(o *Session) *Message {
 // TODO: RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
-func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm, idRemote Identity) error {
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authenticator Authenticator, idRemote Identity) error {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	authenticator := authenticator(idRemote, tkm, false)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		pskId, ok := idRemote.(*PskIdentities)
-		if !ok {
-			return errors.New("Ike Auth failed: PSK not configured for peer")
-		}
-		if err := authenticator.Verify(initB, idP, authP.Data, pskId); err != nil {
+		if err := authenticator.Verify(initB, idP, authP.Data); err != nil {
 			return err
 		}
 		return nil
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		certId, ok := idRemote.(*CertIdentity)
-		if !ok {
-			return errors.New("Ike Auth failed: RSA certificate not configured for peer")
-		}
 		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
 		if certP == nil {
 			return errors.New("Ike Auth failed: certificate is required")
@@ -214,7 +205,7 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 		rsaCertAuth.SetUserCertificate(x509Cert)
 		if authP.AuthMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 			// rsaCertAuth.signatureAlgorithm = x509.SHA1WithRSA // set by default
-			if err := rsaCertAuth.Verify(initB, idP, authP.Data, certId); err != nil {
+			if err := rsaCertAuth.Verify(initB, idP, authP.Data); err != nil {
 				return err
 			}
 		} else { // AUTH_DIGITAL_SIGNATURE
@@ -225,7 +216,7 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 			}
 			if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
 				rsaCertAuth.signatureAlgorithm = method
-				if err := rsaCertAuth.Verify(initB, idP, sigAuth.Signature, certId); err != nil {
+				if err := rsaCertAuth.Verify(initB, idP, sigAuth.Signature); err != nil {
 					return fmt.Errorf("Ike Auth failed: with method %s, %s", method, err)
 				}
 			} else {
@@ -240,7 +231,7 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, tkm *Tkm,
 
 func HandleAuthForSession(o *Session, m *Message) error {
 	payloads := AuthIPayloads
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		payloads = AuthRPayloads
 	}
 	if err := m.EnsurePayloads(payloads); err != nil {
@@ -256,7 +247,7 @@ func HandleAuthForSession(o *Session, m *Message) error {
 	}
 	var idP *protocol.IdPayload
 	var initB []byte
-	if o.tkm.isInitiator {
+	if o.isInitiator {
 		initB = o.initRb
 		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	} else {
@@ -264,7 +255,8 @@ func HandleAuthForSession(o *Session, m *Message) error {
 		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
 	// authenticate peer
-	if err := authenticate(m, initB, idP, o.tkm, o.idRemote); err != nil {
+	authenticator := authenticator(o.idRemote, o.tkm, o.rfc7427Signatures, o.isInitiator)
+	if err := authenticate(m, initB, idP, authenticator, o.idRemote); err != nil {
 		log.Info(o.Tag() + err.Error())
 		return protocol.ERR_AUTHENTICATION_FAILED
 	}

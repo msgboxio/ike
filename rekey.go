@@ -33,7 +33,7 @@ func (o *ReKeySession) SendIkeSaRekey() {
 	}
 	o.newIkeSpiI = MakeSpi()
 	init := makeIkeChildSa(childSaParams{
-		isInitiator:   o.tkm.isInitiator,
+		isInitiator:   o.isInitiator,
 		spiI:          o.IkeSpiI,
 		spiR:          o.IkeSpiR,
 		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.newIkeSpiI),
@@ -43,7 +43,7 @@ func (o *ReKeySession) SendIkeSaRekey() {
 	})
 	init.IkeHeader.MsgId = o.msgId
 	// encode & send
-	o.initIb, err = init.Encode(o.tkm)
+	o.initIb, err = init.Encode(o.tkm, o.isInitiator)
 	if err != nil {
 		log.Error(err)
 		return
