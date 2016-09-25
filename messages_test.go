@@ -71,7 +71,7 @@ func init() {
 	flag.Parse()
 }
 
-func decodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
+func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
 	msg := &Message{}
 	err := msg.DecodeHeader(dec)
 	if err != nil {
@@ -90,7 +90,7 @@ func decodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 			err = errors.New("cant decrypt, no tkm found")
 			return nil, err
 		}
-		b, err := tkm.VerifyDecrypt(dec)
+		b, err := tkm.VerifyDecrypt(dec, forInitiator)
 		if err != nil {
 			return nil, err
 		}
@@ -102,8 +102,8 @@ func decodeMessage(dec []byte, tkm *Tkm) (*Message, error) {
 	return msg, nil
 }
 
-func testDecode(dec []byte, tkm *Tkm, t *testing.T) *Message {
-	msg, err := decodeMessage(dec, tkm)
+func testDecode(dec []byte, tkm *Tkm, forInitiator bool, t *testing.T) *Message {
+	msg, err := decodeMessage(dec, tkm, forInitiator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +114,7 @@ func testDecode(dec []byte, tkm *Tkm, t *testing.T) *Message {
 	}
 	t.Logf("\n%s", string(js))
 
-	enc, err := msg.Encode(tkm)
+	enc, err := msg.Encode(tkm, forInitiator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestCorpus(t *testing.T) {
 func TestDecode(t *testing.T) {
 	dec := packets.Hexit(sa_init).Bytes()
 
-	msg := testDecode(dec, nil, t)
+	msg := testDecode(dec, nil, true, t)
 
 	shared := `327adb6c8f7185d4897b652861f5474f8e7be3882853093029d15747645cae97be69b476e0a11a12d03ea6d6ebabc51aedc7c66399b6c7d6a2e3da2b087834762e0ca23ede6a9a0a6948e8291a13969c9be0961eff40c06700c279cb99983e1f22ddba4ead1c2cd180832b534e0bfe5a2a3d4210d721efb1868b555e1912e98133c0b690abfd16e0e5d01c99c73934c380aa7c2363179069d2c8abfc061a1107e9cfa40ce3735258fcf81456bff7edc2bd63b99e2c32ff6ec33f2552b80ce870f3d268d47c72ef61c8c9e8ebe975e7012f8b79a75b2ddf914048c69b169c2f67a816c276fb1dff11fcc63e883a51505baecfb581ab375534b52d43e441996089`
 	dhShared, ok := new(big.Int).SetString(shared, 16)
@@ -148,17 +148,16 @@ func TestDecode(t *testing.T) {
 	suite, _ := crypto.NewCipherSuite(transforms)
 
 	tkm := &Tkm{
-		suite:       suite,
-		isInitiator: false,
-		Ni:          no.Nonce,
-		Nr:          no.Nonce,
-		DhShared:    dhShared,
+		suite:    suite,
+		Ni:       no.Nonce,
+		Nr:       no.Nonce,
+		DhShared: dhShared,
 	}
 	spiI, _ := hex.DecodeString("928f3f581f05a563")
 	tkm.IsaCreate(spiI, []byte{}, []byte{})
 
 	dec = packets.Hexit(auth_psk).Bytes()
-	testDecode(dec, tkm, t)
+	testDecode(dec, tkm, true, t)
 }
 
 /*

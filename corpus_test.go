@@ -60,7 +60,7 @@ func TestIkeMsgGen(t *testing.T) {
 	init := makeInit(params)
 	init.IkeHeader.MsgId = 42
 	// encode & write init msg
-	initIb, err := init.Encode(tkm)
+	initIb, err := init.Encode(tkm, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,18 +71,18 @@ func TestIkeMsgGen(t *testing.T) {
 	ids := &PskIdentities{}
 	// auth
 	authI := makeAuth(&authParams{
-		tkm.isInitiator,
+		true,
 		cfg.IsTransportMode,
 		params.spiI, params.spiR,
 		params.proposals, cfg.TsI, cfg.TsR,
 		ids,
-		&PskAuthenticator{tkm},
+		&PskAuthenticator{tkm, true, ids},
 	}, initIb)
 	// overwrite NextPayload
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
 	authI.IkeHeader.MsgId = 43
 	// encode & write authI msg
-	authIb, err := authI.Encode(tkm)
+	authIb, err := authI.Encode(tkm, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestCorpusDecode(t *testing.T) {
 		// }
 
 		fmt.Println(file.Name())
-		msg, err := decodeMessage(data, nil)
+		msg, err := decodeMessage(data, nil, false)
 		if err != nil {
 			t.Errorf("%s:%s", file.Name(), err)
 			t.Fail()
