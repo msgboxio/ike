@@ -661,7 +661,6 @@ type NotifyPayload struct {
 	ProtocolId          ProtocolId
 	NotificationType    NotificationType
 	Spi                 []byte
-	Data                []byte
 	NotificationMessage interface{}
 }
 

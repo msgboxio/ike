@@ -372,7 +372,7 @@ func (o *Session) HandleCreateChildSa(msg interface{}) (s state.StateEvent) {
 	} else {
 		log.Infof(o.Tag() + "peer requests IPSEC rekey")
 	}
-	s.Data = protocol.NO_ADDITIONAL_SAS
+	s.Data = protocol.ERR_NO_ADDITIONAL_SAS
 	return
 }
 

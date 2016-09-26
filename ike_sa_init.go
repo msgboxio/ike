@@ -5,7 +5,6 @@ import (
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
 )
 
 type initParams struct {
@@ -61,15 +60,15 @@ func makeInit(p initParams) *Message {
 	})
 	// HashAlgorithmId has been set
 	if p.rfc7427Signatures {
-		buf := [8]byte{}
-		packets.WriteB16(buf[:], 0, uint16(protocol.HASH_SHA1))
-		packets.WriteB16(buf[:], 2, uint16(protocol.HASH_SHA2_256))
-		packets.WriteB16(buf[:], 4, uint16(protocol.HASH_SHA2_384))
-		packets.WriteB16(buf[:], 6, uint16(protocol.HASH_SHA2_512))
 		init.Payloads.Add(&protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			NotificationType: protocol.SIGNATURE_HASH_ALGORITHMS,
-			Data:             buf[:],
+			NotificationMessage: []protocol.HashAlgorithmId{
+				protocol.HASH_SHA1,
+				protocol.HASH_SHA2_256,
+				protocol.HASH_SHA2_384,
+				protocol.HASH_SHA2_512,
+			},
 		})
 	}
 	return init

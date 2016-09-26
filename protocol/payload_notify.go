@@ -10,13 +10,24 @@ import (
 func (s *NotifyPayload) Type() PayloadType {
 	return PayloadTypeN
 }
+
 func (s *NotifyPayload) Encode() (b []byte) {
 	b = []byte{uint8(s.ProtocolId), uint8(len(s.Spi)), 0, 0}
 	packets.WriteB16(b, 2, uint16(s.NotificationType))
 	b = append(b, s.Spi...)
-	b = append(b, s.Data...)
+	switch s.NotificationType {
+	case AUTH_LIFETIME:
+	case SIGNATURE_HASH_ALGORITHMS:
+		algos := s.NotificationMessage.([]HashAlgorithmId)
+		buf := make([]byte, len(algos)*2)
+		for n, alg := range algos {
+			packets.WriteB16(buf, n*2, uint16(alg))
+		}
+		b = append(b, buf...)
+	}
 	return
 }
+
 func (s *NotifyPayload) Decode(b []byte) (err error) {
 	if len(b) < 4 {
 		log.V(LOG_CODEC_ERR).Info("")
@@ -34,10 +45,10 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 	nType, _ := packets.ReadB16(b, 2)
 	s.NotificationType = NotificationType(nType)
 	s.Spi = append([]byte{}, b[4:spiLen+4]...)
-	s.Data = append([]byte{}, b[spiLen+4:]...)
+	data := b[spiLen+4:]
 	switch s.NotificationType {
 	case AUTH_LIFETIME:
-		if ltime, errc := packets.ReadB32(s.Data, 0); errc != nil {
+		if ltime, errc := packets.ReadB32(data, 0); errc != nil {
 			log.V(LOG_CODEC_ERR).Info("")
 			err = ERR_INVALID_SYNTAX
 			return
@@ -46,15 +57,15 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 		}
 	case SIGNATURE_HASH_ALGORITHMS:
 		// list of 16-bit hash algorithm identifiers
-		if len(s.Data)%2 != 0 {
+		if len(data)%2 != 0 {
 			log.V(LOG_CODEC_ERR).Info("SIGNATURE_HASH_ALGORITHMS data is bad")
 			err = ERR_INVALID_SYNTAX
 			return
 		}
 		var algos []HashAlgorithmId
-		numAlgs := len(s.Data) / 2
+		numAlgs := len(data) / 2
 		for i := 0; i < numAlgs; i++ {
-			alg, _ := packets.ReadB16(s.Data, i*2)
+			alg, _ := packets.ReadB16(data, i*2)
 			algos = append(algos, HashAlgorithmId(alg))
 		}
 		s.NotificationMessage = algos
