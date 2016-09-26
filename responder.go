@@ -24,7 +24,7 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
 	if uint16(keI.DhTransformId) != tr {
 		log.Warningf("Using different DH transform than the one configured %s vs %s",
-			tr,
+			protocol.DhTransformId(tr),
 			keI.DhTransformId)
 	}
 
@@ -36,7 +36,7 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	if err != nil {
 		return nil, err
 	}
-	espCs, err := crypto.NewCipherSuite(cfg.ProposalEsp)
+	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 		return nil, err
 	}
 	// creating tkm is expensive, should come after checks are positive
-	tkm, err := NewTkmResponder(cs, espCs, noI.Nonce)
+	tkm, err := NewTkmResponder(cs, espSuite, noI.Nonce)
 	if err != nil {
 		return nil, err
 	}

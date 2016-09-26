@@ -46,7 +46,7 @@ func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (*Tkm, error) {
 	if err := suite.CheckIkeTransforms(); err != nil {
 		return nil, err
 	}
-	if err := suite.CheckEspTransforms(); err != nil {
+	if err := espSuite.CheckEspTransforms(); err != nil {
 		return nil, err
 	}
 	tkm := &Tkm{
@@ -70,9 +70,13 @@ func NewTkmResponder(suite, espSuite *crypto.CipherSuite, no *big.Int) (tkm *Tkm
 	if err := suite.CheckIkeTransforms(); err != nil {
 		return nil, err
 	}
+	if err := espSuite.CheckEspTransforms(); err != nil {
+		return nil, err
+	}
 	tkm = &Tkm{
-		suite: suite,
-		Ni:    no,
+		suite:    suite,
+		espSuite: espSuite,
+		Ni:       no,
 	}
 	// TODO : at least 128 bits & at least half the key size of the negotiated prf
 	if nr, err := tkm.ncCreate(no.BitLen()); err != nil {

@@ -69,6 +69,8 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 			algos = append(algos, HashAlgorithmId(alg))
 		}
 		s.NotificationMessage = algos
+	case NAT_DETECTION_DESTINATION_IP, NAT_DETECTION_SOURCE_IP:
+		s.NotificationMessage = append([]byte{}, data...)
 	}
 	return
 }

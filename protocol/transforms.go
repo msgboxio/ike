@@ -71,28 +71,38 @@ var transformStrings = map[Transform]string{
 type Transforms map[TransformType]*SaTransform
 
 var (
-	IKE_AES_CBC_SHA1_96_DH_1024 = Transforms{
+	IKE_AES_CBC_SHA1_96_MODP1024 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA1},
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA1_96},
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_1024, IsLast: true},
 	}
+	IKE_AES_CBC_SHA256_MODP3072 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA2_256_128},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_3072, IsLast: true},
+	}
 
 	// key length is set to 128b
 	// 16B icv
-	IKE_AES_GCM_16_DH_1024 = Transforms{
+	IKE_AES_GCM_16_MODP1024 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA1},
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_1024, IsLast: true},
 	}
-
-	IKE_AES_GCM_16_DH_2048 = Transforms{
+	IKE_AES_GCM_16_MODP2048 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA1},
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_2048, IsLast: true},
 	}
+	IKE_AES_GCM_16_MODP3072 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA1},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_3072, IsLast: true},
+	}
 
-	IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048 = Transforms{
+	IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_CAMELLIA_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA2_256_128},
@@ -102,6 +112,11 @@ var (
 	ESP_AES_CBC_SHA1_96 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA1_96},
+		TRANSFORM_TYPE_ESN:   &SaTransform{Transform: T_NO_ESN, IsLast: true},
+	}
+	ESP_AES_CBC_SHA2_256 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA2_256_128},
 		TRANSFORM_TYPE_ESN:   &SaTransform{Transform: T_NO_ESN, IsLast: true},
 	}
 

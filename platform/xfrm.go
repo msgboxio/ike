@@ -95,8 +95,9 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Reqid:        reqid,
 		ReplayWindow: 32,
 		Auth: &netlink.XfrmStateAlgo{
-			Name: "hmac(sha1)",
-			Key:  sa.EspAi,
+			Name:        "hmac(sha256)",
+			Key:         sa.EspAi,
+			TruncateLen: 128,
 		},
 		Crypt: &netlink.XfrmStateAlgo{
 			Name: "cbc(aes)",
@@ -125,8 +126,9 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Reqid:        reqid,
 		ReplayWindow: 32,
 		Auth: &netlink.XfrmStateAlgo{
-			Name: "hmac(sha1)",
-			Key:  sa.EspAr,
+			Name:        "hmac(sha256)",
+			Key:         sa.EspAr,
+			TruncateLen: 128,
 		},
 		Crypt: &netlink.XfrmStateAlgo{
 			Name: "cbc(aes)",

@@ -290,7 +290,10 @@ func (o *Session) HandleIkeSaInit(msg interface{}) state.StateEvent {
 	m := msg.(*Message)
 	if err := HandleInitForSession(o, m); err != nil {
 		log.Error(err)
-		return state.StateEvent{Event: state.INIT_FAIL, Data: err}
+		return state.StateEvent{
+			Event: state.INIT_FAIL,
+			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN, // TODO - always return this?
+		}
 	}
 	return state.StateEvent{Event: state.SUCCESS}
 }
@@ -376,7 +379,9 @@ func (o *Session) HandleCreateChildSa(msg interface{}) (s state.StateEvent) {
 	return
 }
 
-// CheckError checks for received errors from local actions & checks
+// CheckError callback from fsm
+// if there is a notification, then log and ignore
+// if there is an error, then send to peer
 func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 	if notif, ok := msg.(protocol.NotificationType); ok {
 		// check if the received notification was an error
