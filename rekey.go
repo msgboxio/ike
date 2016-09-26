@@ -26,7 +26,13 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		o.cancel(err)
 		return
 	}
-	if o.newTkm, err = NewTkmInitiator(suite); err != nil {
+	espSuite, err := crypto.NewCipherSuite(o.cfg.ProposalIke)
+	if err != nil {
+		log.Error(err)
+		o.cancel(err)
+		return
+	}
+	if o.newTkm, err = NewTkmInitiator(suite, espSuite); err != nil {
 		log.Error(err)
 		o.cancel(err)
 		return

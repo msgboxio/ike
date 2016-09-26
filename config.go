@@ -18,10 +18,10 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		//Transforms: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
+		// ProposalIke: protocol.IKE_AES_CBC_SHA1_96_DH_1024,
 		ProposalIke: protocol.IKE_AES_GCM_16_DH_2048,
-		//Transforms: protocol.ESP_AES_CBC_SHA1_96,
-		ProposalEsp: protocol.ESP_AES_GCM_16,
+		ProposalEsp: protocol.ESP_AES_CBC_SHA1_96,
+		// ProposalEsp: protocol.ESP_AES_GCM_16,
 	}
 }
 

@@ -61,6 +61,8 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 				return nil, fmt.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
 			}
 			cs.MacKeyLen = cipher.macKeyLen // TODO - 2 places
+		case protocol.TRANSFORM_TYPE_ESN:
+		// nothing
 		default:
 			return nil, fmt.Errorf("Unsupported transfom type %d", tr.Transform.Type)
 		} // end switch
@@ -71,17 +73,28 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	if cipher != nil && aead != nil {
 		return nil, fmt.Errorf("invalid cipher transfoms combination")
 	}
-	if cs.DhGroup == nil || cs.Prf == nil {
-		return nil, fmt.Errorf("invalid cipher transfoms combination")
-	}
 	if cipher != nil {
 		cs.Cipher = cipher
 	}
 	if aead != nil {
 		cs.Cipher = aead
 	}
-	if log.V(4) {
-		log.Infof("IKE CipherSuite: %+v", cs)
-	}
 	return cs, nil
+}
+
+func (cs *CipherSuite) CheckIkeTransforms() error {
+	if cs.DhGroup == nil || cs.Prf == nil {
+		return fmt.Errorf("invalid cipher transfoms combination")
+	}
+	if log.V(2) {
+		log.Infof("IKE CipherSuite: %+v", *cs)
+	}
+	return nil
+}
+
+func (cs *CipherSuite) CheckEspTransforms() error {
+	if log.V(2) {
+		log.Infof("ESP CipherSuite: %+v", *cs)
+	}
+	return nil
 }

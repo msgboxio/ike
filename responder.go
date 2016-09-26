@@ -36,6 +36,10 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	if err != nil {
 		return nil, err
 	}
+	espCs, err := crypto.NewCipherSuite(cfg.ProposalEsp)
+	if err != nil {
+		return nil, err
+	}
 
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
@@ -43,7 +47,7 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 		return nil, err
 	}
 	// creating tkm is expensive, should come after checks are positive
-	tkm, err := NewTkmResponder(cs, noI.Nonce)
+	tkm, err := NewTkmResponder(cs, espCs, noI.Nonce)
 	if err != nil {
 		return nil, err
 	}

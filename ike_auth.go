@@ -164,7 +164,7 @@ func AuthFromSession(o *Session) *Message {
 			o.IkeSpiI, o.IkeSpiR,
 			prop, o.cfg.TsI, o.cfg.TsR,
 			o.idLocal,
-			authenticator(o.idLocal, o.tkm, o.rfc7427Signatures, o.isInitiator),
+			NewAuthenticator(o.idLocal, o.tkm, o.rfc7427Signatures, o.isInitiator),
 		}, initB)
 }
 
@@ -237,10 +237,9 @@ func HandleAuthForSession(o *Session, m *Message) error {
 	if err := m.EnsurePayloads(payloads); err != nil {
 		for _, n := range m.Payloads.GetNotifications() {
 			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				log.Warning(o.Tag() + "peer notifying : auth succeeded, but child sa was not created")
-				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN etc
+				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
 				// TODO - for now, we should simply end the IKE_SA
-				return nErr
+				return fmt.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
 			}
 		}
 		return err
@@ -255,7 +254,7 @@ func HandleAuthForSession(o *Session, m *Message) error {
 		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
 	// authenticate peer
-	authenticator := authenticator(o.idRemote, o.tkm, o.rfc7427Signatures, o.isInitiator)
+	authenticator := NewAuthenticator(o.idRemote, o.tkm, o.rfc7427Signatures, o.isInitiator)
 	if err := authenticate(m, initB, idP, authenticator, o.idRemote); err != nil {
 		log.Info(o.Tag() + err.Error())
 		return protocol.ERR_AUTHENTICATION_FAILED

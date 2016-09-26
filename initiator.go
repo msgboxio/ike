@@ -15,8 +15,13 @@ func NewInitiator(parent context.Context, localId, remoteId Identity, remote net
 		log.Error(err)
 		return nil
 	}
+	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
 
-	tkm, err := NewTkmInitiator(suite)
+	tkm, err := NewTkmInitiator(suite, espSuite)
 	if err != nil {
 		log.Error(err)
 		return nil

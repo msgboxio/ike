@@ -13,7 +13,7 @@ type Authenticator interface {
 	Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error
 }
 
-func authenticator(id Identity, tkm *Tkm, rfc7427Signatures bool, forInitiator bool) Authenticator {
+func NewAuthenticator(id Identity, tkm *Tkm, rfc7427Signatures bool, forInitiator bool) Authenticator {
 	switch id.(type) {
 	case *PskIdentities:
 		return &PskAuthenticator{
@@ -31,7 +31,7 @@ func authenticator(id Identity, tkm *Tkm, rfc7427Signatures bool, forInitiator b
 		}
 		if rfc7427Signatures {
 			cid.authMethod = protocol.AUTH_DIGITAL_SIGNATURE
-			cid.signatureAlgorithm = x509.SHA256WithRSA // by default
+			cid.signatureAlgorithm = x509.SHA256WithRSA // default, can change
 		}
 		return cid
 	default:
