@@ -87,7 +87,7 @@ func AddrToIpPort(addr net.Addr) (net.IP, int) {
 	} else if tcp, ok := addr.(*net.TCPAddr); ok {
 		return tcp.IP, tcp.Port
 	}
-	panic("enexpected addr")
+	panic("enexpected addr " + addr.String())
 }
 
 // copied from golang.org/x/net/internal/nettest

@@ -24,6 +24,10 @@ func (s *NotifyPayload) Encode() (b []byte) {
 			packets.WriteB16(buf, n*2, uint16(alg))
 		}
 		b = append(b, buf...)
+	case NAT_DETECTION_DESTINATION_IP, NAT_DETECTION_SOURCE_IP:
+		b = append(b, s.NotificationMessage.([]byte)...)
+	default:
+		b = append(b, s.NotificationMessage.([]byte)...)
 	}
 	return
 }
@@ -70,6 +74,8 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 		}
 		s.NotificationMessage = algos
 	case NAT_DETECTION_DESTINATION_IP, NAT_DETECTION_SOURCE_IP:
+		s.NotificationMessage = append([]byte{}, data...)
+	default:
 		s.NotificationMessage = append([]byte{}, data...)
 	}
 	return

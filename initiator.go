@@ -9,7 +9,7 @@ import (
 	"github.com/msgboxio/log"
 )
 
-func NewInitiator(parent context.Context, localId, remoteId Identity, remote net.Addr, cfg *Config) *Session {
+func NewInitiator(parent context.Context, localId, remoteId Identity, remote, local net.Addr, cfg *Config) *Session {
 	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
@@ -38,7 +38,7 @@ func NewInitiator(parent context.Context, localId, remoteId Identity, remote net
 		idLocal:     localId,
 		idRemote:    remoteId,
 		remote:      remote,
-		// local:    local,
+		// local:             local,
 		IkeSpiI:           MakeSpi(),
 		EspSpiI:           MakeSpi()[:4],
 		incoming:          make(chan *Message, 10),

@@ -1,23 +1,15 @@
 package ike
 
 import (
-	"math/big"
+	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
+	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
+	"github.com/msgboxio/packets"
 )
-
-type initParams struct {
-	isInitiator bool
-	spiI, spiR  protocol.Spi
-	proposals   []*protocol.SaProposal
-
-	nonce *big.Int
-	protocol.DhTransformId
-	dhPublic *big.Int
-
-	rfc7427Signatures bool
-}
 
 // IKE_SA_INIT
 // a->b
@@ -26,17 +18,22 @@ type initParams struct {
 // b->a
 //	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
 // 	SAr1, KEr, Nr, [CERTREQ]
-func makeInit(p initParams) *Message {
+func InitFromSession(o *Session) *Message {
+	nonce := o.tkm.Ni
+	if !o.isInitiator {
+		nonce = o.tkm.Nr
+	}
+	proposals := ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI)
 	flags := protocol.RESPONSE
 	// nonce := tkm.Nr
-	if p.isInitiator {
+	if o.isInitiator {
 		flags = protocol.INITIATOR
 		// nonce = tkm.Ni
 	}
 	init := &Message{
 		IkeHeader: &protocol.IkeHeader{
-			SpiI:         p.spiI,
-			SpiR:         p.spiR,
+			SpiI:         o.IkeSpiI,
+			SpiR:         o.IkeSpiR,
 			NextPayload:  protocol.PayloadTypeSA,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
@@ -47,19 +44,19 @@ func makeInit(p initParams) *Message {
 	}
 	init.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		Proposals:     p.proposals,
+		Proposals:     proposals,
 	})
 	init.Payloads.Add(&protocol.KePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: p.DhTransformId,
-		KeyData:       p.dhPublic,
+		DhTransformId: o.tkm.suite.DhGroup.DhTransformId,
+		KeyData:       o.tkm.DhPublic,
 	})
 	init.Payloads.Add(&protocol.NoncePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		Nonce:         p.nonce,
+		Nonce:         nonce,
 	})
 	// HashAlgorithmId has been set
-	if p.rfc7427Signatures {
+	if o.rfc7427Signatures {
 		init.Payloads.Add(&protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			NotificationType: protocol.SIGNATURE_HASH_ALGORITHMS,
@@ -71,24 +68,46 @@ func makeInit(p initParams) *Message {
 			},
 		})
 	}
+	// init.Payloads.Add(&protocol.NotifyPayload{
+	// PayloadHeader:       &protocol.PayloadHeader{},
+	// NotificationType:    protocol.NAT_DETECTION_DESTINATION_IP,
+	// NotificationMessage: getNatHash(o.IkeSpiI, o.IkeSpiR, o.remote),
+	// })
+	// init.Payloads.Add(&protocol.NotifyPayload{
+	// PayloadHeader:       &protocol.PayloadHeader{},
+	// NotificationType:    protocol.NAT_DETECTION_SOURCE_IP,
+	// NotificationMessage: getNatHash(o.IkeSpiI, o.IkeSpiR, o.local),
+	// })
 	return init
 }
 
-func InitFromSession(o *Session) *Message {
-	nonce := o.tkm.Ni
-	if !o.isInitiator {
-		nonce = o.tkm.Nr
+// InvalidKeMsg returns an encoded message with given dh transformID
+func InvalidKeMsg(spi protocol.Spi, transformID uint16) []byte {
+	buf := []byte{0, 0}
+	packets.WriteB16(buf, 0, transformID)
+	msg := &Message{
+		IkeHeader: &protocol.IkeHeader{
+			SpiI:         spi,
+			NextPayload:  protocol.PayloadTypeN,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.IKE_SA_INIT,
+			Flags:        protocol.RESPONSE,
+			MsgId:        0,
+		},
+		Payloads: protocol.MakePayloads(),
 	}
-	return makeInit(initParams{
-		isInitiator:       o.isInitiator,
-		spiI:              o.IkeSpiI,
-		spiR:              o.IkeSpiR,
-		proposals:         ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
-		nonce:             nonce,
-		DhTransformId:     o.tkm.suite.DhGroup.DhTransformId,
-		dhPublic:          o.tkm.DhPublic,
-		rfc7427Signatures: o.rfc7427Signatures,
+	msg.Payloads.Add(&protocol.NotifyPayload{
+		PayloadHeader:       &protocol.PayloadHeader{},
+		ProtocolId:          protocol.IKE,
+		NotificationType:    protocol.NotificationType(protocol.INVALID_KE_PAYLOAD),
+		NotificationMessage: buf,
 	})
+	reply, err := msg.Encode(nil, false)
+	if err != nil {
+		panic(err)
+	}
+	return reply
 }
 
 func HandleInitForSession(o *Session, m *Message) error {
@@ -129,10 +148,35 @@ func HandleInitForSession(o *Session, m *Message) error {
 	for _, ns := range m.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			log.V(2).Infof(o.Tag()+"received hash algos: %+v", ns.NotificationMessage.([]protocol.HashAlgorithmId))
+			log.V(2).Infof(o.Tag()+"Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
+		case protocol.NAT_DETECTION_DESTINATION_IP:
+			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.local) {
+				log.V(2).Info("Encountered DEST nat")
+			}
+		case protocol.NAT_DETECTION_SOURCE_IP:
+			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.remote) {
+				log.V(2).Info("Encountered SOURCE nat")
+			}
 		}
 	}
 	o.SetHashAlgorithms(rfc7427Signatures)
 	return nil
+}
+
+func checkNatHash(digest []byte, spiI, spiR protocol.Spi, addr net.Addr) bool {
+	return bytes.Equal(digest, getNatHash(spiI, spiR, addr))
+}
+
+func getNatHash(spiI, spiR protocol.Spi, addr net.Addr) []byte {
+	ip, port := AddrToIpPort(addr)
+	digest := sha1.New()
+	digest.Write(spiI)
+	digest.Write(spiR)
+	digest.Write(ip)
+	portb := []byte{0, 0}
+	packets.WriteB16(portb, 0, uint16(port))
+	digest.Write(portb)
+	log.Infof("\n%s%s%s%s", hex.Dump(spiI), hex.Dump(spiR), hex.Dump(ip), hex.Dump(portb))
+	return digest.Sum(nil)
 }

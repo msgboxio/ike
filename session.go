@@ -404,11 +404,11 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 		spi = o.IkeSpiR
 	}
 	// INFORMATIONAL
-	info := makeInformational(infoParams{
-		isInitiator: o.isInitiator,
-		spiI:        o.IkeSpiI,
-		spiR:        o.IkeSpiR,
-		payload: &protocol.NotifyPayload{
+	info := MakeInformational(InfoParams{
+		IsInitiator: o.isInitiator,
+		SpiI:        o.IkeSpiI,
+		SpiR:        o.IkeSpiR,
+		Payload: &protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			ProtocolId:       protocol.IKE,
 			NotificationType: protocol.NotificationType(ie),
@@ -422,11 +422,11 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 
 func (o *Session) SendIkeSaDelete() {
 	// INFORMATIONAL
-	info := makeInformational(infoParams{
-		isInitiator: o.isInitiator,
-		spiI:        o.IkeSpiI,
-		spiR:        o.IkeSpiR,
-		payload: &protocol.DeletePayload{
+	info := MakeInformational(InfoParams{
+		IsInitiator: o.isInitiator,
+		SpiI:        o.IkeSpiI,
+		SpiR:        o.IkeSpiR,
+		Payload: &protocol.DeletePayload{
 			PayloadHeader: &protocol.PayloadHeader{},
 			ProtocolId:    protocol.IKE,
 			Spis:          []protocol.Spi{},
@@ -440,10 +440,10 @@ func (o *Session) SendIkeSaDelete() {
 // SendEmptyInformational can be used for periodic keepalive
 func (o *Session) SendEmptyInformational() {
 	// INFORMATIONAL
-	info := makeInformational(infoParams{
-		isInitiator: o.isInitiator,
-		spiI:        o.IkeSpiI,
-		spiR:        o.IkeSpiR,
+	info := MakeInformational(InfoParams{
+		IsInitiator: o.isInitiator,
+		SpiI:        o.IkeSpiI,
+		SpiR:        o.IkeSpiR,
 	})
 	info.IkeHeader.MsgId = o.msgId
 	// encode & send

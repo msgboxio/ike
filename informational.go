@@ -2,10 +2,10 @@ package ike
 
 import "github.com/msgboxio/ike/protocol"
 
-type infoParams struct {
-	isInitiator bool
-	spiI, spiR  protocol.Spi
-	payload     protocol.Payload
+type InfoParams struct {
+	IsInitiator bool
+	SpiI, SpiR  protocol.Spi
+	Payload     protocol.Payload
 }
 
 // INFORMATIONAL
@@ -15,15 +15,15 @@ type infoParams struct {
 // a<-b
 // 	HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: Initiator | Response, Message ID=m),
 //  SK {}
-func makeInformational(p infoParams) *Message {
+func MakeInformational(p InfoParams) *Message {
 	flags := protocol.RESPONSE
-	if p.isInitiator {
+	if p.IsInitiator {
 		flags = protocol.INITIATOR
 	}
 	info := &Message{
 		IkeHeader: &protocol.IkeHeader{
-			SpiI:         p.spiI,
-			SpiR:         p.spiR,
+			SpiI:         p.SpiI,
+			SpiR:         p.SpiR,
 			NextPayload:  protocol.PayloadTypeSK,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
@@ -32,8 +32,8 @@ func makeInformational(p infoParams) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	if p.payload != nil {
-		info.Payloads.Add(p.payload)
+	if p.Payload != nil {
+		info.Payloads.Add(p.Payload)
 	}
 	return info
 }

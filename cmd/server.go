@@ -17,6 +17,7 @@ import (
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
+	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 )
 
@@ -124,6 +125,10 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 			session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
 			if err != nil {
 				log.Error(err)
+				if err == protocol.ERR_INVALID_KE_PAYLOAD {
+					tr := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
+					ike.WritePacket(pconn, ike.InvalidKeMsg(msg.IkeHeader.SpiI, tr), msg.RemoteAddr)
+				}
 				continue
 			}
 			runSession(spi, session, pconn, msg.RemoteAddr)
@@ -167,8 +172,12 @@ func main() {
 	}
 
 	if remoteString != "" {
-		remoteAddr, _ := net.ResolveUDPAddr("udp4", remoteString)
-		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, config)
+		remoteAddr, _ := net.ResolveUDPAddr("udp", remoteString)
+		remoteAddr = &net.UDPAddr{
+			IP:   remoteAddr.IP.To4(),
+			Port: remoteAddr.Port,
+		}
+		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.Conn.LocalAddr(), config)
 		go runSession(ike.SpiToInt(initiator.IkeSpiI), initiator, pconn, remoteAddr)
 	}
 

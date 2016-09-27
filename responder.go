@@ -24,7 +24,7 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
 		log.Warningf("Using different DH transform [%s] vs the one configured [%s]",
 			keI.DhTransformId, dh)
-		return nil, protocol.ERR_NO_PROPOSAL_CHOSEN
+		return nil, protocol.ERR_INVALID_KE_PAYLOAD
 	}
 	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
