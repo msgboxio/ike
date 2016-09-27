@@ -11,7 +11,7 @@ func addSa(tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
-	local, remote net.IP,
+	local, remote net.Addr,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
 	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ikeSpiI, ikeSpiR)
@@ -21,11 +21,12 @@ func addSa(tkm *Tkm,
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	// print config
+	localIP := AddrToIp(local)
+	remoteIP := AddrToIp(remote)
 	sa := &platform.SaParams{
 		// src, dst for initiator
-		Ini:             local,
-		Res:             remote,
+		Ini:             localIP,
+		Res:             remoteIP,
 		IniPort:         0,
 		ResPort:         0,
 		IniNet:          iNet,
@@ -39,8 +40,8 @@ func addSa(tkm *Tkm,
 		IsTransportMode: cfg.IsTransportMode,
 	}
 	if !forInitiator {
-		sa.Ini = remote
-		sa.Res = local
+		sa.Ini = remoteIP
+		sa.Res = localIP
 		sa.IsResponder = true
 	}
 	return sa
@@ -50,7 +51,7 @@ func removeSa(tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
-	local, remote net.IP,
+	local, remote net.Addr,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
 	SpiI, _ := packets.ReadB32(espSpiI, 0)
@@ -59,9 +60,11 @@ func removeSa(tkm *Tkm,
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
+	localIP := AddrToIp(local)
+	remoteIP := AddrToIp(remote)
 	sa := &platform.SaParams{
-		Ini:             local,
-		Res:             remote,
+		Ini:             localIP,
+		Res:             remoteIP,
 		IniPort:         0,
 		ResPort:         0,
 		IniNet:          iNet,
@@ -71,8 +74,8 @@ func removeSa(tkm *Tkm,
 		IsTransportMode: cfg.IsTransportMode,
 	}
 	if !forInitiator {
-		sa.Ini = remote
-		sa.Res = local
+		sa.Ini = remoteIP
+		sa.Res = localIP
 		sa.IsResponder = true
 	}
 	return sa

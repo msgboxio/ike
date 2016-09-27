@@ -81,6 +81,15 @@ func AddrToIp(addr net.Addr) net.IP {
 	return nil
 }
 
+func AddrToIpPort(addr net.Addr) (net.IP, int) {
+	if udp, ok := addr.(*net.UDPAddr); ok {
+		return udp.IP, udp.Port
+	} else if tcp, ok := addr.(*net.TCPAddr); ok {
+		return tcp.IP, tcp.Port
+	}
+	panic("enexpected addr")
+}
+
 // copied from golang.org/x/net/internal/nettest
 func protocolNotSupported(err error) bool {
 	switch err := err.(type) {
@@ -107,7 +116,8 @@ func Listen(localString string) (p *ipv4.PacketConn, err error) {
 		return
 	}
 	p = ipv4.NewPacketConn(udp)
-
+	// the interface could be set to any(0.0.0.0)
+	// we need the exact address the packet came on
 	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
@@ -162,7 +172,11 @@ func ReadMessage(pconn *ipv4.PacketConn) (*Message, error) {
 			log.Error(err)
 			continue
 		}
-		msg.LocalIp = localIP
+		port := pconn.Conn.LocalAddr().(*net.UDPAddr).Port
+		msg.LocalAddr = &net.UDPAddr{
+			IP:   localIP,
+			Port: port,
+		}
 		msg.RemoteAddr = remoteAddr
 		return msg, nil
 	}

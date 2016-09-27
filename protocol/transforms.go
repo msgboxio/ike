@@ -77,6 +77,12 @@ var (
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA1_96},
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_1024, IsLast: true},
 	}
+	IKE_AES_CBC_SHA256_MODP2048 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA2_256_128},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_2048, IsLast: true},
+	}
 	IKE_AES_CBC_SHA256_MODP3072 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},

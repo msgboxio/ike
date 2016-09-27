@@ -130,12 +130,14 @@ func AuthFromSession(o *Session) *Message {
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		log.Infoln(o.Tag() + "Adding host based selectors")
 		// add host based selectors by default
-		slen := len(o.local) * 8
-		ini := o.remote
-		res := o.local
+		local := AddrToIp(o.local)
+		remote := AddrToIp(o.remote)
+		slen := len(local) * 8
+		ini := remote
+		res := local
 		if o.isInitiator {
-			ini = o.local
-			res = o.remote
+			ini = local
+			res = remote
 		}
 		o.cfg.AddSelector(
 			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},

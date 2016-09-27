@@ -37,7 +37,7 @@ type Session struct {
 	cfg *Config
 
 	idRemote, idLocal Identity
-	remote, local     net.IP
+	remote, local     net.Addr
 
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
@@ -455,15 +455,14 @@ func (o *Session) isMessageValid(m *Message) error {
 		return fmt.Errorf("different initiator Spi %s", spi)
 	}
 	// Dont check Responder SPI. initiator IKE_SA_INIT does not have it
-	if !o.remote.Equal(AddrToIp(m.RemoteAddr)) {
+	if !AddrToIp(o.remote).Equal(AddrToIp(m.RemoteAddr)) {
 		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
 	}
-	// TODO - make sure messages are encrypted after the initial init
 	// local IP is not set initially for initiator
 	if o.local == nil {
-		o.local = m.LocalIp
-	} else if !o.local.Equal(m.LocalIp) {
-		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalIp)
+		o.local = m.LocalAddr
+	} else if !AddrToIp(o.local).Equal(AddrToIp(m.LocalAddr)) {
+		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalAddr)
 	}
 	// for un-encrypted payloads, make sure that the state is correct
 	if m.IkeHeader.NextPayload != protocol.PayloadTypeSK {

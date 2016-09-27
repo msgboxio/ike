@@ -18,13 +18,15 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		ProposalIke: protocol.IKE_AES_CBC_SHA256_MODP3072,
+		ProposalIke: protocol.IKE_AES_CBC_SHA256_MODP2048,
+		// ProposalIke: protocol.IKE_AES_CBC_SHA256_MODP3072,
 		// ProposalIke: protocol.IKE_AES_GCM_16_MODP3072,
 		ProposalEsp: protocol.ESP_AES_CBC_SHA2_256,
 		// ProposalEsp: protocol.ESP_AES_GCM_16,
 	}
 }
 
+// CheckProposals checks if incoming proposals include our configuration
 func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.Proposals) error {
 	for _, prop := range proposals {
 		if prop.ProtocolId != prot {
@@ -74,17 +76,12 @@ func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
 	return
 }
 
-// NewConfigFromInit takes an IkeSaInit message and returns a Config
+// CheckFromInit takes an IkeSaInit message and checks
 // if acceptable IKE proposal is available
-// Note: Currently This only checks if default Config's IKE config is available
-func NewConfigFromInit(initI *Message) (*Config, error) {
-	cfg := DefaultConfig()
+func (cfg *Config) CheckFromInit(initI *Message) error {
 	// get SA payload
 	ikeSa := initI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	if err := cfg.CheckProposals(protocol.IKE, ikeSa.Proposals); err != nil {
-		return nil, err
-	}
-	return cfg, nil
+	return cfg.CheckProposals(protocol.IKE, ikeSa.Proposals)
 }
 
 // Adds esp proposal & selector

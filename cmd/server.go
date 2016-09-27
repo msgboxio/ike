@@ -168,7 +168,7 @@ func main() {
 
 	if remoteString != "" {
 		remoteAddr, _ := net.ResolveUDPAddr("udp4", remoteString)
-		initiator := ike.NewInitiator(context.Background(), localId, remoteId, ike.AddrToIp(remoteAddr).To4(), config)
+		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, config)
 		go runSession(ike.SpiToInt(initiator.IkeSpiI), initiator, pconn, remoteAddr)
 	}
 

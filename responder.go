@@ -9,12 +9,11 @@ import (
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
-func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Config, initI *Message) (*Session, error) {
+func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Config, initI *Message) (*Session, error) {
 	if err := initI.EnsurePayloads(InitPayloads); err != nil {
 		return nil, err
 	}
-	rcfg, err := NewConfigFromInit(initI)
-	if err != nil {
+	if err := cfg.CheckFromInit(initI); err != nil {
 		return nil, err
 	}
 	// TODO - check if config is usable
@@ -22,16 +21,11 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	// make sure dh tranform id is the one that was accepted
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-	if uint16(keI.DhTransformId) != tr {
-		log.Warningf("Using different DH transform than the one configured %s vs %s",
-			protocol.DhTransformId(tr),
-			keI.DhTransformId)
+	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
+		log.Warningf("Using different DH transform [%s] vs the one configured [%s]",
+			keI.DhTransformId, dh)
+		return nil, protocol.ERR_NO_PROPOSAL_CHOSEN
 	}
-
-	// use new config
-	rcfg.IsTransportMode = cfg.IsTransportMode
-	cfg = rcfg
-
 	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		return nil, err
@@ -40,7 +34,7 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	if err != nil {
 		return nil, err
 	}
-
+	// cast is safe since we already checked for presence of payloads
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
@@ -57,10 +51,10 @@ func NewResponder(parent context.Context, localId, remoteID Identity, cfg *Confi
 	o := &Session{
 		Context:           cxt,
 		cancel:            cancel,
-		idLocal:           localId,
+		idLocal:           localID,
 		idRemote:          remoteID,
-		remote:            AddrToIp(initI.RemoteAddr),
-		local:             initI.LocalIp,
+		remote:            initI.RemoteAddr,
+		local:             initI.LocalAddr,
 		tkm:               tkm,
 		cfg:               cfg,
 		IkeSpiI:           ikeSpiI,

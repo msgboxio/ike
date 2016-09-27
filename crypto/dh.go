@@ -20,6 +20,7 @@ func (group *dhGroup) String() string {
 }
 
 func (group *dhGroup) DiffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
+	// check r is in the legal range (1 < r < p-1)
 	if theirPublic.Sign() <= 0 || theirPublic.Cmp(group.p) >= 0 {
 		return nil, errors.New("DH parameter out of bounds")
 	}

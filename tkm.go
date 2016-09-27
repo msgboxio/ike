@@ -31,9 +31,6 @@ type Tkm struct {
 	dhPrivate, DhPublic *big.Int
 	DhShared            *big.Int
 
-	// for debug
-	SKEYSEED, KEYMAT []byte
-
 	skD        []byte // further keying material for child sa
 	skPi, skPr []byte // used when generating an AUTH
 	skAi, skAr []byte // integrity protection keys
@@ -60,7 +57,7 @@ func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (*Tkm, error) {
 	}
 	tkm.Ni = ni
 	// for sending public key
-	if _, err := tkm.dhCreate(); err != nil {
+	if err := tkm.dhCreate(); err != nil {
 		return nil, err
 	}
 	return tkm, nil
@@ -84,7 +81,7 @@ func NewTkmResponder(suite, espSuite *crypto.CipherSuite, no *big.Int) (tkm *Tkm
 	} else {
 		tkm.Nr = nr
 	}
-	if _, err := tkm.dhCreate(); err != nil {
+	if err := tkm.dhCreate(); err != nil {
 		return nil, err
 	}
 	return tkm, nil
@@ -96,18 +93,17 @@ func (t *Tkm) ncCreate(bits int) (no *big.Int, err error) {
 	return rand.Prime(rand.Reader, bits)
 }
 
-// the client get the dh public value
-func (t *Tkm) dhCreate() (n *big.Int, err error) {
+func (t *Tkm) dhCreate() (err error) {
 	t.dhPrivate, err = t.suite.DhGroup.Private(rand.Reader)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	t.DhPublic = t.suite.DhGroup.Public(t.dhPrivate)
-	return t.DhPublic, nil
+	return nil
 }
 
+// DhGenerateKey creates & stores the dh key
 // upon receipt of peers resp, a dh shared secret can be calculated
-// client creates & stores the dh key
 func (t *Tkm) DhGenerateKey(theirPublic *big.Int) (err error) {
 	t.DhShared, err = t.suite.DhGroup.DiffieHellman(theirPublic, t.dhPrivate)
 	return
@@ -134,7 +130,7 @@ func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
 	return t.suite.Prf.Apply(old_SK_D, append(t.DhShared.Bytes(), append(t.Ni.Bytes(), t.Nr.Bytes()...)...))
 }
 
-// create ike sa
+// IsaCreate creates ike sa keys
 func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
 	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
@@ -166,9 +162,6 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	offset += t.suite.Prf.Length
 	t.skPr = KEYMAT[offset : offset+t.suite.Prf.Length]
 
-	// for test
-	t.KEYMAT = KEYMAT
-	t.SKEYSEED = SKEYSEED
 	// fmt.Printf("keymat length %d\n", len(KEYMAT))
 	// fmt.Printf("skD:\n%sskAi:\n%sskAr:\n%sskEi:\n%sskEr:\n%sskPi:\n%sskPr:\n%s",
 	// 	hex.Dump(t.skD),
@@ -180,6 +173,10 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	// 	hex.Dump(t.skPr))
 }
 
+func (t *Tkm) CryptoOverhead(b []byte) int {
+	return t.suite.Overhead(b)
+}
+
 // MAC-then-decrypt
 func (t *Tkm) VerifyDecrypt(ike []byte, forInitiator bool) (dec []byte, err error) {
 	skA, skE := t.skAi, t.skEi
@@ -188,10 +185,6 @@ func (t *Tkm) VerifyDecrypt(ike []byte, forInitiator bool) (dec []byte, err erro
 	}
 	dec, err = t.suite.VerifyDecrypt(ike, skA, skE)
 	return
-}
-
-func (t *Tkm) CryptoOverhead(b []byte) int {
-	return t.suite.Overhead(b)
 }
 
 // encrypt-then-MAC
@@ -254,19 +247,3 @@ func (t *Tkm) SignB(initB []byte, id []byte, forInitiator bool) []byte {
 	signB := append(append(initB, nonce.Bytes()...), macedID...)
 	return signB
 }
-
-// cert validation
-// start vaildating cert chain
-func cc_set_user_certficate(cc_id, ri_id, autha_id, CERT []byte) {}
-
-// add remianing certs in chain
-func cc_add_certificate(cc_id, autha_id, CERT []byte) {}
-
-// validate
-func cc_check_ca(cc_id, ca_id []byte) {}
-
-// after cert validtaion, authenticate peer
-func isa_auth(isa_id, cc_id, init_message, AUTH_rem []byte) {}
-
-// create first child sa
-func esa_create_first(esa_id, isa_id, sp_id, ea_id, esp_spi_loc, esp_spi_rem []byte) {}

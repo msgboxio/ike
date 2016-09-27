@@ -62,10 +62,9 @@ var (
 )
 
 type Message struct {
-	IkeHeader  *protocol.IkeHeader
-	Payloads   *protocol.Payloads
-	LocalIp    net.IP
-	RemoteAddr net.Addr
+	IkeHeader             *protocol.IkeHeader
+	Payloads              *protocol.Payloads
+	LocalAddr, RemoteAddr net.Addr
 
 	Data []byte // used to carry raw bytes
 }
