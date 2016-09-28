@@ -3,7 +3,6 @@ package ike
 import (
 	"bytes"
 	"crypto/sha1"
-	"encoding/hex"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
@@ -19,17 +18,13 @@ import (
 //	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
 // 	SAr1, KEr, Nr, [CERTREQ]
 func InitFromSession(o *Session) *Message {
-	nonce := o.tkm.Ni
-	if !o.isInitiator {
-		nonce = o.tkm.Nr
-	}
-	proposals := ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI)
 	flags := protocol.RESPONSE
-	// nonce := tkm.Nr
+	nonce := o.tkm.Nr
 	if o.isInitiator {
 		flags = protocol.INITIATOR
-		// nonce = tkm.Ni
+		nonce = o.tkm.Ni
 	}
+	proposals := ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI)
 	init := &Message{
 		IkeHeader: &protocol.IkeHeader{
 			SpiI:         o.IkeSpiI,
@@ -121,7 +116,15 @@ func HandleInitForSession(o *Session, m *Message) error {
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
 	}
-	// TODO - ensure sa parameters are same
+	// make sure responder spi is set and is not the same as initiator spi
+	// in case messages are being reflected
+	if SpiToInt(m.IkeHeader.SpiR) == 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	// if m.IkeHeader.
 	// initialize dh shared with their public key
 	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
@@ -177,6 +180,6 @@ func getNatHash(spiI, spiR protocol.Spi, addr net.Addr) []byte {
 	portb := []byte{0, 0}
 	packets.WriteB16(portb, 0, uint16(port))
 	digest.Write(portb)
-	log.Infof("\n%s%s%s%s", hex.Dump(spiI), hex.Dump(spiR), hex.Dump(ip), hex.Dump(portb))
+	// log.Infof("\n%s%s%s%s", hex.Dump(spiI), hex.Dump(spiR), hex.Dump(ip), hex.Dump(portb))
 	return digest.Sum(nil)
 }

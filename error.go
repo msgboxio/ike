@@ -1,4 +1,4 @@
-package ike_error
+package ike
 
 import "errors"
 

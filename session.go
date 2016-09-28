@@ -17,14 +17,21 @@ import (
 type SaCallback func(sa *platform.SaParams) error
 type WriteData func([]byte) error
 
-// Session is closed by us by
-// 1> calling Close() it sends a N[D] if not already closing
+// Session is closed by us:
+// > call close(): returns if closing already
+// > otherwise sets closing; send N[D] Req
+// > posts event
+// >> fsm calls RemoveSa
+// >>> removes SA
+// >>> calls Close()
 // 2> We wait for N[D], then remove SA
 // 3> move to finished
 // When receive N[D]
-// 1> we remove SA
-// 2> call Close() which sends N[D]
-// 3> move to finished
+// > fsm calls RemoveSa
+// >> removes SA
+// >> calls Close
+// > call Close() which sends N[D]
+// > move to finished
 type Session struct {
 	context.Context
 	cancel context.CancelFunc
@@ -45,7 +52,7 @@ type Session struct {
 	incoming chan *Message
 	outgoing chan []byte
 
-	msgId uint32
+	msgIdI, msgIdR uint32
 
 	// should we use rfc7427 signature algos?
 	rfc7427Signatures bool
@@ -94,7 +101,6 @@ func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
 			if !ok {
 				break
 			}
-			// TODO - ensure messages other than IKE_SA_INIT are encrypted
 			if err := o.handleEncryptedMessage(msg); err != nil {
 				log.Warning(err)
 				break
@@ -116,15 +122,15 @@ func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
 
 // Close is called to shutdown this session
 func (o *Session) Close(err error) {
-	log.Info(o.Tag() + "Close Session")
+	log.Infof(o.Tag()+"Close Session, err %s", err)
 	if o.isClosing {
 		return
 	}
 	o.isClosing = true
 	// send to peer, peer should send SA_DELETE message
-	o.SendIkeSaDelete()
+	o.sendIkeSaDelete(err)
 	// TODO - start timeout to delete sa if peers does not reply
-	o.PostEvent(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
+	// o.PostEvent(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
 }
 
 func (o *Session) PostMessage(m *Message) {
@@ -132,7 +138,7 @@ func (o *Session) PostMessage(m *Message) {
 		log.Error(o.Tag()+"Drop Message: ", err)
 		return
 	}
-	if o.isClosing {
+	if o.Context.Err() != nil {
 		log.Error(o.Tag() + "Drop Message: Closing")
 		return
 	}
@@ -152,6 +158,7 @@ func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
 		evt.Event = state.MSG_CHILD_SA
 		return
 	case protocol.INFORMATIONAL:
+		// Notification, Delete, and Configuration Payloads
 		if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
 			dp := del.(*protocol.DeletePayload)
 			if dp.ProtocolId == protocol.IKE {
@@ -189,7 +196,6 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 		return
 	}
 	o.outgoing <- buf
-	o.msgId++
 	return
 }
 
@@ -205,9 +211,9 @@ func (o *Session) SetHashAlgorithms(isEnabled bool) {
 
 // SendInit callback from state machine
 func (o *Session) SendInit() (s state.StateEvent) {
-	initMsg := func() ([]byte, error) {
+	initMsg := func(msgId uint32) ([]byte, error) {
 		init := InitFromSession(o)
-		init.IkeHeader.MsgId = o.msgId
+		init.IkeHeader.MsgId = msgId
 		// encode
 		initB, err := init.Encode(o.tkm, o.isInitiator)
 		if err != nil {
@@ -220,7 +226,15 @@ func (o *Session) SendInit() (s state.StateEvent) {
 		}
 		return initB, nil
 	}
-	return o.sendMsg(initMsg())
+	var msgId uint32
+	if o.isInitiator {
+		msgId = o.msgIdI
+		o.msgIdI++
+	} else {
+		msgId = o.msgIdR
+		o.msgIdR++
+	}
+	return o.sendMsg(initMsg(msgId))
 }
 
 // SendAuth callback from state machine
@@ -232,7 +246,15 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
-	auth.IkeHeader.MsgId = o.msgId
+	var msgId uint32
+	if o.isInitiator {
+		msgId = o.msgIdI
+		o.msgIdI++
+	} else {
+		msgId = o.msgIdR
+		o.msgIdR++
+	}
+	auth.IkeHeader.MsgId = msgId
 	return o.sendMsg(auth.Encode(o.tkm, o.isInitiator))
 }
 
@@ -259,7 +281,7 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 	if o.onRemoveSaCallback != nil {
 		o.onRemoveSaCallback(sa)
 	}
-	o.Close(context.Canceled)
+	o.Close(PeerDeletedSa)
 	return
 }
 
@@ -415,15 +437,36 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 			Spi:              spi,
 		},
 	})
-	info.IkeHeader.MsgId = o.msgId
+	var msgId uint32
+	if o.isInitiator {
+		msgId = o.msgIdI
+		o.msgIdI++
+	} else {
+		msgId = o.msgIdR
+		o.msgIdR++
+	}
+	info.IkeHeader.MsgId = msgId
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
-func (o *Session) SendIkeSaDelete() {
-	// INFORMATIONAL
+func (o *Session) sendIkeSaDelete(err error) {
+	var msgId uint32
+	var isResponse bool
+	if err == PeerDeletedSa {
+		// received delete from peer, so reply
+		isResponse = true
+		msgId = o.msgIdR
+		o.msgIdR++
+	} else {
+		// sending delete to peer
+		msgId = o.msgIdI
+		o.msgIdI++
+	}
+	// ike protocol ID, but no spi
 	info := MakeInformational(InfoParams{
 		IsInitiator: o.isInitiator,
+		IsResponse:  isResponse,
 		SpiI:        o.IkeSpiI,
 		SpiR:        o.IkeSpiR,
 		Payload: &protocol.DeletePayload{
@@ -432,7 +475,7 @@ func (o *Session) SendIkeSaDelete() {
 			Spis:          []protocol.Spi{},
 		},
 	})
-	info.IkeHeader.MsgId = o.msgId
+	info.IkeHeader.MsgId = msgId
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
@@ -445,7 +488,15 @@ func (o *Session) SendEmptyInformational() {
 		SpiI:        o.IkeSpiI,
 		SpiR:        o.IkeSpiR,
 	})
-	info.IkeHeader.MsgId = o.msgId
+	var msgId uint32
+	if o.isInitiator {
+		msgId = o.msgIdI
+		o.msgIdI++
+	} else {
+		msgId = o.msgIdR
+		o.msgIdR++
+	}
+	info.IkeHeader.MsgId = msgId
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }

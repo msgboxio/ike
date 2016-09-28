@@ -94,3 +94,14 @@ func (s Selector) String() string {
 		s.StartAddress,
 		s.EndAddress)
 }
+
+func (f IkeFlags) String() string {
+	var fs []string
+	if f.IsResponse() {
+		fs = append(fs, "R")
+	}
+	if f.IsInitiator() {
+		fs = append(fs, "I")
+	}
+	return fmt.Sprintf("%v", fs)
+}

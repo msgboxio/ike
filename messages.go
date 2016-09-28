@@ -96,7 +96,8 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType) (er
 	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload); err != nil {
 		return
 	}
-	log.V(1).Infof("Received %s: payloads %s", s.IkeHeader.ExchangeType, *s.Payloads)
+	log.V(1).Infof("[%d]Received %s%s: payloads %s",
+		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, *s.Payloads)
 	if log.V(protocol.LOG_PACKET_JS) {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Rx:\n" + string(js))
@@ -105,7 +106,8 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType) (er
 }
 
 func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
-	log.V(1).Infof("Sending %s: payloads %s", s.IkeHeader.ExchangeType, s.Payloads)
+	log.V(1).Infof("[%d]Sending %s%s: payloads %s",
+		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, s.Payloads)
 	if log.V(protocol.LOG_PACKET_JS) {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Tx:\n" + string(js))

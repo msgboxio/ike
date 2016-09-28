@@ -4,6 +4,7 @@ import "github.com/msgboxio/ike/protocol"
 
 type InfoParams struct {
 	IsInitiator bool
+	IsResponse  bool
 	SpiI, SpiR  protocol.Spi
 	Payload     protocol.Payload
 }
@@ -15,10 +16,15 @@ type InfoParams struct {
 // a<-b
 // 	HDR(SPIi=xxx, SPIr=yyy, INFORMATIONAL, Flags: Initiator | Response, Message ID=m),
 //  SK {}
+// Notification, Delete, and Configuration Payloads
+// Must be replied to
 func MakeInformational(p InfoParams) *Message {
-	flags := protocol.RESPONSE
+	var flags protocol.IkeFlags
+	if p.IsResponse {
+		flags |= protocol.RESPONSE
+	}
 	if p.IsInitiator {
-		flags = protocol.INITIATOR
+		flags |= protocol.INITIATOR
 	}
 	info := &Message{
 		IkeHeader: &protocol.IkeHeader{

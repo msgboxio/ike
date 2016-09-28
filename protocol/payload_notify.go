@@ -27,7 +27,9 @@ func (s *NotifyPayload) Encode() (b []byte) {
 	case NAT_DETECTION_DESTINATION_IP, NAT_DETECTION_SOURCE_IP:
 		b = append(b, s.NotificationMessage.([]byte)...)
 	default:
-		b = append(b, s.NotificationMessage.([]byte)...)
+		if s.NotificationMessage != nil {
+			b = append(b, s.NotificationMessage.([]byte)...)
+		}
 	}
 	return
 }
