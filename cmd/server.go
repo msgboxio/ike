@@ -148,6 +148,8 @@ func main() {
 	localId.PrivateKey = key
 	remoteId.Roots = roots
 
+	ifs, _ := net.InterfaceAddrs()
+	log.Infof("Available interfaces %+v", ifs)
 	// this should load the xfrm modules
 	// requires root
 	if xfrm := platform.ListenForEvents(cxt); xfrm != nil {

@@ -806,13 +806,50 @@ func (s *EncryptedPayload) Decode(b []byte) (err error) {
 */
 type ConfigurationPayload struct {
 	*PayloadHeader
+	ConfigurationType
+	ConfigurationAttributes []ConfigurationAttribute
 }
 
-func (s *ConfigurationPayload) Type() PayloadType  { return PayloadTypeCP }
-func (s *ConfigurationPayload) Encode() (b []byte) { return }
-func (s *ConfigurationPayload) Decode(b []byte) (err error) {
-	// TODO
-	return
+type ConfigurationType uint8
+
+const (
+	CFG_REQUEST ConfigurationType = 1
+	CFG_REPLY   ConfigurationType = 2
+	CFG_SET     ConfigurationType = 3
+	CFG_ACK     ConfigurationType = 4
+)
+
+type ConfigurationAttributeType uint16
+
+const (
+	// Attribute Type           										Value  Multi-Valued  Length
+	INTERNAL_IP4_ADDRESS ConfigurationAttributeType = 1  //     YES*          0 or 4 octets
+	INTERNAL_IP4_NETMASK ConfigurationAttributeType = 2  //     NO            0 or 4 octets
+	INTERNAL_IP4_DNS     ConfigurationAttributeType = 3  //     YES           0 or 4 octets
+	INTERNAL_IP4_NBNS    ConfigurationAttributeType = 4  //     YES           0 or 4 octets
+	INTERNAL_IP4_DHCP    ConfigurationAttributeType = 6  //     YES           0 or 4 octets
+	APPLICATION_VERSION  ConfigurationAttributeType = 7  //     NO            0 or more
+	INTERNAL_IP6_ADDRESS ConfigurationAttributeType = 8  //     YES*          0 or 17 octets
+	INTERNAL_IP6_DNS     ConfigurationAttributeType = 10 //    YES           0 or 16 octets
+	INTERNAL_IP6_DHCP    ConfigurationAttributeType = 12 //    YES           0 or 16 octets
+	INTERNAL_IP4_SUBNET  ConfigurationAttributeType = 13 //    YES           0 or 8 octets
+	SUPPORTED_ATTRIBUTES ConfigurationAttributeType = 14 //    NO            Multiple of 2
+	INTERNAL_IP6_SUBNET  ConfigurationAttributeType = 15 //    YES           17 octets
+)
+
+/*
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |R|         Attribute Type      |            Length             |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+   |                                                               |
+   ~                             Value                             ~
+   |                                                               |
+   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+*/
+type ConfigurationAttribute struct {
+	ConfigurationAttributeType
+	Value []byte
 }
 
 /*
