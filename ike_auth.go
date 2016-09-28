@@ -17,7 +17,6 @@ type authParams struct {
 	spiI, spiR      protocol.Spi
 	proposals       []*protocol.SaProposal
 	tsI, tsR        []*protocol.Selector
-	Identity
 	Authenticator
 }
 
@@ -49,9 +48,10 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
+	id := params.Authenticator.Identity()
 	switch params.Authenticator.AuthMethod() {
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		certId, ok := params.Identity.(*CertIdentity)
+		certId, ok := id.(*CertIdentity)
 		if !ok {
 			// should never happen
 			panic("Logic Error")
@@ -66,14 +66,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 			Data:             certId.Certificate.Raw,
 		})
 	}
-	iD := &protocol.IdPayload{
+	iDp := &protocol.IdPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		IdPayloadType: idPayloadType,
-		IdType:        params.Identity.IdType(),
-		Data:          params.Identity.Id(),
+		IdType:        id.IdType(),
+		Data:          id.Id(),
 	}
-	auth.Payloads.Add(iD)
-	signature, err := params.Authenticator.Sign(initB, iD)
+	auth.Payloads.Add(iDp)
+	signature, err := params.Authenticator.Sign(initB, iDp)
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -165,8 +165,7 @@ func AuthFromSession(o *Session) *Message {
 			o.cfg.IsTransportMode,
 			o.IkeSpiI, o.IkeSpiR,
 			prop, o.cfg.TsI, o.cfg.TsR,
-			o.idLocal,
-			NewAuthenticator(o.idLocal, o.tkm, o.rfc7427Signatures, o.isInitiator),
+			o.authLocal,
 		}, initB)
 }
 
@@ -181,7 +180,7 @@ func AuthFromSession(o *Session) *Message {
 // TODO: RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
-func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authenticator Authenticator, idRemote Identity) error {
+func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authenticator Authenticator) error {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
@@ -256,8 +255,7 @@ func HandleAuthForSession(o *Session, m *Message) error {
 		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
 	// authenticate peer
-	authenticator := NewAuthenticator(o.idRemote, o.tkm, o.rfc7427Signatures, o.isInitiator)
-	if err := authenticate(m, initB, idP, authenticator, o.idRemote); err != nil {
+	if err := authenticate(m, initB, idP, o.authRemote); err != nil {
 		log.Info(o.Tag() + err.Error())
 		return protocol.ERR_AUTHENTICATION_FAILED
 	}

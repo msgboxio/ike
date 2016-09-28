@@ -69,6 +69,10 @@ type CertAuthenticator struct {
 	signatureAlgorithm x509.SignatureAlgorithm
 }
 
+func (r *CertAuthenticator) Identity() Identity {
+	return r.identity
+}
+
 func (r *CertAuthenticator) AuthMethod() protocol.AuthMethod {
 	return r.authMethod
 }

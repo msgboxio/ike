@@ -74,7 +74,6 @@ func TestIkeMsgGen(t *testing.T) {
 		params.IkeSpiI, params.IkeSpiR,
 		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
 		cfg.TsI, cfg.TsR,
-		ids,
 		&PskAuthenticator{tkm, true, ids},
 	}, initIb)
 	// overwrite NextPayload

@@ -51,8 +51,6 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 	o := &Session{
 		Context:           cxt,
 		cancel:            cancel,
-		idLocal:           localID,
-		idRemote:          remoteID,
 		remote:            initI.RemoteAddr,
 		local:             initI.LocalAddr,
 		tkm:               tkm,
@@ -65,6 +63,8 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 		rfc7427Signatures: true,
 	}
 
+	o.authLocal = NewAuthenticator(localID, o.tkm, o.rfc7427Signatures, o.isInitiator)
+	o.authRemote = NewAuthenticator(remoteID, o.tkm, o.rfc7427Signatures, o.isInitiator)
 	o.Fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
 	o.PostEvent(state.StateEvent{Event: state.SMI_START})
 	return o, nil

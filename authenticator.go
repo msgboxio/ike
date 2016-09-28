@@ -8,6 +8,7 @@ import (
 
 // Authenticator interface is used to authenticate / create AUTH payloads
 type Authenticator interface {
+	Identity() Identity
 	AuthMethod() protocol.AuthMethod
 	Sign([]byte, *protocol.IdPayload) ([]byte, error)
 	Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error

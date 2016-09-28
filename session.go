@@ -43,8 +43,8 @@ type Session struct {
 	tkm *Tkm
 	cfg *Config
 
-	idRemote, idLocal Identity
-	remote, local     net.Addr
+	authRemote, authLocal Authenticator
+	remote, local         net.Addr
 
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi

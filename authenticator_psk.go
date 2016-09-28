@@ -18,6 +18,10 @@ type PskAuthenticator struct {
 	identity     Identity
 }
 
+func (psk *PskAuthenticator) Identity() Identity {
+	return psk.identity
+}
+
 func (psk *PskAuthenticator) AuthMethod() protocol.AuthMethod {
 	return protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE
 }

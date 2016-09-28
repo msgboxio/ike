@@ -117,10 +117,10 @@ func HandleInitForSession(o *Session, m *Message) error {
 		return err
 	}
 	// make sure responder spi is set and is not the same as initiator spi
-	// in case messages are being reflected
-	if SpiToInt(m.IkeHeader.SpiR) == 0 {
-		return protocol.ERR_INVALID_SYNTAX
-	}
+	// in case messages are being reflected - TODO
+	// if SpiToInt(m.IkeHeader.SpiR) == 0 {
+	// return protocol.ERR_INVALID_SYNTAX
+	// }
 	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
 		return protocol.ERR_INVALID_SYNTAX
 	}

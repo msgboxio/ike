@@ -9,7 +9,8 @@ import (
 	"github.com/msgboxio/log"
 )
 
-func NewInitiator(parent context.Context, localId, remoteId Identity, remote, local net.Addr, cfg *Config) *Session {
+// NewInitiator creates an initiator session
+func NewInitiator(parent context.Context, localID, remoteID Identity, remote, local net.Addr, cfg *Config) *Session {
 	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
@@ -35,8 +36,6 @@ func NewInitiator(parent context.Context, localId, remoteId Identity, remote, lo
 		isInitiator: true,
 		tkm:         tkm,
 		cfg:         cfg,
-		idLocal:     localId,
-		idRemote:    remoteId,
 		remote:      remote,
 		// local:             local,
 		IkeSpiI:           MakeSpi(),
@@ -46,6 +45,8 @@ func NewInitiator(parent context.Context, localId, remoteId Identity, remote, lo
 		rfc7427Signatures: true,
 	}
 
+	o.authLocal = NewAuthenticator(localID, o.tkm, o.rfc7427Signatures, o.isInitiator)
+	o.authRemote = NewAuthenticator(remoteID, o.tkm, o.rfc7427Signatures, o.isInitiator)
 	o.Fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
 	o.PostEvent(state.StateEvent{Event: state.SMI_START})
 	return o
