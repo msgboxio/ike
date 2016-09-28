@@ -144,7 +144,7 @@ func TestDecode(t *testing.T) {
 
 	no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 
-	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_DH_2048
+	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048
 	suite, _ := crypto.NewCipherSuite(transforms)
 
 	tkm := &Tkm{

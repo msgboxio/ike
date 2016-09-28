@@ -30,7 +30,7 @@ func initiatorTkm(t *testing.T) *Tkm {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tkm, err := NewTkmInitiator(suite)
+	tkm, err := NewTkmInitiator(suite, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,17 +47,15 @@ func TestIkeMsgGen(t *testing.T) {
 	cfg := newConfig()
 	tkm := initiatorTkm(t)
 	ikeSpi := MakeSpi()
-	params := initParams{
-		isInitiator:   true,
-		spiI:          ikeSpi,
-		spiR:          MakeSpi(),
-		proposals:     ProposalFromTransform(protocol.IKE, cfg.ProposalIke, ikeSpi),
-		nonce:         tkm.Ni,
-		DhTransformId: tkm.suite.DhGroup.DhTransformId,
-		dhPublic:      tkm.DhPublic,
+	params := &Session{
+		isInitiator: true,
+		tkm:         tkm,
+		cfg:         cfg,
+		IkeSpiI:     ikeSpi,
+		IkeSpiR:     MakeSpi(),
 	}
 	// init msg
-	init := makeInit(params)
+	init := InitFromSession(params)
 	init.IkeHeader.MsgId = 42
 	// encode & write init msg
 	initIb, err := init.Encode(tkm, true)
@@ -73,8 +71,9 @@ func TestIkeMsgGen(t *testing.T) {
 	authI := makeAuth(&authParams{
 		true,
 		cfg.IsTransportMode,
-		params.spiI, params.spiR,
-		params.proposals, cfg.TsI, cfg.TsR,
+		params.IkeSpiI, params.IkeSpiR,
+		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
+		cfg.TsI, cfg.TsR,
 		ids,
 		&PskAuthenticator{tkm, true, ids},
 	}, initIb)
