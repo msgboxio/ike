@@ -2,7 +2,6 @@ package ike
 
 import (
 	"crypto/x509"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
@@ -77,14 +76,6 @@ func makeAuth(params *authParams, initB []byte) *Message {
 	if err != nil {
 		log.Error(err)
 		return nil
-	}
-	if params.Authenticator.AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE {
-		certAuth := params.Authenticator.(*CertAuthenticator)
-		sigAuth := &protocol.SignatureAuth{
-			Asn1Data:  []byte(signatureAlgorithmToAsn1[certAuth.signatureAlgorithm]),
-			Signature: signature,
-		}
-		signature = sigAuth.Encode()
 	}
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
@@ -204,27 +195,7 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authentic
 		}
 		certAuth := authenticator.(*CertAuthenticator)
 		certAuth.SetUserCertificate(x509Cert)
-		if authP.AuthMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
-			// certAuth.signatureAlgorithm = x509.SHA1WithRSA // set by default
-			if err := certAuth.Verify(initB, idP, authP.Data); err != nil {
-				return err
-			}
-		} else { // AUTH_DIGITAL_SIGNATURE
-			// further parse authP.Data
-			sigAuth := &protocol.SignatureAuth{}
-			if err := sigAuth.Decode(authP.Data); err != nil {
-				return err
-			}
-			if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
-				certAuth.signatureAlgorithm = method
-				if err := certAuth.Verify(initB, idP, sigAuth.Signature); err != nil {
-					return fmt.Errorf("Ike Auth failed: with method %s, %s", method, err)
-				}
-			} else {
-				return fmt.Errorf("Ike Auth failed: auth method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
-			}
-		}
-		return nil
+		return certAuth.Verify(initB, idP, authP.Data)
 	default:
 		return fmt.Errorf("Ike Auth failed: auth method not supported: %s", authP.AuthMethod)
 	}

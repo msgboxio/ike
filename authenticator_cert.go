@@ -91,10 +91,21 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte,
 	if certId.PrivateKey == nil {
 		return nil, fmt.Errorf("missing private key")
 	}
+	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
 	log.V(1).Infof("Signing SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
 		certId.Certificate.SignatureAlgorithm, r.signatureAlgorithm)
-	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
-	return sign(r.signatureAlgorithm, signed, certId.PrivateKey)
+	signature, err := sign(r.signatureAlgorithm, signed, certId.PrivateKey)
+	if err != nil {
+		return nil, err
+	}
+	if r.AuthMethod() == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
+		return signature, nil
+	}
+	sigAuth := &protocol.SignatureAuth{
+		Asn1Data:  []byte(signatureAlgorithmToAsn1[r.signatureAlgorithm]),
+		Signature: signature,
+	}
+	return sigAuth.Encode(), nil
 }
 
 func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey) (signature []byte, err error) {
@@ -156,14 +167,34 @@ func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 		return fmt.Errorf("Ike Auth failed: unable to verify certificate: %s",
 			err)
 	}
-	log.V(1).Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
-		r.userCertificate.SignatureAlgorithm, r.signatureAlgorithm)
 	signed := r.tkm.SignB(initB, idP.Encode(), !r.forInitiator)
-	if err := r.userCertificate.CheckSignature(r.signatureAlgorithm, signed, authData); err != nil {
+	if r.AuthMethod() == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
+		return checkSignature(signed, authData, x509.SHA1WithRSA, r.userCertificate)
+	}
+	// further parse authData
+	sigAuth := &protocol.SignatureAuth{}
+	if err := sigAuth.Decode(authData); err != nil {
+		return err
+	}
+	// check if specified signature algorithm is available
+	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
+		if err := checkSignature(signed, sigAuth.Signature, method, r.userCertificate); err != nil {
+			return fmt.Errorf("Ike Auth failed: with method %s, %s", method, err)
+		}
+	} else {
+		return fmt.Errorf("Ike Auth failed: auth method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
+	}
+	return nil
+}
+
+func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm, cert *x509.Certificate) error {
+	log.V(1).Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
+		cert.SignatureAlgorithm, algorithm)
+	if err := cert.CheckSignature(algorithm, signed, signature); err != nil {
 		return err
 	}
 	if log.V(2) {
-		log.Infof("Ike CERT Auth of %+v successful", r.userCertificate.Subject)
+		log.Infof("Ike CERT Auth of %+v successful", cert.Subject)
 	}
 	return nil
 }
