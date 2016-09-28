@@ -203,11 +203,11 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authentic
 		if err != nil {
 			return fmt.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
 		}
-		rsaCertAuth := authenticator.(*CertAuthenticator)
-		rsaCertAuth.SetUserCertificate(x509Cert)
+		certAuth := authenticator.(*CertAuthenticator)
+		certAuth.SetUserCertificate(x509Cert)
 		if authP.AuthMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
-			// rsaCertAuth.signatureAlgorithm = x509.SHA1WithRSA // set by default
-			if err := rsaCertAuth.Verify(initB, idP, authP.Data); err != nil {
+			// certAuth.signatureAlgorithm = x509.SHA1WithRSA // set by default
+			if err := certAuth.Verify(initB, idP, authP.Data); err != nil {
 				return err
 			}
 		} else { // AUTH_DIGITAL_SIGNATURE
@@ -217,8 +217,8 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authentic
 				return err
 			}
 			if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
-				rsaCertAuth.signatureAlgorithm = method
-				if err := rsaCertAuth.Verify(initB, idP, sigAuth.Signature); err != nil {
+				certAuth.signatureAlgorithm = method
+				if err := certAuth.Verify(initB, idP, sigAuth.Signature); err != nil {
 					return fmt.Errorf("Ike Auth failed: with method %s, %s", method, err)
 				}
 			} else {

@@ -52,7 +52,7 @@ type Session struct {
 	incoming chan *Message
 	outgoing chan []byte
 
-	msgIdI, msgIdR uint32
+	msgIdReq, msgIdResp uint32
 
 	// should we use rfc7427 signature algos?
 	rfc7427Signatures bool
@@ -228,11 +228,11 @@ func (o *Session) SendInit() (s state.StateEvent) {
 	}
 	var msgId uint32
 	if o.isInitiator {
-		msgId = o.msgIdI
-		o.msgIdI++
+		msgId = o.msgIdReq
+		o.msgIdReq++
 	} else {
-		msgId = o.msgIdR
-		o.msgIdR++
+		msgId = o.msgIdResp
+		o.msgIdResp++
 	}
 	return o.sendMsg(initMsg(msgId))
 }
@@ -248,11 +248,11 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 	}
 	var msgId uint32
 	if o.isInitiator {
-		msgId = o.msgIdI
-		o.msgIdI++
+		msgId = o.msgIdReq
+		o.msgIdReq++
 	} else {
-		msgId = o.msgIdR
-		o.msgIdR++
+		msgId = o.msgIdResp
+		o.msgIdResp++
 	}
 	auth.IkeHeader.MsgId = msgId
 	return o.sendMsg(auth.Encode(o.tkm, o.isInitiator))
@@ -439,11 +439,11 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	})
 	var msgId uint32
 	if o.isInitiator {
-		msgId = o.msgIdI
-		o.msgIdI++
+		msgId = o.msgIdReq
+		o.msgIdReq++
 	} else {
-		msgId = o.msgIdR
-		o.msgIdR++
+		msgId = o.msgIdResp
+		o.msgIdResp++
 	}
 	info.IkeHeader.MsgId = msgId
 	// encode & send
@@ -456,12 +456,12 @@ func (o *Session) sendIkeSaDelete(err error) {
 	if err == PeerDeletedSa {
 		// received delete from peer, so reply
 		isResponse = true
-		msgId = o.msgIdR
-		o.msgIdR++
+		msgId = o.msgIdResp
+		o.msgIdResp++
 	} else {
 		// sending delete to peer
-		msgId = o.msgIdI
-		o.msgIdI++
+		msgId = o.msgIdReq
+		o.msgIdReq++
 	}
 	// ike protocol ID, but no spi
 	info := MakeInformational(InfoParams{
@@ -490,11 +490,11 @@ func (o *Session) SendEmptyInformational() {
 	})
 	var msgId uint32
 	if o.isInitiator {
-		msgId = o.msgIdI
-		o.msgIdI++
+		msgId = o.msgIdReq
+		o.msgIdReq++
 	} else {
-		msgId = o.msgIdR
-		o.msgIdR++
+		msgId = o.msgIdResp
+		o.msgIdResp++
 	}
 	info.IkeHeader.MsgId = msgId
 	// encode & send
