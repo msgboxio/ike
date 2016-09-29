@@ -2,10 +2,8 @@ package ike
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/platform"
@@ -17,45 +15,28 @@ import (
 type SaCallback func(sa *platform.SaParams) error
 type WriteData func([]byte) error
 
-// Session is closed by us:
-// > call close(): returns if closing already
-// > otherwise sets closing; send N[D] Req
-// > posts event
-// >> fsm calls RemoveSa
-// >>> removes SA
-// >>> calls Close()
-// 2> We wait for N[D], then remove SA
-// 3> move to finished
-// When receive N[D]
-// > fsm calls RemoveSa
-// >> removes SA
-// >> calls Close()
-// > call Close() which sends N[D]
-// > move to finished
 type Session struct {
 	context.Context
 	cancel context.CancelFunc
 	*state.Fsm
-	isInitiator bool
-
 	isClosing bool
 
-	tkm *Tkm
 	cfg *Config
 
+	tkm                   *Tkm
 	authRemote, authLocal Authenticator
-	remote, local         net.Addr
+	// should we use rfc7427 signature algos?
+	rfc7427Signatures bool
 
-	IkeSpiI, IkeSpiR protocol.Spi
-	EspSpiI, EspSpiR protocol.Spi
+	remote, local net.Addr
+
+	isInitiator         bool
+	IkeSpiI, IkeSpiR    protocol.Spi
+	EspSpiI, EspSpiR    protocol.Spi
+	msgIdReq, msgIdResp uint32
 
 	incoming chan *Message
 	outgoing chan []byte
-
-	msgIdReq, msgIdResp uint32
-
-	// should we use rfc7427 signature algos?
-	rfc7427Signatures bool
 
 	initIb, initRb []byte
 
@@ -145,7 +126,7 @@ func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
 		evt.Event = state.MSG_CHILD_SA
 		return
 	case protocol.INFORMATIONAL:
-		return HandleInformationalForSesion(o, msg)
+		return HandleInformationalForSession(o, msg)
 	}
 	return nil
 }
@@ -158,6 +139,17 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 		return
 	}
 	o.outgoing <- buf
+	return
+}
+
+func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
+	if isResponse {
+		msgId = o.msgIdResp
+		o.msgIdResp++
+	} else {
+		msgId = o.msgIdReq
+		o.msgIdReq++
+	}
 	return
 }
 
@@ -198,17 +190,6 @@ func (o *Session) SetHashAlgorithms(isEnabled bool) {
 	o.rfc7427Signatures = isEnabled
 }
 
-func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
-	if isResponse {
-		msgId = o.msgIdResp
-		o.msgIdResp++
-	} else {
-		msgId = o.msgIdReq
-		o.msgIdReq++
-	}
-	return
-}
-
 // SendInit callback from state machine
 func (o *Session) SendInit() (s state.StateEvent) {
 	initMsg := func(msgId uint32) ([]byte, error) {
@@ -242,6 +223,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 	return o.sendMsg(auth.Encode(o.tkm, o.isInitiator))
 }
 
+// InstallSa callback from state machine
 func (o *Session) InstallSa() (s state.StateEvent) {
 	sa := addSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
@@ -255,6 +237,7 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 	return
 }
 
+// RemoveSa callback from state machine
 func (o *Session) RemoveSa() (s state.StateEvent) {
 	sa := removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
@@ -301,6 +284,13 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 	return state.StateEvent{Event: state.SUCCESS}
 }
 
+// CheckSa callback from state machine
+func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
+	// get message
+	msg := m.(*Message)
+	return checkSaForSession(o, msg)
+}
+
 func (o *Session) HandleClose(msg interface{}) (s state.StateEvent) {
 	log.Infof(o.Tag() + "Peer Closed Session")
 	if o.isClosing {
@@ -309,62 +299,6 @@ func (o *Session) HandleClose(msg interface{}) (s state.StateEvent) {
 	o.isClosing = true
 	o.SendEmptyInformational(true)
 	o.RemoveSa()
-	return
-}
-
-// CheckSa callback from state machine
-func (o *Session) CheckSa(m interface{}) (s state.StateEvent) {
-	// get message
-	msg := m.(*Message)
-	// get peer spi
-	espSpi, err := getPeerSpi(msg, protocol.ESP)
-	if err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	if o.isInitiator {
-		o.EspSpiR = append([]byte{}, espSpi...)
-	} else {
-		o.EspSpiI = append([]byte{}, espSpi...)
-	}
-	// check transport mode, and other info payloads
-	wantsTransportMode := false
-	for _, ns := range msg.Payloads.GetNotifications() {
-		switch ns.NotificationType {
-		case protocol.AUTH_LIFETIME:
-			lft := ns.NotificationMessage.(time.Duration)
-			reauth := lft - 2*time.Second
-			if lft <= 2*time.Second {
-				reauth = 0
-			}
-			log.Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
-			time.AfterFunc(reauth, func() {
-				o.PostEvent(state.StateEvent{Event: state.REKEY_START})
-			})
-		case protocol.USE_TRANSPORT_MODE:
-			wantsTransportMode = true
-		}
-	}
-	if wantsTransportMode && o.cfg.IsTransportMode {
-		log.Info(o.Tag() + "Using Transport Mode")
-	} else {
-		if wantsTransportMode {
-			log.Info(o.Tag() + "Peer wanted Transport mode, forcing Tunnel mode")
-		} else if o.cfg.IsTransportMode {
-			err := errors.New("Peer Rejected Transport Mode Config")
-			log.Error(o.Tag() + err.Error())
-			s.Data = err
-		}
-	}
-	// load additional configs
-	if err := o.cfg.AddFromAuth(msg); err != nil {
-		log.Error(err)
-		s.Data = err
-		return
-	}
-	// TODO - check IPSEC selectors & config
-	s.Event = state.SUCCESS
 	return
 }
 

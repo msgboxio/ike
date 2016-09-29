@@ -84,8 +84,8 @@ func (cfg *Config) CheckFromInit(initI *Message) error {
 	return cfg.CheckProposals(protocol.IKE, ikeSa.Proposals)
 }
 
-// Adds esp proposal & selector
-func (cfg *Config) AddFromAuth(authI *Message) error {
+// CheckromAuth checks esp proposal & selector
+func (cfg *Config) CheckromAuth(authI *Message) error {
 	espSa := authI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 	if err := cfg.CheckProposals(protocol.ESP, espSa.Proposals); err != nil {
 		return err
@@ -98,9 +98,7 @@ func (cfg *Config) AddFromAuth(authI *Message) error {
 	}
 	log.Infof("Configured selectors: [INI]%s<=>%s[RES]", cfg.TsI, cfg.TsR)
 	log.Infof("Offered selectors: [INI]%s<=>%s[RES]", tsI, tsR)
-	// TODO - dont blindly overwrite
-	// cfg.TsI = tsI
-	// cfg.TsR = tsR
+	// TODO - check selectors
 	return nil
 }
 

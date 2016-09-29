@@ -91,7 +91,7 @@ func EmptyFromSession(o *Session, isResponse bool) *Message {
 	})
 }
 
-func HandleInformationalForSesion(o *Session, msg *Message) *state.StateEvent {
+func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 	plds := msg.Payloads
 	// Empty
 	if len(plds.Array) == 0 {
