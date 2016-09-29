@@ -50,10 +50,8 @@ func (o *ReKeySession) SendIkeSaRekey() {
 	var msgId uint32
 	if o.isInitiator {
 		msgId = o.msgIdReq
-		o.msgIdReq++
 	} else {
 		msgId = o.msgIdResp
-		o.msgIdResp++
 	}
 	init.IkeHeader.MsgId = msgId
 	// encode & send

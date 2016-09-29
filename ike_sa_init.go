@@ -130,11 +130,15 @@ func HandleInitForSession(o *Session, m *Message) error {
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
 		return err
 	}
-	// set Nr
+	// set initiator's parameters
+	// for responder these were set by factory
 	if o.isInitiator {
+		// local address is not set for initiator at start
+		o.local = m.LocalAddr
+		// responders nonce
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		o.tkm.Nr = no.Nonce
-		// set spiR
+		// responders spi
 		o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	}
 	// create rest of ike sa

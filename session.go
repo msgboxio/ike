@@ -45,24 +45,19 @@ type Session struct {
 
 // Housekeeping
 
-var _tag string
-
 func (o *Session) Tag() string {
-	if _tag != "" {
-		return _tag
-	}
 	ini := o.local
 	res := o.remote
 	if !o.isInitiator {
 		ini = o.remote
 		res = o.local
 	}
-	_tag = fmt.Sprintf("[%s]%#x<=>%#x[%s]: ",
+	tag := fmt.Sprintf("[%s]%#x<=>%#x[%s]: ",
 		ini,
 		o.IkeSpiI,
 		o.IkeSpiR,
 		res)
-	return _tag
+	return tag
 }
 
 func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
@@ -148,7 +143,6 @@ func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
 		o.msgIdResp++
 	} else {
 		msgId = o.msgIdReq
-		o.msgIdReq++
 	}
 	return
 }
@@ -365,7 +359,7 @@ func (o *Session) isMessageValid(m *Message) error {
 	}
 	// local IP is not set initially for initiator
 	if o.local == nil {
-		o.local = m.LocalAddr
+		// dont check
 	} else if !AddrToIp(o.local).Equal(AddrToIp(m.LocalAddr)) {
 		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalAddr)
 	}
@@ -374,6 +368,24 @@ func (o *Session) isMessageValid(m *Message) error {
 		if o.Fsm.State != state.STATE_IDLE && o.Fsm.State != state.STATE_START {
 			return fmt.Errorf("unexpected unencrypted message in state: %s", o.Fsm.State)
 		}
+	}
+	// check sequence numbers
+	seq := m.IkeHeader.MsgId
+	if m.IkeHeader.Flags.IsResponse() {
+		// response id ought to be the same as our request id
+		if seq != o.msgIdReq {
+			return fmt.Errorf("unexpected response id %d, expected %d",
+				seq, o.msgIdReq)
+		}
+		// requestId has been confirmed, increment it for next request
+		o.msgIdReq++
+	} else { // request
+		// TODO - does not handle our responses getting lost
+		if seq != o.msgIdResp {
+			return fmt.Errorf("unexpected request id %d, expected %d",
+				seq, o.msgIdResp)
+		}
+		// incremented by sender
 	}
 	return nil
 }
