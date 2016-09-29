@@ -29,7 +29,7 @@ type WriteData func([]byte) error
 // When receive N[D]
 // > fsm calls RemoveSa
 // >> removes SA
-// >> calls Close
+// >> calls Close()
 // > call Close() which sends N[D]
 // > move to finished
 type Session struct {
@@ -419,41 +419,14 @@ func (o *Session) CheckError(msg interface{}) (s state.StateEvent) {
 // utilities
 
 func (o *Session) Notify(ie protocol.IkeErrorCode) {
-	spi := o.IkeSpiI
-	if o.isInitiator {
-		spi = o.IkeSpiR
-	}
-	// INFORMATIONAL
-	info := MakeInformational(InfoParams{
-		IsInitiator: o.isInitiator,
-		SpiI:        o.IkeSpiI,
-		SpiR:        o.IkeSpiR,
-		Payload: &protocol.NotifyPayload{
-			PayloadHeader:    &protocol.PayloadHeader{},
-			ProtocolId:       protocol.IKE,
-			NotificationType: protocol.NotificationType(ie),
-			Spi:              spi,
-		},
-	})
-	// sending a request
+	info := NotifyFromSession(o, ie)
 	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
 func (o *Session) sendIkeSaDelete() {
-	// ike protocol ID, but no spi
-	info := MakeInformational(InfoParams{
-		IsInitiator: o.isInitiator,
-		SpiI:        o.IkeSpiI,
-		SpiR:        o.IkeSpiR,
-		Payload: &protocol.DeletePayload{
-			PayloadHeader: &protocol.PayloadHeader{},
-			ProtocolId:    protocol.IKE,
-			Spis:          []protocol.Spi{},
-		},
-	})
-	// always a request
+	info := DeleteFromSession(o)
 	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
@@ -461,13 +434,7 @@ func (o *Session) sendIkeSaDelete() {
 
 // SendEmptyInformational can be used for periodic keepalive
 func (o *Session) SendEmptyInformational(isResponse bool) {
-	// INFORMATIONAL
-	info := MakeInformational(InfoParams{
-		IsInitiator: o.isInitiator,
-		IsResponse:  isResponse,
-		SpiI:        o.IkeSpiI,
-		SpiR:        o.IkeSpiR,
-	})
+	info := EmptyFromSession(o, isResponse)
 	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
