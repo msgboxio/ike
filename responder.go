@@ -54,7 +54,7 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 		remote:            initI.RemoteAddr,
 		local:             initI.LocalAddr,
 		tkm:               tkm,
-		cfg:               cfg,
+		cfg:               CopyConfig(cfg),
 		IkeSpiI:           ikeSpiI,
 		IkeSpiR:           MakeSpi(),
 		EspSpiR:           MakeSpi()[:4],

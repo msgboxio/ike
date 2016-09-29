@@ -26,6 +26,16 @@ func DefaultConfig() *Config {
 	}
 }
 
+func CopyConfig(cfg *Config) *Config {
+	return &Config{
+		ProposalIke:     cfg.ProposalIke,
+		ProposalEsp:     cfg.ProposalEsp,
+		TsI:             cfg.TsI,
+		TsR:             cfg.TsR,
+		IsTransportMode: cfg.IsTransportMode,
+	}
+}
+
 // CheckProposals checks if incoming proposals include our configuration
 func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.Proposals) error {
 	for _, prop := range proposals {
@@ -47,33 +57,34 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.P
 	return errors.New("acceptable proposals are missing")
 }
 
+func SelectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
+	first, last, err := IPNetToFirstLastAddress(addr)
+	if err != nil {
+		return nil, err
+	}
+	return []*protocol.Selector{&protocol.Selector{
+		Type:         protocol.TS_IPV4_ADDR_RANGE,
+		IpProtocolId: 0,
+		StartPort:    0,
+		Endport:      65535,
+		StartAddress: first,
+		EndAddress:   last,
+	}}, nil
+}
+
 // AddSelector builds selector from address & mask
-func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
-	first, last, err := IPNetToFirstLastAddress(initiator)
+func (cfg *Config) AddSelector(initiator, responder *net.IPNet) error {
+	tsI, err := SelectorFromAddress(initiator)
 	if err != nil {
-		return
+		return err
 	}
-	cfg.TsI = []*protocol.Selector{&protocol.Selector{
-		Type:         protocol.TS_IPV4_ADDR_RANGE,
-		IpProtocolId: 0,
-		StartPort:    0,
-		Endport:      65535,
-		StartAddress: first,
-		EndAddress:   last,
-	}}
-	first, last, err = IPNetToFirstLastAddress(responder)
+	cfg.TsI = tsI
+	tsR, err := SelectorFromAddress(responder)
 	if err != nil {
-		return
+		return err
 	}
-	cfg.TsR = []*protocol.Selector{&protocol.Selector{
-		Type:         protocol.TS_IPV4_ADDR_RANGE,
-		IpProtocolId: 0,
-		StartPort:    0,
-		Endport:      65535,
-		StartAddress: first,
-		EndAddress:   last,
-	}}
-	return
+	cfg.TsR = tsR
+	return nil
 }
 
 // CheckFromInit takes an IkeSaInit message and checks

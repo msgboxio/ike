@@ -29,13 +29,12 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, remote, lo
 	}
 
 	cxt, cancel := context.WithCancel(parent)
-
 	o := &Session{
 		Context:     cxt,
 		cancel:      cancel,
 		isInitiator: true,
 		tkm:         tkm,
-		cfg:         cfg,
+		cfg:         CopyConfig(cfg),
 		remote:      remote,
 		// local:             local,
 		IkeSpiI:           MakeSpi(),
