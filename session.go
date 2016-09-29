@@ -120,22 +120,6 @@ func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
 	}
 }
 
-// Close is called to shutdown this session
-func (o *Session) Close(err error) {
-	log.Infof(o.Tag()+"Close Session, err %s", err)
-	if o.isClosing {
-		return
-	}
-	o.isClosing = true
-	if err == PeerDeletedSa {
-		o.SendEmptyInformational(true)
-	} else {
-		o.sendIkeSaDelete()
-	}
-	// TODO - start timeout to delete sa if peers does not reply
-	// o.PostEvent(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
-}
-
 func (o *Session) PostMessage(m *Message) {
 	if err := o.isMessageValid(m); err != nil {
 		log.Error(o.Tag()+"Drop Message: ", err)
@@ -161,32 +145,7 @@ func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
 		evt.Event = state.MSG_CHILD_SA
 		return
 	case protocol.INFORMATIONAL:
-		// Notification, Delete, and Configuration Payloads
-		if del := msg.Payloads.Get(protocol.PayloadTypeD); del != nil {
-			dp := del.(*protocol.DeletePayload)
-			if dp.ProtocolId == protocol.IKE {
-				log.Infof(o.Tag()+"Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
-				evt.Event = state.MSG_DELETE_IKE_SA
-				return
-			}
-			for _, spi := range dp.Spis {
-				if dp.ProtocolId == protocol.ESP {
-					log.Infof(o.Tag()+"Peer remove ESP SA : %#x", spi)
-					// TODO
-				}
-			}
-		} // del
-		// delete the ike sa if notification is one of following
-		// UNSUPPORTED_CRITICAL_PAYLOAD, INVALID_SYNTAX, an AUTHENTICATION_FAILED
-		if note := msg.Payloads.Get(protocol.PayloadTypeN); note != nil {
-			np := note.(*protocol.NotifyPayload)
-			if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-				log.Errorf(o.Tag()+"Received Error: %v", err)
-				evt.Event = state.FAIL
-				evt.Data = np.NotificationType
-				return
-			}
-		}
+		return HandleInformationalForSesion(o, msg)
 	}
 	return nil
 }
@@ -202,7 +161,34 @@ func (o *Session) sendMsg(buf []byte, err error) (s state.StateEvent) {
 	return
 }
 
+// Close is called to shutdown this session
+func (o *Session) Close(err error) {
+	log.Infof(o.Tag()+"Close Session, err: %s", err)
+	if o.isClosing {
+		return
+	}
+	o.isClosing = true
+	o.sendIkeSaDelete()
+	// TODO - start timeout to delete sa if peers does not reply
+	o.PostEvent(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
+}
+
 // callbacks
+
+// Finished is called by state machine upon entering finished state
+func (o *Session) Finished() (s state.StateEvent) {
+	if queued := len(o.outgoing); queued > 0 {
+		// drain queue by going round the block again
+		o.PostEvent(state.StateEvent{Event: state.FINISHED})
+		return
+	}
+	close(o.incoming)
+	close(o.outgoing)
+	o.CloseEvents()
+	log.Info(o.Tag() + "Finished; cancel context")
+	o.cancel(context.Canceled)
+	return
+}
 
 // SetHashAlgorithms callback from ike sa init
 func (o *Session) SetHashAlgorithms(isEnabled bool) {
@@ -279,26 +265,10 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 	if o.onRemoveSaCallback != nil {
 		o.onRemoveSaCallback(sa)
 	}
-	o.Close(PeerDeletedSa)
 	return
 }
 
 func (o *Session) StartRetryTimeout() (s state.StateEvent) {
-	return
-}
-
-// Finished is called by state machine upon entering finished state
-func (o *Session) Finished() (s state.StateEvent) {
-	if queued := len(o.outgoing); queued > 0 {
-		// drain queue by going round the block again
-		o.PostEvent(state.StateEvent{Event: state.FINISHED})
-		return
-	}
-	close(o.incoming)
-	close(o.outgoing)
-	o.CloseEvents()
-	log.Info(o.Tag() + "Finished; cancel context")
-	o.cancel(context.Canceled)
 	return
 }
 
@@ -329,6 +299,17 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 	// move to STATE_MATURE state
 	o.PostEvent(state.StateEvent{Event: state.SUCCESS, Data: m})
 	return state.StateEvent{Event: state.SUCCESS}
+}
+
+func (o *Session) HandleClose(msg interface{}) (s state.StateEvent) {
+	log.Infof(o.Tag() + "Peer Closed Session")
+	if o.isClosing {
+		return
+	}
+	o.isClosing = true
+	o.SendEmptyInformational(true)
+	o.RemoveSa()
+	return
 }
 
 // CheckSa callback from state machine

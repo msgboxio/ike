@@ -1,6 +1,10 @@
 package ike
 
-import "github.com/msgboxio/ike/protocol"
+import (
+	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
+	"github.com/msgboxio/log"
+)
 
 type InfoParams struct {
 	IsInitiator bool
@@ -85,4 +89,54 @@ func EmptyFromSession(o *Session, isResponse bool) *Message {
 		SpiI:        o.IkeSpiI,
 		SpiR:        o.IkeSpiR,
 	})
+}
+
+func HandleInformationalForSesion(o *Session, msg *Message) *state.StateEvent {
+	plds := msg.Payloads
+	// Empty
+	if len(plds.Array) == 0 {
+		evt := state.MSG_EMPTY_REQUEST
+		if msg.IkeHeader.Flags.IsResponse() {
+			evt = state.MSG_EMPTY_RESPONSE
+		}
+		return &state.StateEvent{
+			Event: evt,
+		}
+	}
+	// Delete
+	if del := plds.Get(protocol.PayloadTypeD); del != nil {
+		dp := del.(*protocol.DeletePayload)
+		if dp.ProtocolId == protocol.IKE {
+			log.Infof(o.Tag()+"Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
+			return &state.StateEvent{
+				Event: state.MSG_DELETE_IKE_SA,
+				Data:  msg.IkeHeader.SpiI,
+			}
+		}
+		for _, spi := range dp.Spis {
+			if dp.ProtocolId == protocol.ESP {
+				log.Infof(o.Tag()+"Peer remove ESP SA : %#x", spi)
+				return &state.StateEvent{
+					Event: state.MSG_DELETE_ESP_SA,
+					Data:  spi,
+				}
+			}
+		}
+	}
+	// Notification
+	// delete the ike sa if notification is one of following
+	// UNSUPPORTED_CRITICAL_PAYLOAD, INVALID_SYNTAX, an AUTHENTICATION_FAILED
+	if note := plds.Get(protocol.PayloadTypeN); note != nil {
+		np := note.(*protocol.NotifyPayload)
+		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
+			log.Errorf(o.Tag()+"Received Error: %v", err)
+			return &state.StateEvent{
+				Event: state.FAIL,
+				Data:  np.NotificationType,
+			}
+		}
+	}
+	// Configuration
+	// TODO
+	return nil
 }

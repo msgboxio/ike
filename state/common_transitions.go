@@ -4,12 +4,11 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 	return map[State]UserTransitions{
 		STATE_MATURE: UserTransitions{
 			MSG_DELETE_IKE_SA: Transition{
-				Dest:   STATE_FINISHED,
-				Action: h.RemoveSa,
+				CheckEvent: h.HandleClose,
+				Dest:       STATE_FINISHED,
 			},
 			DELETE_IKE_SA: Transition{
-				Dest:   STATE_FINISHED,
-				Action: h.RemoveSa,
+				Dest: STATE_CLOSING,
 			},
 			MSG_CHILD_SA: Transition{
 				CheckEvent: h.HandleCreateChildSa,
@@ -25,6 +24,12 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 				Action: h.RemoveSa,
 			},
 		},
+		STATE_CLOSING: UserTransitions{
+			MSG_EMPTY_RESPONSE: Transition{
+				Action: h.RemoveSa,
+				Dest:   STATE_FINISHED,
+			},
+		},
 		STATE_FINISHED: UserTransitions{
 			ENTRY_EVENT: Transition{
 				Action: h.Finished,
@@ -35,34 +40,3 @@ func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 		},
 	}
 }
-
-/*
-map[Event][]Transition {
-	return map[Event][]Transition{
-		FAIL: []Transition{
-			Transition{
-				Source: STATE_IDLE,
-				Dest:   STATE_FINISHED,
-			},
-			Transition{
-				Source: STATE_INIT,
-				Dest:   STATE_FINISHED,
-			},
-			Transition{
-				Source: STATE_AUTH,
-				Dest:   STATE_FINISHED,
-			},
-			Transition{
-				Source: STATE_MATURE,
-				Dest:   STATE_FINISHED,
-				Action: h.RemoveSa,
-			},
-		},
-		FINISHED: []Transition{
-			Transition{
-				Action: h.Finished,
-			},
-		},
-	}
-}
-*/

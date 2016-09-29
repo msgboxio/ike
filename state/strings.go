@@ -4,9 +4,9 @@ package state
 
 import "fmt"
 
-const _State_name = "STATE_IDLESTATE_STARTSTATE_INITSTATE_AUTHSTATE_MATURESTATE_FINISHED"
+const _State_name = "STATE_IDLESTATE_STARTSTATE_INITSTATE_AUTHSTATE_MATURESTATE_CLOSINGSTATE_FINISHED"
 
-var _State_index = [...]uint8{0, 10, 21, 31, 41, 53, 67}
+var _State_index = [...]uint8{0, 10, 21, 31, 41, 53, 66, 80}
 
 func (i State) String() string {
 	if i >= State(len(_State_index)-1) {
@@ -15,9 +15,9 @@ func (i State) String() string {
 	return _State_name[_State_index[i]:_State_index[i+1]]
 }
 
-const _Event_name = "SUCCESSFAILMSG_INITMSG_AUTHMSG_CHILD_SAMSG_DELETE_IKE_SASMI_STARTREKEY_STARTTIMEOUTINIT_FAILAUTH_FAILDELETE_IKE_SAFINISHEDENTRY_EVENT"
+const _Event_name = "SUCCESSFAILMSG_INITMSG_AUTHMSG_CHILD_SAMSG_DELETE_IKE_SAMSG_DELETE_ESP_SAMSG_EMPTY_REQUESTMSG_EMPTY_RESPONSESMI_STARTREKEY_STARTTIMEOUTINIT_FAILAUTH_FAILDELETE_IKE_SAFINISHEDENTRY_EVENT"
 
-var _Event_index = [...]uint8{0, 7, 11, 19, 27, 39, 56, 65, 76, 83, 92, 101, 114, 122, 133}
+var _Event_index = [...]uint8{0, 7, 11, 19, 27, 39, 56, 73, 90, 108, 117, 128, 135, 144, 153, 166, 174, 185}
 
 func (i Event) String() string {
 	if i >= Event(len(_Event_index)-1) {

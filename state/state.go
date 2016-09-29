@@ -8,6 +8,7 @@ const (
 	STATE_AUTH
 	STATE_MATURE
 
+	STATE_CLOSING
 	STATE_FINISHED
 )
 
@@ -18,7 +19,10 @@ const (
 	MSG_INIT
 	MSG_AUTH
 	MSG_CHILD_SA
-	MSG_DELETE_IKE_SA // a notification really
+	MSG_DELETE_IKE_SA
+	MSG_DELETE_ESP_SA
+	MSG_EMPTY_REQUEST
+	MSG_EMPTY_RESPONSE
 
 	SMI_START
 	REKEY_START
@@ -47,6 +51,7 @@ type FsmHandler interface {
 	HandleIkeAuth(interface{}) StateEvent
 	CheckSa(interface{}) StateEvent
 	HandleCreateChildSa(interface{}) StateEvent
+	HandleClose(interface{}) StateEvent
 
 	CheckError(interface{}) StateEvent
 }
