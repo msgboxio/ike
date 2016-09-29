@@ -127,8 +127,11 @@ func (o *Session) Close(err error) {
 		return
 	}
 	o.isClosing = true
-	// send to peer, peer should send SA_DELETE message
-	o.sendIkeSaDelete(err)
+	if err == PeerDeletedSa {
+		o.SendEmptyInformational(true)
+	} else {
+		o.sendIkeSaDelete()
+	}
 	// TODO - start timeout to delete sa if peers does not reply
 	// o.PostEvent(state.StateEvent{Event: state.DELETE_IKE_SA, Data: err})
 }
@@ -209,6 +212,17 @@ func (o *Session) SetHashAlgorithms(isEnabled bool) {
 	o.rfc7427Signatures = isEnabled
 }
 
+func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
+	if isResponse {
+		msgId = o.msgIdResp
+		o.msgIdResp++
+	} else {
+		msgId = o.msgIdReq
+		o.msgIdReq++
+	}
+	return
+}
+
 // SendInit callback from state machine
 func (o *Session) SendInit() (s state.StateEvent) {
 	initMsg := func(msgId uint32) ([]byte, error) {
@@ -226,15 +240,7 @@ func (o *Session) SendInit() (s state.StateEvent) {
 		}
 		return initB, nil
 	}
-	var msgId uint32
-	if o.isInitiator {
-		msgId = o.msgIdReq
-		o.msgIdReq++
-	} else {
-		msgId = o.msgIdResp
-		o.msgIdResp++
-	}
-	return o.sendMsg(initMsg(msgId))
+	return o.sendMsg(initMsg(o.msgIdInc(!o.isInitiator)))
 }
 
 // SendAuth callback from state machine
@@ -246,15 +252,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
-	var msgId uint32
-	if o.isInitiator {
-		msgId = o.msgIdReq
-		o.msgIdReq++
-	} else {
-		msgId = o.msgIdResp
-		o.msgIdResp++
-	}
-	auth.IkeHeader.MsgId = msgId
+	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
 	return o.sendMsg(auth.Encode(o.tkm, o.isInitiator))
 }
 
@@ -437,36 +435,16 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 			Spi:              spi,
 		},
 	})
-	var msgId uint32
-	if o.isInitiator {
-		msgId = o.msgIdReq
-		o.msgIdReq++
-	} else {
-		msgId = o.msgIdResp
-		o.msgIdResp++
-	}
-	info.IkeHeader.MsgId = msgId
+	// sending a request
+	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
-func (o *Session) sendIkeSaDelete(err error) {
-	var msgId uint32
-	var isResponse bool
-	if err == PeerDeletedSa {
-		// received delete from peer, so reply
-		isResponse = true
-		msgId = o.msgIdResp
-		o.msgIdResp++
-	} else {
-		// sending delete to peer
-		msgId = o.msgIdReq
-		o.msgIdReq++
-	}
+func (o *Session) sendIkeSaDelete() {
 	// ike protocol ID, but no spi
 	info := MakeInformational(InfoParams{
 		IsInitiator: o.isInitiator,
-		IsResponse:  isResponse,
 		SpiI:        o.IkeSpiI,
 		SpiR:        o.IkeSpiR,
 		Payload: &protocol.DeletePayload{
@@ -475,28 +453,22 @@ func (o *Session) sendIkeSaDelete(err error) {
 			Spis:          []protocol.Spi{},
 		},
 	})
-	info.IkeHeader.MsgId = msgId
+	// always a request
+	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
 // SendEmptyInformational can be used for periodic keepalive
-func (o *Session) SendEmptyInformational() {
+func (o *Session) SendEmptyInformational(isResponse bool) {
 	// INFORMATIONAL
 	info := MakeInformational(InfoParams{
 		IsInitiator: o.isInitiator,
+		IsResponse:  isResponse,
 		SpiI:        o.IkeSpiI,
 		SpiR:        o.IkeSpiR,
 	})
-	var msgId uint32
-	if o.isInitiator {
-		msgId = o.msgIdReq
-		o.msgIdReq++
-	} else {
-		msgId = o.msgIdResp
-		o.msgIdResp++
-	}
-	info.IkeHeader.MsgId = msgId
+	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
