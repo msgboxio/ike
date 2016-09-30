@@ -105,6 +105,40 @@ func InvalidKeMsg(spi protocol.Spi, transformID uint16) []byte {
 	return reply
 }
 
+func CheckInitResponseForSession(o *Session, m *Message) error {
+	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
+		!m.IkeHeader.Flags.IsResponse() ||
+		m.IkeHeader.Flags.IsInitiator() ||
+		m.IkeHeader.MsgId != 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	// make sure responder spi is set
+	// in case messages are being reflected - TODO
+	if SpiToInt(m.IkeHeader.SpiR) == 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	if err := m.EnsurePayloads(InitPayloads); err != nil {
+		return err
+	}
+	// make sure responder spi is not the same as initiator spi
+	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	return nil
+}
+
+// SetInitiatorParameters sets session parameters from incoming message
+func SetInitiatorParameters(o *Session, m *Message) {
+	// for responder these were set by factory
+	// local address is not set for initiator at start
+	o.local = m.LocalAddr
+	// responders nonce
+	no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	o.tkm.Nr = no.Nonce
+	// responders spi
+	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
+}
+
 func HandleInitForSession(o *Session, m *Message) error {
 	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
@@ -116,11 +150,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
 	}
-	// make sure responder spi is set and is not the same as initiator spi
-	// in case messages are being reflected - TODO
-	// if SpiToInt(m.IkeHeader.SpiR) == 0 {
-	// return protocol.ERR_INVALID_SYNTAX
-	// }
+	// make sure responder spi is not the same as initiator spi
 	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
 		return protocol.ERR_INVALID_SYNTAX
 	}
@@ -129,17 +159,6 @@ func HandleInitForSession(o *Session, m *Message) error {
 	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
 		return err
-	}
-	// set initiator's parameters
-	// for responder these were set by factory
-	if o.isInitiator {
-		// local address is not set for initiator at start
-		o.local = m.LocalAddr
-		// responders nonce
-		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-		o.tkm.Nr = no.Nonce
-		// responders spi
-		o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	}
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)

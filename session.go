@@ -206,6 +206,14 @@ func (o *Session) SendInit() (s state.StateEvent) {
 
 // SendAuth callback from state machine
 func (o *Session) SendAuth() (s state.StateEvent) {
+	// make sure selectors are present
+	if o.cfg.TsI == nil || o.cfg.TsR == nil {
+		return state.StateEvent{
+			Event: state.AUTH_FAIL,
+			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
+		}
+	}
+	log.Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	auth := AuthFromSession(o)
 	if auth == nil {
 		return state.StateEvent{
@@ -347,6 +355,22 @@ func (o *Session) SendEmptyInformational(isResponse bool) {
 	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
 	// encode & send
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
+}
+
+func (o *Session) AddHostBasedSelectors() {
+	log.Infoln(o.Tag() + "Adding host based traffic selectors")
+	local := AddrToIp(o.local)
+	remote := AddrToIp(o.remote)
+	slen := len(local) * 8
+	ini := remote
+	res := local
+	if o.isInitiator {
+		ini = local
+		res = remote
+	}
+	o.cfg.AddSelector(
+		&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
+		&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
 }
 
 func (o *Session) isMessageValid(m *Message) error {

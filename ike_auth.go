@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
@@ -116,25 +115,6 @@ func makeAuth(params *authParams, initB []byte) *Message {
 
 // SendAuth callback from state machine
 func AuthFromSession(o *Session) *Message {
-	// IKE_AUTH
-	// make sure selectors are present
-	if o.cfg.TsI == nil || o.cfg.TsR == nil {
-		log.Infoln(o.Tag() + "Adding host based selectors")
-		// add host based selectors by default
-		local := AddrToIp(o.local)
-		remote := AddrToIp(o.remote)
-		slen := len(local) * 8
-		ini := remote
-		res := local
-		if o.isInitiator {
-			ini = local
-			res = remote
-		}
-		o.cfg.AddSelector(
-			&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
-			&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
-	}
-	log.Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// proposal
 	var prop []*protocol.SaProposal
 	// part of signed octet

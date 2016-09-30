@@ -65,34 +65,22 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certific
 	return config, localString, remoteString, roots, certs, key
 }
 
-// map of initiator spi -> session
-var sessions = make(map[uint64]*ike.Session)
-
-func runSession(spi uint64, session *ike.Session, pconn *ipv4.PacketConn, to net.Addr) {
-	// sesions map has some data race - worth fixing ?
-	sessions[spi] = session
-	packetWriter := func(reply []byte) error {
+func packetWriter(pconn *ipv4.PacketConn, to net.Addr) ike.WriteData {
+	return func(reply []byte) error {
 		return ike.WritePacket(pconn, reply, to)
 	}
-	saInstaller := func(sa *platform.SaParams) error {
-		log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
-			sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
-		err := platform.InstallChildSa(sa)
-		log.Info("Installed Child SA; error:", err)
-		return err
-	}
-	saRemover := func(sa *platform.SaParams) error {
-		err := platform.RemoveChildSa(sa)
-		log.Info("Removed child SA")
-		return err
-	}
-	go session.Run(packetWriter, saInstaller, saRemover)
-	// wait for session to finish
-	go func() {
-		<-session.Done()
-		delete(sessions, spi)
-		log.Infof("Removed SA 0x%x", spi)
-	}()
+}
+func saInstaller(sa *platform.SaParams) error {
+	log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
+		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
+	err := platform.InstallChildSa(sa)
+	log.Info("Installed Child SA; error:", err)
+	return err
+}
+func saRemover(sa *platform.SaParams) error {
+	err := platform.RemoveChildSa(sa)
+	log.Info("Removed child SA")
+	return err
 }
 
 // var localId = &ike.PskIdentities{
@@ -107,7 +95,25 @@ var localId = &ike.CertIdentity{}
 // }
 var remoteId = &ike.CertIdentity{}
 
-// runs on main thread
+// map of initiator spi -> session
+var sessions = make(map[uint64]*ike.Session)
+
+var intiators = make(map[uint64]*ike.Session)
+
+// runs on main goroutine
+// sesions map has data race
+// delete operation runs in a seperate goroutime - worth fixing ?
+func watchSession(spi uint64, session *ike.Session) {
+	sessions[spi] = session
+	// wait for session to finish
+	go func() {
+		<-session.Done()
+		delete(sessions, spi)
+		log.Infof("Removed SA 0x%x", spi)
+	}()
+}
+
+// runs on main goroutine
 // loops until there is a socket error
 func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 	for {
@@ -121,6 +127,23 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
+			session, found = intiators[spi]
+			if found {
+				// TODO - check if we already have a connection to this host
+				// close the initiator session if we do
+				// check if incoming message is an acceptable Init Response
+				if err := ike.CheckInitResponseForSession(session, msg); err != nil {
+					log.Warning("drop packet")
+					continue
+				}
+				ike.SetInitiatorParameters(session, msg)
+				session.AddHostBasedSelectors()
+				// remove from initiators map and place into normal map
+				delete(intiators, spi)
+				watchSession(spi, session)
+			}
+		}
+		if !found {
 			// create and run session
 			session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
 			if err != nil {
@@ -131,7 +154,10 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 				}
 				continue
 			}
-			runSession(spi, session, pconn, msg.RemoteAddr)
+			// host based selectors can be added directly since both addresses are available
+			session.AddHostBasedSelectors()
+			go session.Run(packetWriter(pconn, msg.RemoteAddr), saInstaller, saRemover)
+			watchSession(spi, session)
 		}
 		session.PostMessage(msg)
 	}
@@ -175,12 +201,14 @@ func main() {
 
 	if remoteString != "" {
 		remoteAddr, _ := net.ResolveUDPAddr("udp", remoteString)
+		// resolution gives us v4 mapped addressees for ip4
 		remoteAddr = &net.UDPAddr{
 			IP:   remoteAddr.IP.To4(),
 			Port: remoteAddr.Port,
 		}
 		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.Conn.LocalAddr(), config)
-		go runSession(ike.SpiToInt(initiator.IkeSpiI), initiator, pconn, remoteAddr)
+		intiators[ike.SpiToInt(initiator.IkeSpiI)] = initiator
+		go initiator.Run(packetWriter(pconn, remoteAddr), saInstaller, saRemover)
 	}
 
 	wg := &sync.WaitGroup{}
