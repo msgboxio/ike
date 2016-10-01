@@ -16,7 +16,7 @@ func addSa(tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
-	local, remote net.Addr,
+	localIP, remoteIP net.IP,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
 	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ikeSpiI, ikeSpiR)
@@ -26,8 +26,6 @@ func addSa(tkm *Tkm,
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	localIP := AddrToIp(local)
-	remoteIP := AddrToIp(remote)
 	sa := &platform.SaParams{
 		// src, dst for initiator
 		Ini:             localIP,
@@ -56,7 +54,7 @@ func removeSa(tkm *Tkm,
 	ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
-	local, remote net.Addr,
+	localIP, remoteIP net.IP,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
 	SpiI, _ := packets.ReadB32(espSpiI, 0)
@@ -65,8 +63,6 @@ func removeSa(tkm *Tkm,
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	localIP := AddrToIp(local)
-	remoteIP := AddrToIp(remote)
 	sa := &platform.SaParams{
 		Ini:             localIP,
 		Res:             remoteIP,

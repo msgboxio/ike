@@ -28,7 +28,7 @@ type Session struct {
 	// should we use rfc7427 signature algos?
 	rfc7427Signatures bool
 
-	remote, local net.Addr
+	remoteAddr, localAddr net.Addr
 
 	isInitiator         bool
 	IkeSpiI, IkeSpiR    protocol.Spi
@@ -46,18 +46,7 @@ type Session struct {
 // Housekeeping
 
 func (o *Session) Tag() string {
-	ini := o.local
-	res := o.remote
-	if !o.isInitiator {
-		ini = o.remote
-		res = o.local
-	}
-	tag := fmt.Sprintf("[%s]%#x<=>%#x[%s]: ",
-		ini,
-		o.IkeSpiI,
-		o.IkeSpiR,
-		res)
-	return tag
+	return fmt.Sprintf("%#x<=>%#x: ", o.IkeSpiI, o.IkeSpiR)
 }
 
 func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
@@ -231,7 +220,7 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		o.local, o.remote,
+		AddrToIp(o.localAddr), AddrToIp(o.remoteAddr),
 		o.isInitiator)
 	if o.onAddSaCallback != nil {
 		o.onAddSaCallback(sa)
@@ -245,7 +234,7 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		o.local, o.remote,
+		AddrToIp(o.localAddr), AddrToIp(o.remoteAddr),
 		o.isInitiator)
 	if o.onRemoveSaCallback != nil {
 		o.onRemoveSaCallback(sa)
@@ -359,8 +348,8 @@ func (o *Session) SendEmptyInformational(isResponse bool) {
 
 func (o *Session) AddHostBasedSelectors() {
 	log.Infoln(o.Tag() + "Adding host based traffic selectors")
-	local := AddrToIp(o.local)
-	remote := AddrToIp(o.remote)
+	local := AddrToIp(o.localAddr)
+	remote := AddrToIp(o.remoteAddr)
 	slen := len(local) * 8
 	ini := remote
 	res := local
@@ -378,15 +367,6 @@ func (o *Session) isMessageValid(m *Message) error {
 		return fmt.Errorf("different initiator Spi %s", spi)
 	}
 	// Dont check Responder SPI. initiator IKE_SA_INIT does not have it
-	if !AddrToIp(o.remote).Equal(AddrToIp(m.RemoteAddr)) {
-		return fmt.Errorf("different remote IP %v vs %v", o.remote, m.RemoteAddr)
-	}
-	// local IP is not set initially for initiator
-	if o.local == nil {
-		// dont check
-	} else if !AddrToIp(o.local).Equal(AddrToIp(m.LocalAddr)) {
-		return fmt.Errorf("different local IP %v vs %v", o.local, m.LocalAddr)
-	}
 	// for un-encrypted payloads, make sure that the state is correct
 	if m.IkeHeader.NextPayload != protocol.PayloadTypeSK {
 		if o.Fsm.State != state.STATE_IDLE && o.Fsm.State != state.STATE_START {

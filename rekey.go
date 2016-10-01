@@ -100,10 +100,10 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 	// create rest of ike sa
 	o.newTkm.IsaCreate(o.newIkeSpiI, o.newIkeSpiR, o.tkm.skD)
 	log.Infof("NEW IKE SA Established: [%s]%#x<=>%#x[%s]",
-		o.local,
+		o.localAddr,
 		o.newIkeSpiI,
 		o.newIkeSpiR,
-		o.remote)
+		o.remoteAddr)
 	// save Data
 	o.initRb = m.Data
 	o.PostEvent(state.StateEvent{})

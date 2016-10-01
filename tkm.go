@@ -120,12 +120,12 @@ func (t *Tkm) prfplus(key, data []byte, bits int) []byte {
 	return ret[:bits]
 }
 
-func (t *Tkm) SkeySeedInitial() []byte {
+func (t *Tkm) skeySeedInitial() []byte {
 	// SKEYSEED = prf(Ni | Nr, g^ir)
 	return t.suite.Prf.Apply(append(t.Ni.Bytes(), t.Nr.Bytes()...), t.DhShared.Bytes())
 }
 
-func (t *Tkm) SkeySeedRekey(old_SK_D []byte) []byte {
+func (t *Tkm) skeySeedRekey(old_SK_D []byte) []byte {
 	// SKEYSEED = prf(SK_d (old), g^ir (new) | Ni | Nr)
 	return t.suite.Prf.Apply(old_SK_D, append(t.DhShared.Bytes(), append(t.Ni.Bytes(), t.Nr.Bytes()...)...))
 }
@@ -137,9 +137,9 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	// 	hex.Dump(spiI), hex.Dump(spiR))
 	SKEYSEED := []byte{}
 	if len(old_SK_D) == 0 {
-		SKEYSEED = t.SkeySeedInitial()
+		SKEYSEED = t.skeySeedInitial()
 	} else {
-		SKEYSEED = t.SkeySeedRekey(old_SK_D)
+		SKEYSEED = t.skeySeedRekey(old_SK_D)
 	}
 	kmLen := 3*t.suite.Prf.Length + 2*t.suite.KeyLen + 2*t.suite.MacKeyLen
 	// KEYMAT =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)

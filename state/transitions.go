@@ -83,7 +83,7 @@ func (f *Fsm) CloseEvents() {
 func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
 	if t.CheckEvent != nil {
 		if err := t.CheckEvent(m.Data); err.Data != nil {
-			log.V(1).Infof("Check Error: %s", err.Data)
+			log.V(2).Infof("Check Error: %s", err.Data)
 			// dont transition, handle error in same state
 			f.PostEvent(err)
 			return err
@@ -91,7 +91,7 @@ func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
 	}
 	if t.Action != nil {
 		if err := t.Action(); err.Data != nil {
-			log.V(1).Infof("Action Error: %s", err.Data)
+			log.V(2).Infof("Action Error: %s", err.Data)
 			// dont transition, handle error in same state
 			f.PostEvent(err)
 			return err
@@ -103,17 +103,17 @@ func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
 func (f *Fsm) HandleEvent(m StateEvent) {
 	t, ok := f.transitions[key(m.Event, f.State)]
 	if !ok {
-		log.V(1).Infof("Ignoring event %s, in State %s", m.Event, f.State)
+		log.V(2).Infof("Ignoring event %s, in State %s", m.Event, f.State)
 		return
 	}
-	log.V(1).Infof("Run: Event %s, in State %s", m.Event, f.State)
+	log.V(2).Infof("Run: Event %s, in State %s", m.Event, f.State)
 	if err := f.runTransition(t, m); err.Data != nil {
 		return
 	}
 	// execute entry action for new state, it does not directly cause state changes
 	tEntry, ok := f.transitions[key(ENTRY_EVENT, t.Dest)]
 	if ok {
-		log.V(1).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
+		log.V(2).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
 		if err := f.runTransition(tEntry, m); err.Data != nil {
 			return
 		}
@@ -122,7 +122,7 @@ func (f *Fsm) HandleEvent(m StateEvent) {
 	if t.Dest == STATE_IDLE {
 		return
 	}
-	log.V(1).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
+	log.V(2).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
 	f.State = t.Dest
 	return
 }

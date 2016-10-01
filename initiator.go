@@ -35,7 +35,7 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, remote, lo
 		isInitiator: true,
 		tkm:         tkm,
 		cfg:         CopyConfig(cfg),
-		remote:      remote,
+		remoteAddr:  remote,
 		// local:             local,
 		IkeSpiI:           MakeSpi(),
 		EspSpiI:           MakeSpi()[:4],

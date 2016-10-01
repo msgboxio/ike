@@ -67,7 +67,7 @@ e2 51 6a e1 95 b6 72 60  a0 a3 41 27 ed 3c 59 d6
 
 func init() {
 	flag.Set("logtostderr", "true")
-	flag.Set("v", "4")
+	flag.Set("v", "1")
 	flag.Parse()
 }
 
