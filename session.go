@@ -28,8 +28,6 @@ type Session struct {
 	// should we use rfc7427 signature algos?
 	rfc7427Signatures bool
 
-	remoteAddr, localAddr net.Addr
-
 	isInitiator         bool
 	IkeSpiI, IkeSpiR    protocol.Spi
 	EspSpiI, EspSpiR    protocol.Spi
@@ -49,9 +47,12 @@ func (o *Session) Tag() string {
 	return fmt.Sprintf("%#x<=>%#x: ", o.IkeSpiI, o.IkeSpiR)
 }
 
-func (o *Session) Run(writeData WriteData, onAddSa, onRemoveSa SaCallback) {
+func (o *Session) AddSaHandlers(onAddSa, onRemoveSa SaCallback) {
 	o.onAddSaCallback = onAddSa
 	o.onRemoveSaCallback = onRemoveSa
+}
+
+func (o *Session) Run(writeData WriteData) {
 	for {
 		select {
 		case reply, ok := <-o.outgoing:
@@ -220,7 +221,6 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		AddrToIp(o.localAddr), AddrToIp(o.remoteAddr),
 		o.isInitiator)
 	if o.onAddSaCallback != nil {
 		o.onAddSaCallback(sa)
@@ -234,7 +234,6 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
-		AddrToIp(o.localAddr), AddrToIp(o.remoteAddr),
 		o.isInitiator)
 	if o.onRemoveSaCallback != nil {
 		o.onRemoveSaCallback(sa)
@@ -346,10 +345,8 @@ func (o *Session) SendEmptyInformational(isResponse bool) {
 	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
 }
 
-func (o *Session) AddHostBasedSelectors() {
+func (o *Session) AddHostBasedSelectors(local, remote net.IP) {
 	log.Infoln(o.Tag() + "Adding host based traffic selectors")
-	local := AddrToIp(o.localAddr)
-	remote := AddrToIp(o.remoteAddr)
 	slen := len(local) * 8
 	ini := remote
 	res := local

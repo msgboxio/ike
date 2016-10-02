@@ -51,8 +51,6 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 	o := &Session{
 		Context:           cxt,
 		cancel:            cancel,
-		remoteAddr:        initI.RemoteAddr,
-		localAddr:         initI.LocalAddr,
 		tkm:               tkm,
 		cfg:               CopyConfig(cfg),
 		IkeSpiI:           ikeSpiI,

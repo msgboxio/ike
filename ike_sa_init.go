@@ -130,8 +130,6 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 // SetInitiatorParameters sets session parameters from incoming IKE_SA_INIT response
 func SetInitiatorParameters(o *Session, m *Message) {
 	// for responder these were set by factory
-	// local address is not set for initiator at start
-	o.localAddr = m.LocalAddr
 	// responders nonce
 	no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	o.tkm.Nr = no.Nonce
@@ -177,13 +175,13 @@ func HandleInitForSession(o *Session, m *Message) error {
 			log.V(2).Infof(o.Tag()+"Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.localAddr) {
-				log.V(2).Info("Encountered DEST nat")
-			}
+			// if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.localAddr) {
+			// 	log.V(2).Info("Encountered DEST nat")
+			// }
 		case protocol.NAT_DETECTION_SOURCE_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.remoteAddr) {
-				log.V(2).Info("Encountered SOURCE nat")
-			}
+			// if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.remoteAddr) {
+			// 	log.V(2).Info("Encountered SOURCE nat")
+			// }
 		}
 	}
 	o.SetHashAlgorithms(rfc7427Signatures)

@@ -70,17 +70,35 @@ func packetWriter(pconn *ipv4.PacketConn, to net.Addr) ike.WriteData {
 		return ike.WritePacket(pconn, reply, to)
 	}
 }
-func saInstaller(sa *platform.SaParams) error {
-	log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
-		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
-	err := platform.InstallChildSa(sa)
-	log.Info("Installed Child SA; error:", err)
-	return err
+func saInstaller(local, remote net.IP) ike.SaCallback {
+	return func(sa *platform.SaParams) error {
+		if sa.IsResponder {
+			sa.Ini = remote
+			sa.Res = local
+		} else {
+			sa.Ini = local
+			sa.Res = remote
+		}
+		log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
+			sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
+		err := platform.InstallChildSa(sa)
+		log.Info("Installed Child SA; error:", err)
+		return err
+	}
 }
-func saRemover(sa *platform.SaParams) error {
-	err := platform.RemoveChildSa(sa)
-	log.Info("Removed child SA")
-	return err
+func saRemover(local, remote net.IP) ike.SaCallback {
+	return func(sa *platform.SaParams) error {
+		if sa.IsResponder {
+			sa.Ini = remote
+			sa.Res = local
+		} else {
+			sa.Ini = local
+			sa.Res = remote
+		}
+		err := platform.RemoveChildSa(sa)
+		log.Info("Removed child SA")
+		return err
+	}
 }
 
 // var localId = &ike.PskIdentities{
@@ -116,6 +134,8 @@ func watchSession(spi uint64, session *ike.Session) {
 // runs on main goroutine
 // loops until there is a socket error
 func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
+	var local, remote net.IP
+	var onAddSa, onRemoveSa ike.SaCallback
 	for {
 		msg, err := ike.ReadMessage(pconn)
 		if err != nil {
@@ -127,6 +147,12 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
+			// needed later
+			local = ike.AddrToIp(msg.LocalAddr)
+			remote = ike.AddrToIp(msg.RemoteAddr)
+			onAddSa = saInstaller(local, remote)
+			onRemoveSa = saRemover(local, remote)
+			// check if we caused this
 			session, found = intiators[spi]
 			if found {
 				// TODO - check if we already have a connection to this host
@@ -137,7 +163,8 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 					continue
 				}
 				ike.SetInitiatorParameters(session, msg)
-				session.AddHostBasedSelectors()
+				session.AddSaHandlers(onAddSa, onRemoveSa)
+				session.AddHostBasedSelectors(local, remote)
 				// remove from initiators map and place into normal map
 				delete(intiators, spi)
 				watchSession(spi, session)
@@ -155,8 +182,9 @@ func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
 				continue
 			}
 			// host based selectors can be added directly since both addresses are available
-			session.AddHostBasedSelectors()
-			go session.Run(packetWriter(pconn, msg.RemoteAddr), saInstaller, saRemover)
+			session.AddHostBasedSelectors(local, remote)
+			session.AddSaHandlers(onAddSa, onRemoveSa)
+			go session.Run(packetWriter(pconn, msg.RemoteAddr))
 			watchSession(spi, session)
 		}
 		session.PostMessage(msg)
@@ -208,7 +236,7 @@ func main() {
 		}
 		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.Conn.LocalAddr(), config)
 		intiators[ike.SpiToInt(initiator.IkeSpiI)] = initiator
-		go initiator.Run(packetWriter(pconn, remoteAddr), saInstaller, saRemover)
+		go initiator.Run(packetWriter(pconn, remoteAddr))
 	}
 
 	wg := &sync.WaitGroup{}

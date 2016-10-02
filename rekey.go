@@ -99,11 +99,9 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 	o.newIkeSpiR = append([]byte{}, peerSpi...)
 	// create rest of ike sa
 	o.newTkm.IsaCreate(o.newIkeSpiI, o.newIkeSpiR, o.tkm.skD)
-	log.Infof("NEW IKE SA Established: [%s]%#x<=>%#x[%s]",
-		o.localAddr,
+	log.Infof("NEW IKE SA Established: %#x<=>%#x",
 		o.newIkeSpiI,
-		o.newIkeSpiR,
-		o.remoteAddr)
+		o.newIkeSpiR)
 	// save Data
 	o.initRb = m.Data
 	o.PostEvent(state.StateEvent{})
