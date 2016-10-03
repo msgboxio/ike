@@ -12,8 +12,6 @@ import (
 	"sync"
 	"syscall"
 
-	"golang.org/x/net/ipv4"
-
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
@@ -65,9 +63,9 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certific
 	return config, localString, remoteString, roots, certs, key
 }
 
-func packetWriter(pconn *ipv4.PacketConn, to net.Addr) ike.WriteData {
+func packetWriter(conn net.Conn, to net.Addr) ike.WriteData {
 	return func(reply []byte) error {
-		return ike.WritePacket(pconn, reply, to)
+		return ike.WritePacket(conn, reply, to)
 	}
 }
 func saInstaller(local, remote net.IP) ike.SaCallback {
@@ -133,7 +131,7 @@ func watchSession(spi uint64, session *ike.Session) {
 
 // runs on main goroutine
 // loops until there is a socket error
-func processPackets(pconn *ipv4.PacketConn, config *ike.Config) {
+func processPackets(pconn net.Conn, config *ike.Config) {
 	var local, remote net.IP
 	var onAddSa, onRemoveSa ike.SaCallback
 	for {
@@ -216,25 +214,41 @@ func main() {
 		}()
 	}
 
-	pconn, err := ike.Listen(localString)
+	var network = "udp4"
+	var family uint16 = syscall.AF_INET
+	addr, err := net.ResolveUDPAddr("udp", localString)
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Infof("socket listening: %s", pconn.Conn.LocalAddr())
+	if v4 := addr.IP.To4(); v4 == nil {
+		network = "udp6"
+		family = syscall.AF_INET6
+	}
+	pconn, err := ike.Listen(network, localString)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Infof("socket listening: %s", pconn.LocalAddr())
 
 	// requires root
-	if err := platform.SetSocketBypas(pconn.Conn, syscall.AF_INET); err != nil {
+	if err := platform.SetSocketBypas(ike.InnerConn(pconn), family); err != nil {
 		log.Error(err)
 	}
 
 	if remoteString != "" {
-		remoteAddr, _ := net.ResolveUDPAddr("udp", remoteString)
+		remoteAddr, err := net.ResolveUDPAddr("udp", remoteString)
+		if err != nil {
+			log.Fatalf("error resolving: %+v", err)
+		}
 		// resolution gives us v4 mapped addressees for ip4
+		if ip := remoteAddr.IP.To4(); ip != nil {
+			remoteAddr.IP = ip
+		}
 		remoteAddr = &net.UDPAddr{
-			IP:   remoteAddr.IP.To4(),
+			IP:   remoteAddr.IP,
 			Port: remoteAddr.Port,
 		}
-		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.Conn.LocalAddr(), config)
+		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.LocalAddr(), config)
 		intiators[ike.SpiToInt(initiator.IkeSpiI)] = initiator
 		go initiator.Run(packetWriter(pconn, remoteAddr))
 	}

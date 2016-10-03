@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 
 	"github.com/msgboxio/log"
 )
@@ -110,12 +111,42 @@ func protocolNotSupported(err error) bool {
 	return false
 }
 
-func Listen(localString string) (p *ipv4.PacketConn, err error) {
+type pconnV4 struct {
+	*ipv4.PacketConn
+}
+
+// LocalAddr is essential in order to fulfill the net.Conn contract
+func (c *pconnV4) LocalAddr() net.Addr {
+	return c.Conn.LocalAddr()
+}
+
+type pconnV6 struct {
+	*ipv6.PacketConn
+}
+
+// LocalAddr is essential in order to fulfill the net.Conn contract
+func (c *pconnV6) LocalAddr() net.Addr {
+	return c.Conn.LocalAddr()
+}
+
+var ErrorUdpOnly = errors.New("only udp is supported for now")
+
+func Listen(network, address string) (net.Conn, error) {
+	switch network {
+	case "udp4":
+		return listenUDP4(address)
+	case "udp6":
+		return listenUDP6(address)
+	}
+	return nil, ErrorUdpOnly
+}
+
+func listenUDP4(localString string) (p4 *pconnV4, err error) {
 	udp, err := net.ListenPacket("udp4", localString)
 	if err != nil {
 		return
 	}
-	p = ipv4.NewPacketConn(udp)
+	p := ipv4.NewPacketConn(udp)
 	// the interface could be set to any(0.0.0.0)
 	// we need the exact address the packet came on
 	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
@@ -127,10 +158,39 @@ func Listen(localString string) (p *ipv4.PacketConn, err error) {
 			return nil, err
 		}
 	}
-	return
+	return &pconnV4{p}, nil
 }
 
-func ReadPacket(p *ipv4.PacketConn) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
+func listenUDP6(localString string) (p6 *pconnV6, err error) {
+	udp, err := net.ListenPacket("udp6", localString)
+	if err != nil {
+		return
+	}
+	p := ipv6.NewPacketConn(udp)
+	// the interface could be set to any(0.0.0.0)
+	// we need the exact address the packet came on
+	cf := ipv6.FlagSrc | ipv6.FlagDst | ipv6.FlagInterface
+	if err := p.SetControlMessage(cf, true); err != nil {
+		if protocolNotSupported(err) {
+			log.Warningf("udp source address detection not supported on %s", runtime.GOOS)
+		} else {
+			p.Close()
+			return nil, err
+		}
+	}
+	return &pconnV6{p}, nil
+}
+
+func ReadPacket(p net.Conn) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
+	if p4Conn, ok := p.(*pconnV4); ok {
+		return readPacketV4(p4Conn)
+	} else if p6Conn, ok := p.(*pconnV6); ok {
+		return readPacketV6(p6Conn)
+	}
+	return nil, nil, nil, errors.New("only udp v4 is supported for now")
+}
+
+func readPacketV4(p *pconnV4) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
 	b = make([]byte, 3000) // section 2
 	n, cm, remoteAddr, err := p.ReadFrom(b)
 	if err == nil {
@@ -141,7 +201,27 @@ func ReadPacket(p *ipv4.PacketConn) (b []byte, remoteAddr net.Addr, localIP net.
 	return
 }
 
-func WritePacket(p *ipv4.PacketConn, reply []byte, remoteAddr net.Addr) error {
+func readPacketV6(p *pconnV6) (b []byte, remoteAddr net.Addr, localIP net.IP, err error) {
+	b = make([]byte, 3000) // section 2
+	n, cm, remoteAddr, err := p.ReadFrom(b)
+	if err == nil {
+		b = b[:n]
+		localIP = cm.Dst
+	}
+	log.V(1).Infof("%d from %v", n, remoteAddr)
+	return
+}
+
+func WritePacket(p net.Conn, reply []byte, remoteAddr net.Addr) error {
+	if p4Conn, ok := p.(*pconnV4); ok {
+		return writePacketV4(p4Conn, reply, remoteAddr)
+	} else if p6Conn, ok := p.(*pconnV6); ok {
+		return writePacketV6(p6Conn, reply, remoteAddr)
+	}
+	return ErrorUdpOnly
+}
+
+func writePacketV4(p *pconnV4, reply []byte, remoteAddr net.Addr) error {
 	n, err := p.WriteTo(reply, nil, remoteAddr)
 	if err != nil {
 		return err
@@ -152,10 +232,21 @@ func WritePacket(p *ipv4.PacketConn, reply []byte, remoteAddr net.Addr) error {
 	return nil
 }
 
-func ReadMessage(pconn *ipv4.PacketConn) (*Message, error) {
+func writePacketV6(p *pconnV6, reply []byte, remoteAddr net.Addr) error {
+	n, err := p.WriteTo(reply, nil, remoteAddr)
+	if err != nil {
+		return err
+	} else if n != len(reply) {
+		return io.ErrShortWrite
+	}
+	log.V(1).Infof("%d to %v", n, remoteAddr)
+	return nil
+}
+
+func ReadMessage(conn net.Conn) (*Message, error) {
 	var buf []byte
 	for {
-		b, remoteAddr, localIP, err := ReadPacket(pconn)
+		b, remoteAddr, localIP, err := ReadPacket(conn)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +263,7 @@ func ReadMessage(pconn *ipv4.PacketConn) (*Message, error) {
 			log.Error(err)
 			continue
 		}
-		port := pconn.Conn.LocalAddr().(*net.UDPAddr).Port
+		port := conn.LocalAddr().(*net.UDPAddr).Port
 		msg.LocalAddr = &net.UDPAddr{
 			IP:   localIP,
 			Port: port,
@@ -180,4 +271,13 @@ func ReadMessage(pconn *ipv4.PacketConn) (*Message, error) {
 		msg.RemoteAddr = remoteAddr
 		return msg, nil
 	}
+}
+
+func InnerConn(p net.Conn) net.Conn {
+	if p4Conn, ok := p.(*pconnV4); ok {
+		return p4Conn.Conn
+	} else if p6Conn, ok := p.(*pconnV6); ok {
+		return p6Conn.Conn
+	}
+	return nil
 }
