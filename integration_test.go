@@ -60,17 +60,32 @@ func TestIntCert(t *testing.T) {
 	testWithIdentity(t, localID, remoteID)
 }
 
-func testWithIdentity(t *testing.T, locid, remid Identity) {
-	_, net, _ := net.ParseCIDR("192.0.2.0/24")
-	cfg.AddSelector(net, net)
-	chi := make(chan []byte, 1)
-	chr := make(chan []byte, 1)
-	sa := make(chan *platform.SaParams, 1)
-
-	// create initiator
+func runInitiator(t *testing.T, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
 	initiator := NewInitiator(context.Background(), locid, remid, remoteAddr, localAddr, cfg)
-	go initiator.Run(packetWriter(chi), saInstaller(sa), saRemover)
-	initI, err := DecodeMessage(<-chi)
+	initiator.AddSaHandlers(onSa, saRemover)
+	// run state machine, will send initI on given channel
+	go initiator.Run(writeTo)
+	// wait for initR
+	initR, err := DecodeMessage(<-readFrom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// use initR
+	SetInitiatorParameters(initiator, initR)
+	// process initR, send authI
+	initiator.PostMessage(initR)
+	// wait for auhtR
+	authR, err := DecodeMessage(<-readFrom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// process authR
+	initiator.PostMessage(authR)
+}
+
+func runResponder(t *testing.T, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
+	// wait for initI
+	initI, err := DecodeMessage(<-readFrom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,28 +94,29 @@ func testWithIdentity(t *testing.T, locid, remid Identity) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go responder.Run(packetWriter(chr), saInstaller(sa), saRemover)
-	// init to responder
+	go responder.Run(writeTo)
+	responder.AddSaHandlers(onSa, saRemover)
+	// initI to responder, will send initR
 	responder.PostMessage(initI)
-	initR, err := DecodeMessage(<-chr)
+	// wait for authI
+	authI, err := DecodeMessage(<-readFrom)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// init to initiator
-	SetInitiatorParameters(initiator, initR)
-	initiator.PostMessage(initR)
-	authI, err := DecodeMessage(<-chi)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// auth to responder
+	// authI to responder, will send authR
 	responder.PostMessage(authI)
-	authR, err := DecodeMessage(<-chr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// auth to initiator
-	initiator.PostMessage(authR)
+}
+
+func testWithIdentity(t *testing.T, locid, remid Identity) {
+	_, net, _ := net.ParseCIDR("192.0.2.0/24")
+	cfg.AddSelector(net, net)
+	chi := make(chan []byte, 1)
+	chr := make(chan []byte, 1)
+	sa := make(chan *platform.SaParams, 1)
+
+	go runInitiator(t, chi, locid, remid, saInstaller(sa), packetWriter(chr))
+	go runResponder(t, chr, locid, remid, saInstaller(sa), packetWriter(chi))
+
 	// receive the 2 sa
 	sa1 := <-sa
 	sa2 := <-sa
