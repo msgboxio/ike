@@ -37,17 +37,17 @@ func TestTransitions(t *testing.T) {
 		},
 	}
 	f := NewFsm(trs)
-	go f.Run()
+	// go f.Run()
 
 	wg.Add(2)
-	f.Event(StateEvent{Event: MSG_INIT})
+	f.PostEvent(StateEvent{Event: MSG_INIT})
 	wg.Wait()
 	if f.State != STATE_INIT {
 		t.Fail()
 	}
 
 	wg.Add(3)
-	f.Event(StateEvent{Event: MSG_AUTH})
+	f.PostEvent(StateEvent{Event: MSG_AUTH})
 	wg.Wait()
 	if f.State != STATE_IDLE {
 		t.Fail()
@@ -77,10 +77,10 @@ func TestTransitionsFinish(t *testing.T) {
 	}
 
 	f := NewFsm(trs)
-	go f.Run()
+	// go f.Run()
 
-	f.Event(StateEvent{Event: MSG_INIT})
-	<-f.Done()
+	f.PostEvent(StateEvent{Event: MSG_INIT})
+	// <-f.Done()
 	if !reflect.DeepEqual(events, []int{1, 2, 3}) {
 		t.Error("unexpected", events)
 	}

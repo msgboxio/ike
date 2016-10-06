@@ -225,6 +225,8 @@ func (o *Session) InstallSa() (s state.StateEvent) {
 	if o.onAddSaCallback != nil {
 		o.onAddSaCallback(sa)
 	}
+	// move to STATE_MATURE state
+	o.PostEvent(state.StateEvent{Event: state.SUCCESS})
 	return
 }
 
@@ -241,14 +243,10 @@ func (o *Session) RemoveSa() (s state.StateEvent) {
 	return
 }
 
-func (o *Session) StartRetryTimeout() (s state.StateEvent) {
-	return
-}
-
 // handlers
 
 // HandleIkeSaInit callback from state machine
-func (o *Session) HandleIkeSaInit(msg interface{}) state.StateEvent {
+func (o *Session) HandleIkeSaInit(msg interface{}) (s state.StateEvent) {
 	// response
 	m := msg.(*Message)
 	if err := HandleInitForSession(o, m); err != nil {
@@ -258,7 +256,7 @@ func (o *Session) HandleIkeSaInit(msg interface{}) state.StateEvent {
 			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN, // TODO - always return this?
 		}
 	}
-	return state.StateEvent{Event: state.SUCCESS}
+	return
 }
 
 // HandleIkeAuth callback from state machine
@@ -269,9 +267,7 @@ func (o *Session) HandleIkeAuth(msg interface{}) (s state.StateEvent) {
 		log.Error(err)
 		return state.StateEvent{Event: state.AUTH_FAIL, Data: err}
 	}
-	// move to STATE_MATURE state
-	o.PostEvent(state.StateEvent{Event: state.SUCCESS, Data: m})
-	return state.StateEvent{Event: state.SUCCESS}
+	return
 }
 
 // CheckSa callback from state machine

@@ -41,7 +41,6 @@ type FsmHandler interface {
 	// actions
 	SendInit() StateEvent
 	SendAuth() StateEvent
-	StartRetryTimeout() StateEvent
 	InstallSa() StateEvent
 	RemoveSa() StateEvent
 	Finished() StateEvent

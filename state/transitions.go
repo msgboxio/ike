@@ -80,24 +80,54 @@ func (f *Fsm) CloseEvents() {
 	}
 }
 
-func (f *Fsm) runTransition(t Transition, m StateEvent) (s StateEvent) {
+func (f *Fsm) runTransition(t Transition, m StateEvent) (evt StateEvent) {
 	if t.CheckEvent != nil {
-		if err := t.CheckEvent(m.Data); err.Data != nil {
-			log.V(2).Infof("Check Error: %s", err.Data)
+		if evt = t.CheckEvent(m.Data); evt.Data != nil {
+			log.V(2).Infof("Check Error: %s", evt.Data)
 			// dont transition, handle error in same state
-			f.PostEvent(err)
-			return err
+			f.PostEvent(evt)
+			return evt
 		}
 	}
 	if t.Action != nil {
-		if err := t.Action(); err.Data != nil {
-			log.V(2).Infof("Action Error: %s", err.Data)
+		if evt = t.Action(); evt.Data != nil {
+			log.V(2).Infof("Action Error: %s", evt.Data)
 			// dont transition, handle error in same state
-			f.PostEvent(err)
-			return err
+			f.PostEvent(evt)
+			return evt
 		}
 	}
 	return
+}
+
+func (f *Fsm) runEntryEvent(t Transition, m StateEvent) (evt StateEvent) {
+	// execute entry action for new state, it does not directly cause state changes
+	tEntry, ok := f.transitions[key(ENTRY_EVENT, t.Dest)]
+	if ok {
+		log.V(2).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
+		if evt = f.runTransition(tEntry, m); evt.Data != nil {
+			return
+		}
+	}
+	return
+}
+
+func (f *Fsm) runTimer() {
+	if _, ok := f.transitions[key(TIMEOUT, f.State)]; !ok {
+		return
+	}
+	curState := f.State
+	go func() {
+		for {
+			time.Sleep(time.Second * 2)
+			if f.State != curState {
+				// state changed, end the goroutine
+				break
+			}
+			// state is still the same, fire timeout event
+			f.PostEvent(StateEvent{Event: TIMEOUT})
+		}
+	}()
 }
 
 func (f *Fsm) HandleEvent(m StateEvent) {
@@ -107,22 +137,23 @@ func (f *Fsm) HandleEvent(m StateEvent) {
 		return
 	}
 	log.V(2).Infof("Run: Event %s, in State %s", m.Event, f.State)
-	if err := f.runTransition(t, m); err.Data != nil {
+	if evt := f.runTransition(t, m); evt.Data != nil {
 		return
 	}
-	// execute entry action for new state, it does not directly cause state changes
-	tEntry, ok := f.transitions[key(ENTRY_EVENT, t.Dest)]
-	if ok {
-		log.V(2).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
-		if err := f.runTransition(tEntry, m); err.Data != nil {
-			return
-		}
+	if t.Dest == f.State {
+		log.V(2).Infof("State did not change, Current %s", f.State)
+		return
 	}
-	// change state if required
+	// ignore STATE_IDLE, not a real state; default
 	if t.Dest == STATE_IDLE {
+		return
+	}
+	// legitemate state change
+	if evt := f.runEntryEvent(t, m); evt.Data != nil {
 		return
 	}
 	log.V(2).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
 	f.State = t.Dest
+	f.runTimer()
 	return
 }

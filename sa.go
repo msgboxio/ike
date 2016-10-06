@@ -121,6 +121,5 @@ func checkSaForSession(o *Session, msg *Message) (s state.StateEvent) {
 		return
 	}
 	// TODO - check IPSEC selectors & config
-	s.Event = state.SUCCESS
 	return
 }
