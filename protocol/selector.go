@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"encoding/hex"
 	"net"
 
 	"github.com/msgboxio/log"
@@ -17,7 +18,7 @@ func decodeSelector(b []byte) (sel *Selector, used int, err error) {
 	id, _ := packets.ReadB8(b, 1)
 	slen, _ := packets.ReadB16(b, 2)
 	if len(b) < int(slen) {
-		log.V(LOG_CODEC_ERR).Info("")
+		log.V(LOG_CODEC_ERR).Infof("bad selector length\n%s", hex.Dump(b))
 		err = ERR_INVALID_SYNTAX
 		return
 	}

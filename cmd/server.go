@@ -214,24 +214,14 @@ func main() {
 		}()
 	}
 
-	var network = "udp4"
-	var family uint16 = syscall.AF_INET
-	addr, err := net.ResolveUDPAddr("udp", localString)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if v4 := addr.IP.To4(); v4 == nil {
-		network = "udp6"
-		family = syscall.AF_INET6
-	}
-	pconn, err := ike.Listen(network, localString)
+	pconn, err := ike.Listen("udp", localString)
 	if err != nil {
 		log.Fatal(err)
 	}
 	log.Infof("socket listening: %s", pconn.LocalAddr())
 
 	// requires root
-	if err := platform.SetSocketBypas(ike.InnerConn(pconn), family); err != nil {
+	if err := platform.SetSocketBypas(ike.InnerConn(pconn), syscall.AF_INET6); err != nil {
 		log.Error(err)
 	}
 

@@ -7,6 +7,9 @@ import (
 	"github.com/msgboxio/log"
 )
 
+// TODO - currently the timeout is statically configured
+const RETRY_TIMEOUT = 2
+
 type Event uint32
 type State uint32
 
@@ -31,7 +34,7 @@ func key(ev Event, state State) uint64 {
 // UserTransitions is specified by client
 type UserTransitions map[Event]Transition
 
-// key is event < 32 | source state
+// key is [event < 32 | source state]
 type transitions map[uint64]Transition
 
 func (trs transitions) addTransitions(t2 map[State]UserTransitions) {
@@ -113,13 +116,15 @@ func (f *Fsm) runEntryEvent(t Transition, m StateEvent) (evt StateEvent) {
 }
 
 func (f *Fsm) runTimer() {
+	// check if a timeout is configured for the state
 	if _, ok := f.transitions[key(TIMEOUT, f.State)]; !ok {
 		return
 	}
 	curState := f.State
 	go func() {
 		for {
-			time.Sleep(time.Second * 2)
+			// TODO - timeout is
+			time.Sleep(time.Second * RETRY_TIMEOUT)
 			if f.State != curState {
 				// state changed, end the goroutine
 				break

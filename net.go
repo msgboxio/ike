@@ -135,7 +135,7 @@ func Listen(network, address string) (net.Conn, error) {
 	switch network {
 	case "udp4":
 		return listenUDP4(address)
-	case "udp6":
+	case "udp6", "udp":
 		return listenUDP6(address)
 	}
 	return nil, ErrorUdpOnly
@@ -162,7 +162,7 @@ func listenUDP4(localString string) (p4 *pconnV4, err error) {
 }
 
 func listenUDP6(localString string) (p6 *pconnV6, err error) {
-	udp, err := net.ListenPacket("udp6", localString)
+	udp, err := net.ListenPacket("udp", localString)
 	if err != nil {
 		return
 	}

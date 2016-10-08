@@ -62,8 +62,12 @@ func SelectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
 	if err != nil {
 		return nil, err
 	}
+	stype := protocol.TS_IPV4_ADDR_RANGE
+	if len(first) == net.IPv6len {
+		stype = protocol.TS_IPV6_ADDR_RANGE
+	}
 	return []*protocol.Selector{&protocol.Selector{
-		Type:         protocol.TS_IPV4_ADDR_RANGE,
+		Type:         stype,
 		IpProtocolId: 0,
 		StartPort:    0,
 		Endport:      65535,
