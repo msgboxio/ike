@@ -8,7 +8,6 @@ import (
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
-	"github.com/msgboxio/packets"
 )
 
 func addSa(tkm *Tkm,
@@ -18,8 +17,8 @@ func addSa(tkm *Tkm,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
 	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ikeSpiI, ikeSpiR)
-	SpiI, _ := packets.ReadB32(espSpiI, 0)
-	SpiR, _ := packets.ReadB32(espSpiR, 0)
+	SpiI := SpiToInt32(espSpiI)
+	SpiR := SpiToInt32(espSpiR)
 	tsI := cfg.TsI[0]
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
@@ -50,8 +49,8 @@ func removeSa(tkm *Tkm,
 	cfg *Config,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
-	SpiI, _ := packets.ReadB32(espSpiI, 0)
-	SpiR, _ := packets.ReadB32(espSpiR, 0)
+	SpiI := SpiToInt32(espSpiI)
+	SpiR := SpiToInt32(espSpiR)
 	tsI := cfg.TsI[0]
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)

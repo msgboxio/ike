@@ -114,7 +114,7 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 	}
 	// make sure responder spi is set
 	// in case messages are being reflected - TODO
-	if SpiToInt(m.IkeHeader.SpiR) == 0 {
+	if SpiToInt64(m.IkeHeader.SpiR) == 0 {
 		return protocol.ERR_INVALID_SYNTAX
 	}
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
@@ -175,13 +175,13 @@ func HandleInitForSession(o *Session, m *Message) error {
 			log.V(2).Infof(o.Tag()+"Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
-			// if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.localAddr) {
-			// 	log.V(2).Info("Encountered DEST nat")
-			// }
+			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.LocalAddr) {
+				log.V(2).Infof("HOST nat detected: %s", m.LocalAddr)
+			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
-			// if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, o.remoteAddr) {
-			// 	log.V(2).Info("Encountered SOURCE nat")
-			// }
+			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.RemoteAddr) {
+				log.V(2).Infof("PEER nat detected: %s", m.RemoteAddr)
+			}
 		}
 	}
 	o.SetHashAlgorithms(rfc7427Signatures)
@@ -189,11 +189,16 @@ func HandleInitForSession(o *Session, m *Message) error {
 }
 
 func checkNatHash(digest []byte, spiI, spiR protocol.Spi, addr net.Addr) bool {
-	return bytes.Equal(digest, getNatHash(spiI, spiR, addr))
+	target := getNatHash(spiI, spiR, addr)
+	// log.Infof("Their:\n%sOur:\n%s", hex.Dump(digest), hex.Dump(target))
+	return bytes.Equal(digest, target)
 }
 
 func getNatHash(spiI, spiR protocol.Spi, addr net.Addr) []byte {
 	ip, port := AddrToIpPort(addr)
+	if ip4 := ip.To4(); ip4 != nil {
+		ip = ip4
+	}
 	digest := sha1.New()
 	digest.Write(spiI)
 	digest.Write(spiR)

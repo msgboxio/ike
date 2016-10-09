@@ -21,7 +21,7 @@ type Session struct {
 	*state.Fsm
 	isClosing bool
 
-	cfg *Config // copy of passed in config
+	cfg *Config // copy of Config given to us
 
 	tkm                   *Tkm
 	authRemote, authLocal Authenticator

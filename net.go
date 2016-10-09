@@ -243,6 +243,8 @@ func writePacketV6(p *pconnV6, reply []byte, remoteAddr net.Addr) error {
 	return nil
 }
 
+// ReadMessage reads an IKE message from connection
+// Connection errors are returned, protocol errors are simply logged
 func ReadMessage(conn net.Conn) (*Message, error) {
 	var buf []byte
 	for {
@@ -273,6 +275,7 @@ func ReadMessage(conn net.Conn) (*Message, error) {
 	}
 }
 
+// InnerConn returns the conn buried within the conn used here
 func InnerConn(p net.Conn) net.Conn {
 	if p4Conn, ok := p.(*pconnV4); ok {
 		return p4Conn.Conn

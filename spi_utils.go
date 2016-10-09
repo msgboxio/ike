@@ -9,8 +9,13 @@ import (
 	"github.com/msgboxio/packets"
 )
 
-func SpiToInt(spi protocol.Spi) uint64 {
+func SpiToInt64(spi protocol.Spi) uint64 {
 	ret, _ := packets.ReadB64(spi, 0)
+	return ret
+}
+
+func SpiToInt32(spi protocol.Spi) uint32 {
+	ret, _ := packets.ReadB32(spi, 0)
 	return ret
 }
 

@@ -141,7 +141,7 @@ func processPackets(pconn net.Conn, config *ike.Config) {
 			break
 		}
 		// convert spi to uint64 for map lookup
-		spi := ike.SpiToInt(msg.IkeHeader.SpiI)
+		spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
@@ -239,7 +239,7 @@ func main() {
 			Port: remoteAddr.Port,
 		}
 		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.LocalAddr(), config)
-		intiators[ike.SpiToInt(initiator.IkeSpiI)] = initiator
+		intiators[ike.SpiToInt64(initiator.IkeSpiI)] = initiator
 		go initiator.Run(packetWriter(pconn, remoteAddr))
 	}
 
