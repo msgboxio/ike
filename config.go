@@ -16,11 +16,17 @@ type Config struct {
 	IsTransportMode bool
 }
 
+// StrongSwan recommendations for cipher suite
+// aes128-sha256-modp3072 (AES-CBC-128, SHA-256 as HMAC and DH key exchange with 3072 bit key length)
+// suite B
+// aes128gcm16-prfsha256-ecp256 (AES-GCM-128 AEAD, SHA-256 as PRF and ECDH key exchange with 256 bit key length)
+// aes256gcm16-prfsha384-ecp384 (AES-GCM-256 AEAD, SHA-384 as PRF and ECDH key exchange with 384 bit key length)
+
 func DefaultConfig() *Config {
 	return &Config{
-		ProposalIke: protocol.IKE_AES_CBC_SHA256_MODP2048,
 		// ProposalIke: protocol.IKE_AES_CBC_SHA256_MODP3072,
 		// ProposalIke: protocol.IKE_AES_GCM_16_MODP3072,
+		ProposalIke: protocol.IKE_AES128GCM16_PRFSHA256_ECP256,
 		ProposalEsp: protocol.ESP_AES_CBC_SHA2_256,
 		// ProposalEsp: protocol.ESP_AES_GCM_16,
 	}

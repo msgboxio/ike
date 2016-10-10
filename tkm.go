@@ -94,12 +94,8 @@ func (t *Tkm) ncCreate(bits int) (no *big.Int, err error) {
 }
 
 func (t *Tkm) dhCreate() (err error) {
-	t.dhPrivate, err = t.suite.DhGroup.Private(rand.Reader)
-	if err != nil {
-		return err
-	}
-	t.DhPublic = t.suite.DhGroup.Public(t.dhPrivate)
-	return nil
+	t.dhPrivate, t.DhPublic, err = t.suite.DhGroup.Generate(rand.Reader)
+	return
 }
 
 // DhGenerateKey creates & stores the dh key

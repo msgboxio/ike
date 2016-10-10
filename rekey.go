@@ -44,7 +44,7 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		spiR:          o.IkeSpiR,
 		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.newIkeSpiI),
 		nonce:         o.newTkm.Ni,
-		dhTransformId: o.newTkm.suite.DhGroup.DhTransformId,
+		dhTransformId: o.newTkm.suite.DhGroup.TransformId(),
 		dhPublic:      o.newTkm.DhPublic,
 	})
 	var msgId uint32

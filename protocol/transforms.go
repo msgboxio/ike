@@ -21,7 +21,6 @@ var (
 	T_AUTH_HMAC_SHA2_384_192 = Transform{Type: TRANSFORM_TYPE_INTEG, TransformId: uint16(AUTH_HMAC_SHA2_384_192)}
 	T_AUTH_HMAC_SHA2_512_256 = Transform{Type: TRANSFORM_TYPE_INTEG, TransformId: uint16(AUTH_HMAC_SHA2_512_256)}
 
-	T_MODP_768  = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_768)}
 	T_MODP_1024 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_1024)}
 	T_MODP_1536 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_1536)}
 	T_MODP_2048 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_2048)}
@@ -30,43 +29,14 @@ var (
 	T_MODP_6144 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_6144)}
 	T_MODP_8192 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(MODP_8192)}
 
+	T_ECP_224 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(ECP_224)}
+	T_ECP_256 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(ECP_256)}
+	T_ECP_384 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(ECP_384)}
+	T_ECP_521 = Transform{Type: TRANSFORM_TYPE_DH, TransformId: uint16(ECP_521)}
+
 	T_ESN    = Transform{Type: TRANSFORM_TYPE_ESN, TransformId: uint16(ESN)}
 	T_NO_ESN = Transform{Type: TRANSFORM_TYPE_ESN, TransformId: uint16(ESN_NONE)}
 )
-
-var transformStrings = map[Transform]string{
-	T_ENCR_AES_CBC:      "ENCR_AES_CBC",
-	T_ENCR_AES_CTR:      "ENCR_AES_CTR",
-	T_ENCR_CAMELLIA_CBC: "ENCR_CAMELLIA_CBC",
-	T_ENCR_CAMELLIA_CTR: "ENCR_CAMELLIA_CTR",
-	T_ENCR_NULL:         "ENCR_NULL",
-
-	T_AEAD_AES_GCM_16: "AEAD_AES_GCM_16",
-
-	T_PRF_AES128_XCBC:   "PRF_AES128_XCBC",
-	T_PRF_HMAC_SHA1:     "PRF_HMAC_SHA1",
-	T_PRF_HMAC_SHA2_256: "PRF_HMAC_SHA2_256",
-	T_PRF_HMAC_SHA2_384: "PRF_HMAC_SHA2_384",
-	T_PRF_HMAC_SHA2_512: "PRF_HMAC_SHA2_512",
-
-	T_AUTH_AES_XCBC_96:       "AUTH_AES_XCBC_96",
-	T_AUTH_HMAC_SHA1_96:      "AUTH_HMAC_SHA1_96",
-	T_AUTH_HMAC_SHA2_256_128: "AUTH_HMAC_SHA2_256_128",
-	T_AUTH_HMAC_SHA2_384_192: "AUTH_HMAC_SHA2_384_192",
-	T_AUTH_HMAC_SHA2_512_256: "AUTH_HMAC_SHA2_512_256",
-
-	T_MODP_768:  "MODP_768",
-	T_MODP_1024: "MODP_1024",
-	T_MODP_1536: "MODP_1536",
-	T_MODP_2048: "MODP_2048",
-	T_MODP_3072: "MODP_3072",
-	T_MODP_4096: "MODP_4096",
-	T_MODP_6144: "MODP_6144",
-	T_MODP_8192: "MODP_8192",
-
-	T_ESN:    "ESN",
-	T_NO_ESN: "NO_ESN",
-}
 
 type Transforms map[TransformType]*SaTransform
 
@@ -90,13 +60,15 @@ var (
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_3072, IsLast: true},
 	}
 
+	IKE_AES_CBC_SHA256_ECP256 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
+		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA2_256_128},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_256, IsLast: true},
+	}
+
 	// key length is set to 128b
 	// 16B icv
-	IKE_AES_GCM_16_MODP1024 = Transforms{
-		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
-		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA1},
-		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_1024, IsLast: true},
-	}
 	IKE_AES_GCM_16_MODP2048 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA1},
@@ -108,13 +80,27 @@ var (
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_3072, IsLast: true},
 	}
 
+	IKE_AES128GCM16_PRFSHA256_ECP256 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128}, // AEAD_AES_128_GCM
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_256, IsLast: true},
+	}
+
+	IKE_AES256GCM16_PRFSHA384_ECP384 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 256}, // AEAD_AES_256_GCM
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA2_384},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_384, IsLast: true},
+	}
+
 	IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_CAMELLIA_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA2_256_128},
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_MODP_2048, IsLast: true},
 	}
+)
 
+var (
 	ESP_AES_CBC_SHA1_96 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_AES_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_AUTH_HMAC_SHA1_96},
@@ -170,22 +156,4 @@ func (configured Transforms) Within(proposals []*SaTransform) bool {
 		}
 	}
 	return true
-}
-
-// mutualTransform returns a cipherSuite given
-// a list requested by the peer.
-func mutualTransform(want [][]*SaTransform) bool {
-	for _, w := range want {
-	next:
-		for {
-			for _, t := range w {
-				if _, ok := transformStrings[t.Transform]; !ok {
-					break next
-				}
-			}
-			// have all
-			return true
-		}
-	}
-	return false
 }

@@ -17,7 +17,7 @@ type Cipher interface {
 type CipherSuite struct {
 	Cipher  // aead or nonAead
 	Prf     *Prf
-	DhGroup *dhGroup
+	DhGroup dhGroup
 
 	// Lengths, in bytes, of the key material needed for each component.
 	KeyLen, MacKeyLen int

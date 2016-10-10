@@ -1,9 +1,6 @@
 package protocol
 
-import (
-	"encoding/json"
-	"fmt"
-)
+import "encoding/json"
 
 type ts struct {
 	PayloadType PayloadType
@@ -16,11 +13,4 @@ func (p Payloads) MarshalJSON() ([]byte, error) {
 		jmap = append(jmap, ts{j.Type(), j})
 	}
 	return json.Marshal(jmap)
-}
-
-func (t Transform) MarshalJSON() ([]byte, error) {
-	if str, ok := transformStrings[t]; ok {
-		return []byte(fmt.Sprintf("\"%s\"", str)), nil
-	}
-	return []byte(fmt.Sprintf("\"%s: %d\"", t.Type, t.TransformId)), nil
 }

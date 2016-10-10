@@ -43,7 +43,7 @@ func InitFromSession(o *Session) *Message {
 	})
 	init.Payloads.Add(&protocol.KePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: o.tkm.suite.DhGroup.DhTransformId,
+		DhTransformId: o.tkm.suite.DhGroup.TransformId(),
 		KeyData:       o.tkm.DhPublic,
 	})
 	init.Payloads.Add(&protocol.NoncePayload{
