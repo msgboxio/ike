@@ -1,10 +1,6 @@
 package ike
 
-import (
-	"crypto/x509"
-
-	"github.com/msgboxio/ike/protocol"
-)
+import "github.com/msgboxio/ike/protocol"
 
 // Authenticator interface is used to authenticate / create AUTH payloads
 type Authenticator interface {
@@ -24,15 +20,13 @@ func NewAuthenticator(id Identity, tkm *Tkm, rfc7427Signatures bool, forInitiato
 		}
 	case *CertIdentity:
 		cid := &CertAuthenticator{
-			tkm:                tkm,
-			forInitiator:       forInitiator,
-			identity:           id,
-			authMethod:         protocol.AUTH_RSA_DIGITAL_SIGNATURE,
-			signatureAlgorithm: x509.SHA1WithRSA, // cant be changed
+			tkm:          tkm,
+			forInitiator: forInitiator,
+			identity:     id,
+			authMethod:   protocol.AUTH_RSA_DIGITAL_SIGNATURE,
 		}
 		if rfc7427Signatures {
 			cid.authMethod = protocol.AUTH_DIGITAL_SIGNATURE
-			cid.signatureAlgorithm = x509.SHA256WithRSA // default, can change
 		}
 		return cid
 	default:

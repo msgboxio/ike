@@ -27,7 +27,7 @@ func init() {
 
 func trim(grp string) string {
 	mm := func(r rune) rune {
-		if r == ' ' || r == '\n' {
+		if r == ' ' || r == '\n' || r == '\t' {
 			return -1
 		}
 		return r
