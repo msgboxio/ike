@@ -150,14 +150,14 @@ func processPackets(pconn net.Conn, config *ike.Config) {
 			remote = ike.AddrToIp(msg.RemoteAddr)
 			onAddSa = saInstaller(local, remote)
 			onRemoveSa = saRemover(local, remote)
-			// check if we caused this
+			// check if this is a response to our INIT request
 			session, found = intiators[spi]
 			if found {
 				// TODO - check if we already have a connection to this host
 				// close the initiator session if we do
 				// check if incoming message is an acceptable Init Response
 				if err := ike.CheckInitResponseForSession(session, msg); err != nil {
-					log.Warning("drop packet")
+					log.Warningf("drop packet:", err)
 					continue
 				}
 				ike.SetInitiatorParameters(session, msg)
@@ -169,14 +169,18 @@ func processPackets(pconn net.Conn, config *ike.Config) {
 			}
 		}
 		if !found {
-			// create and run session
-			session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
-			if err != nil {
-				log.Error(err)
+			if err := ike.CheckInitRequest(config, msg); err != nil {
 				if err == protocol.ERR_INVALID_KE_PAYLOAD {
 					tr := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
 					ike.WritePacket(pconn, ike.InvalidKeMsg(msg.IkeHeader.SpiI, tr), msg.RemoteAddr)
 				}
+				log.Warningf("drop packet:", err)
+				continue
+			}
+			// create and run session
+			session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
+			if err != nil {
+				log.Warningf("drop packet:", err)
 				continue
 			}
 			// host based selectors can be added directly since both addresses are available

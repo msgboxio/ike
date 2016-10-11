@@ -5,27 +5,10 @@ import (
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
-	"github.com/msgboxio/log"
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
 func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Config, initI *Message) (*Session, error) {
-	if err := initI.EnsurePayloads(InitPayloads); err != nil {
-		return nil, err
-	}
-	if err := cfg.CheckFromInit(initI); err != nil {
-		return nil, err
-	}
-	// TODO - check if config is usable
-	// check if transforms are usable
-	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	// make sure dh tranform id is the one that was accepted
-	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
-		log.Warningf("Using different DH transform [%s] vs the one configured [%s]",
-			keI.DhTransformId, dh)
-		return nil, protocol.ERR_INVALID_KE_PAYLOAD
-	}
 	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		return nil, err

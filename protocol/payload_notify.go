@@ -77,6 +77,14 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 		s.NotificationMessage = algos
 	case NAT_DETECTION_DESTINATION_IP, NAT_DETECTION_SOURCE_IP:
 		s.NotificationMessage = append([]byte{}, data...)
+	case COOKIE:
+		// check if data is <= 64 bytes
+		if len(data) == 0 || len(data) > 64 {
+			log.V(LOG_CODEC_ERR).Infof("Bad Cookie length: %d", len(data))
+			err = ERR_INVALID_SYNTAX
+			return
+		}
+		s.NotificationMessage = append([]byte{}, data...)
 	default:
 		s.NotificationMessage = append([]byte{}, data...)
 	}

@@ -254,7 +254,8 @@ const (
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 const (
-	IKE_HEADER_LEN = 28
+	IKE_HEADER_LEN      = 28
+	MAX_IKE_MESSAGE_LEN = 3000 // section 2
 )
 
 type IkeHeader struct {

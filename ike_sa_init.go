@@ -105,6 +105,26 @@ func InvalidKeMsg(spi protocol.Spi, transformID uint16) []byte {
 	return reply
 }
 
+func CheckInitRequest(cfg *Config, initI *Message) error {
+	if err := initI.EnsurePayloads(InitPayloads); err != nil {
+		return err
+	}
+	if err := cfg.CheckFromInit(initI); err != nil {
+		return err
+	}
+	// TODO - check if config is usable
+	// check if transforms are usable
+	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	// make sure dh tranform id is the one that was accepted
+	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
+	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
+		log.Warningf("Using different DH transform [%s] vs the one configured [%s]",
+			keI.DhTransformId, dh)
+		return protocol.ERR_INVALID_KE_PAYLOAD
+	}
+	return nil
+}
+
 func CheckInitResponseForSession(o *Session, m *Message) error {
 	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
 		!m.IkeHeader.Flags.IsResponse() ||
@@ -145,14 +165,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	// find traffic selectors
 	// send IKE_AUTH req
-	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		return err
-	}
-	// make sure responder spi is not the same as initiator spi
-	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
-		return protocol.ERR_INVALID_SYNTAX
-	}
-	// if m.IkeHeader.
+
 	// initialize dh shared with their public key
 	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {

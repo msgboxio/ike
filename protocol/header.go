@@ -13,6 +13,10 @@ func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
 		log.V(LOG_CODEC_ERR).Infof("Packet Too short : %d", len(b))
 		return nil, ERR_INVALID_SYNTAX
 	}
+	if len(b) > MAX_IKE_MESSAGE_LEN {
+		log.V(LOG_CODEC_ERR).Infof("Packet Too large : %d", len(b))
+		return nil, ERR_INVALID_SYNTAX
+	}
 	h.SpiI = append([]byte{}, b[:8]...)
 	h.SpiR = append([]byte{}, b[8:16]...)
 	pt, _ := packets.ReadB8(b, 16)
@@ -27,6 +31,10 @@ func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
 	h.MsgId, _ = packets.ReadB32(b, 16+4)
 	h.MsgLength, _ = packets.ReadB32(b, 16+8)
 	if h.MsgLength < IKE_HEADER_LEN {
+		log.V(LOG_CODEC_ERR).Infof("")
+		return nil, ERR_INVALID_SYNTAX
+	}
+	if h.MsgLength > MAX_IKE_MESSAGE_LEN {
 		log.V(LOG_CODEC_ERR).Infof("")
 		return nil, ERR_INVALID_SYNTAX
 	}
