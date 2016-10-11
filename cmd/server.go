@@ -129,11 +129,44 @@ func watchSession(spi uint64, session *ike.Session) {
 	}()
 }
 
+func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Session, error) {
+	// needed later
+	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
+	var err error
+	// check if this is a response to our INIT request
+	session, found := intiators[spi]
+	if found {
+		// TODO - check if we already have a connection to this host
+		// close the initiator session if we do
+		// check if incoming message is an acceptable Init Response
+		if err = ike.CheckInitResponseForSession(session, msg); err != nil {
+			return nil, err
+		}
+		ike.SetInitiatorParameters(session, msg)
+		// remove from initiators map
+		delete(intiators, spi)
+	} else {
+		// is it a IKE_SA_INIT req ?
+		if err = ike.CheckInitRequest(config, msg); err != nil {
+			if err == protocol.ERR_INVALID_KE_PAYLOAD {
+				tr := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
+				ike.WritePacket(pconn, ike.InvalidKeMsg(msg.IkeHeader.SpiI, tr), msg.RemoteAddr)
+			}
+			return nil, err
+		}
+		// create and run session
+		session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
+		if err != nil {
+			return nil, err
+		}
+		go session.Run(packetWriter(pconn, msg.RemoteAddr))
+	}
+	return session, nil
+}
+
 // runs on main goroutine
 // loops until there is a socket error
 func processPackets(pconn net.Conn, config *ike.Config) {
-	var local, remote net.IP
-	var onAddSa, onRemoveSa ike.SaCallback
 	for {
 		msg, err := ike.ReadMessage(pconn)
 		if err != nil {
@@ -145,48 +178,18 @@ func processPackets(pconn net.Conn, config *ike.Config) {
 		// check if a session exists
 		session, found := sessions[spi]
 		if !found {
-			// needed later
-			local = ike.AddrToIp(msg.LocalAddr)
-			remote = ike.AddrToIp(msg.RemoteAddr)
-			onAddSa = saInstaller(local, remote)
-			onRemoveSa = saRemover(local, remote)
-			// check if this is a response to our INIT request
-			session, found = intiators[spi]
-			if found {
-				// TODO - check if we already have a connection to this host
-				// close the initiator session if we do
-				// check if incoming message is an acceptable Init Response
-				if err := ike.CheckInitResponseForSession(session, msg); err != nil {
-					log.Warningf("drop packet:", err)
-					continue
-				}
-				ike.SetInitiatorParameters(session, msg)
-				session.AddSaHandlers(onAddSa, onRemoveSa)
-				session.AddHostBasedSelectors(local, remote)
-				// remove from initiators map and place into normal map
-				delete(intiators, spi)
-				watchSession(spi, session)
-			}
-		}
-		if !found {
-			if err := ike.CheckInitRequest(config, msg); err != nil {
-				if err == protocol.ERR_INVALID_KE_PAYLOAD {
-					tr := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-					ike.WritePacket(pconn, ike.InvalidKeMsg(msg.IkeHeader.SpiI, tr), msg.RemoteAddr)
-				}
-				log.Warningf("drop packet:", err)
-				continue
-			}
-			// create and run session
-			session, err = ike.NewResponder(context.Background(), localId, remoteId, config, msg)
+			session, err = newSession(msg, pconn, config)
 			if err != nil {
-				log.Warningf("drop packet:", err)
+				log.Warningf("drop packet: %s", err)
 				continue
 			}
+			local := ike.AddrToIp(msg.LocalAddr)
+			remote := ike.AddrToIp(msg.RemoteAddr)
+			onAddSa := saInstaller(local, remote)
+			onRemoveSa := saRemover(local, remote)
+			session.AddSaHandlers(onAddSa, onRemoveSa)
 			// host based selectors can be added directly since both addresses are available
 			session.AddHostBasedSelectors(local, remote)
-			session.AddSaHandlers(onAddSa, onRemoveSa)
-			go session.Run(packetWriter(pconn, msg.RemoteAddr))
 			watchSession(spi, session)
 		}
 		session.PostMessage(msg)

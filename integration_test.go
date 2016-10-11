@@ -128,8 +128,8 @@ func testWithIdentity(t testing.TB, locid, remid Identity) {
 	// receive the 2 sa
 	sa1 := <-sa
 	sa2 := <-sa
-	t.Logf("IsResponder: %v", sa1.IsResponder)
-	t.Logf("IsResponder: %+v", sa2.IsResponder)
+	t.Logf("sa1I: %v", sa1.SpiI)
+	t.Logf("sa2R: %+v", sa2.SpiR)
 }
 
 // server, serverIP := test.SetupContainer(t, "min", 5000, 100, func() (string, error) {
