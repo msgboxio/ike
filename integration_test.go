@@ -37,6 +37,14 @@ func TestIntPsk(t *testing.T) {
 }
 
 func TestIntCert(t *testing.T) {
+	testWithCert(t)
+}
+
+func BenchmarkIntCert(b *testing.B) {
+	testWithCert(b)
+}
+
+func testWithCert(t testing.TB) {
 	roots, err := LoadRoot("test/cert/cacert.pem")
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +68,7 @@ func TestIntCert(t *testing.T) {
 	testWithIdentity(t, localID, remoteID)
 }
 
-func runInitiator(t *testing.T, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
+func runInitiator(t testing.TB, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
 	initiator := NewInitiator(context.Background(), locid, remid, remoteAddr, localAddr, cfg)
 	initiator.AddSaHandlers(onSa, saRemover)
 	// run state machine, will send initI on given channel
@@ -83,7 +91,7 @@ func runInitiator(t *testing.T, readFrom <-chan []byte, locid, remid Identity, o
 	initiator.PostMessage(authR)
 }
 
-func runResponder(t *testing.T, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
+func runResponder(t testing.TB, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
 	// wait for initI
 	initI, err := DecodeMessage(<-readFrom)
 	if err != nil {
@@ -107,7 +115,7 @@ func runResponder(t *testing.T, readFrom <-chan []byte, locid, remid Identity, o
 	responder.PostMessage(authI)
 }
 
-func testWithIdentity(t *testing.T, locid, remid Identity) {
+func testWithIdentity(t testing.TB, locid, remid Identity) {
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg.AddSelector(net, net)
 	chi := make(chan []byte, 1)
@@ -120,8 +128,8 @@ func testWithIdentity(t *testing.T, locid, remid Identity) {
 	// receive the 2 sa
 	sa1 := <-sa
 	sa2 := <-sa
-	t.Logf("sa1: %+v", *sa1)
-	t.Logf("sa2: %+v", *sa2)
+	t.Logf("IsResponder: %v", sa1.IsResponder)
+	t.Logf("IsResponder: %+v", sa2.IsResponder)
 }
 
 // server, serverIP := test.SetupContainer(t, "min", 5000, 100, func() (string, error) {

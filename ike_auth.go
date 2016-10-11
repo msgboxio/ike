@@ -210,6 +210,6 @@ func HandleAuthForSession(o *Session, m *Message) error {
 		log.Info(o.Tag() + err.Error())
 		return protocol.ERR_AUTHENTICATION_FAILED
 	}
-	log.Info(o.Tag() + "IKE SA AUTHENTICATED")
+	log.V(1).Info(o.Tag() + "IKE SA AUTHENTICATED")
 	return nil
 }

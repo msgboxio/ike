@@ -117,8 +117,8 @@ func (cfg *Config) CheckromAuth(authI *Message) error {
 	if len(tsI) == 0 || len(tsR) == 0 {
 		return errors.New("acceptable traffic selectors are missing")
 	}
-	log.Infof("Configured selectors: [INI]%s<=>%s[RES]", cfg.TsI, cfg.TsR)
-	log.Infof("Offered selectors: [INI]%s<=>%s[RES]", tsI, tsR)
+	log.V(1).Infof("Configured selectors: [INI]%s<=>%s[RES]", cfg.TsI, cfg.TsR)
+	log.V(1).Infof("Offered selectors: [INI]%s<=>%s[RES]", tsI, tsR)
 	// TODO - check selectors
 	return nil
 }

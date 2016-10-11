@@ -85,6 +85,14 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 			return
 		}
 		s.NotificationMessage = append([]byte{}, data...)
+	case SET_WINDOW_SIZE:
+		if len(data) != 4 {
+			log.V(LOG_CODEC_ERR).Infof("Bad window size: %d", len(data))
+			err = ERR_INVALID_SYNTAX
+			return
+		}
+		wsize, _ := packets.ReadB32(data, 0)
+		s.NotificationMessage = wsize
 	default:
 		s.NotificationMessage = append([]byte{}, data...)
 	}

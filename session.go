@@ -203,7 +203,7 @@ func (o *Session) SendAuth() (s state.StateEvent) {
 			Data:  protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
-	log.Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+	log.V(1).Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	auth := AuthFromSession(o)
 	if auth == nil {
 		return state.StateEvent{

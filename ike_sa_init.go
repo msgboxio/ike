@@ -105,16 +105,22 @@ func InvalidKeMsg(spi protocol.Spi, transformID uint16) []byte {
 	return reply
 }
 
-func CheckInitRequest(cfg *Config, initI *Message) error {
-	if err := initI.EnsurePayloads(InitPayloads); err != nil {
+func CheckInitRequest(cfg *Config, m *Message) error {
+	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
+		m.IkeHeader.Flags.IsResponse() ||
+		!m.IkeHeader.Flags.IsInitiator() ||
+		m.IkeHeader.MsgId != 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
 	}
-	if err := cfg.CheckFromInit(initI); err != nil {
+	if err := cfg.CheckFromInit(m); err != nil {
 		return err
 	}
 	// TODO - check if config is usable
 	// check if transforms are usable
-	keI := initI.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	// make sure dh tranform id is the one that was accepted
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
 	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
@@ -173,7 +179,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 	}
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	log.Infof(o.Tag() + "IKE SA INITIALISED")
+	log.V(1).Infof(o.Tag() + "IKE SA INITIALISED")
 	// save Data
 	if o.isInitiator {
 		o.initRb = m.Data
