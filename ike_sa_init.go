@@ -2,33 +2,11 @@ package ike
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/sha1"
-	"errors"
-	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
 )
-
-type CookieError struct {
-	Cookie *protocol.NotifyPayload
-}
-
-func (e CookieError) Error() string {
-	return "Rx Cookie"
-}
-
-var MissingCookieError = errors.New("Missing COOKIE")
-
-var Version []byte
-var Secret [64]byte
-
-func init() {
-	Version = []byte{0, 0}
-	rand.Read(Secret[:])
-}
 
 // IKE_SA_INIT
 // a->b
@@ -127,17 +105,6 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf [
 	return reply
 }
 
-func getCookie(initI *Message) []byte {
-	// Cookie = <VersionIDofSecret> | Hash(Ni | IPi | SPIi | <secret>)
-	digest := sha1.New()
-	no := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	digest.Write(no.Nonce.Bytes())
-	digest.Write(initI.IkeHeader.SpiI)
-	digest.Write(AddrToIp(initI.RemoteAddr))
-	digest.Write(Secret[:])
-	return append(Version, digest.Sum(nil)...)
-}
-
 func CheckInitRequest(cfg *Config, m *Message) error {
 	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
 		m.IkeHeader.Flags.IsResponse() ||
@@ -149,6 +116,7 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 		return err
 	}
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
+		// check if cookie is correct
 		if !bytes.Equal(cookie.NotificationMessage.([]byte), getCookie(m)) {
 			return protocol.ERR_INVALID_KE_PAYLOAD
 		}
@@ -192,7 +160,7 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 		return protocol.ERR_INVALID_SYNTAX
 	}
 	// make sure responder spi is not the same as initiator spi
-	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
+	if bytes.Equal(m.IkeHeader.SpiR, m.IkeHeader.SpiI) {
 		return protocol.ERR_INVALID_SYNTAX
 	}
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
@@ -261,23 +229,4 @@ func HandleInitForSession(o *Session, m *Message) error {
 	}
 	o.SetHashAlgorithms(rfc7427Signatures)
 	return nil
-}
-
-func checkNatHash(digest []byte, spiI, spiR protocol.Spi, addr net.Addr) bool {
-	target := getNatHash(spiI, spiR, addr)
-	// log.Infof("Their:\n%sOur:\n%s", hex.Dump(digest), hex.Dump(target))
-	return bytes.Equal(digest, target)
-}
-
-func getNatHash(spiI, spiR protocol.Spi, addr net.Addr) []byte {
-	ip, port := AddrToIpPort(addr)
-	digest := sha1.New()
-	digest.Write(spiI)
-	digest.Write(spiR)
-	digest.Write(ip)
-	portb := []byte{0, 0}
-	packets.WriteB16(portb, 0, uint16(port))
-	digest.Write(portb)
-	// log.Infof("\n%s%s%s%s", hex.Dump(spiI), hex.Dump(spiR), hex.Dump(ip), hex.Dump(portb))
-	return digest.Sum(nil)
 }

@@ -180,9 +180,11 @@ func processPackets(pconn net.Conn, config *ike.Config) {
 			session, err = newSession(msg, pconn, config)
 			if err != nil {
 				if ce, ok := err.(ike.CookieError); ok {
+					// let retransmission take care to sending init with cookie
 					session.SetCookie(ce.Cookie)
+				} else {
+					log.Warningf("drop packet: %s", err)
 				}
-				log.Warningf("drop packet: %s", err)
 				continue
 			}
 			local := ike.AddrToIp(msg.LocalAddr)

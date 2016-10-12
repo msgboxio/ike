@@ -37,7 +37,7 @@ type Session struct {
 	outgoing chan []byte
 
 	initIb, initRb []byte
-	initCookie     []byte
+	initCookie     []byte // TODO - remove this from sesion
 
 	onAddSaCallback, onRemoveSaCallback SaCallback
 }
@@ -73,7 +73,7 @@ func (o *Session) Run(writeData WriteData) {
 				break
 			}
 			if err := o.handleEncryptedMessage(msg); err != nil {
-				log.Warning(err)
+				log.Warningf(o.Tag()+"Drop message: %s", err)
 				break
 			}
 			if evt := o.handleMessage(msg); evt != nil {
