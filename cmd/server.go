@@ -15,7 +15,6 @@ import (
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
-	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 )
 
@@ -140,7 +139,7 @@ func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Sess
 		// close the initiator session if we do
 		// check if incoming message is an acceptable Init Response
 		if err = ike.CheckInitResponseForSession(session, msg); err != nil {
-			return nil, err
+			return session, err
 		}
 		ike.SetInitiatorParameters(session, msg)
 		// remove from initiators map
@@ -148,9 +147,9 @@ func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Sess
 	} else {
 		// is it a IKE_SA_INIT req ?
 		if err = ike.CheckInitRequest(config, msg); err != nil {
-			if err == protocol.ERR_INVALID_KE_PAYLOAD {
-				tr := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-				ike.WritePacket(pconn, ike.InvalidKeMsg(msg.IkeHeader.SpiI, tr), msg.RemoteAddr)
+			// handle errors that need reply
+			if reply := ike.InitErrorNeedsReply(msg, config, err); reply != nil {
+				ike.WritePacket(pconn, reply, msg.RemoteAddr)
 			}
 			return nil, err
 		}
@@ -180,6 +179,9 @@ func processPackets(pconn net.Conn, config *ike.Config) {
 		if !found {
 			session, err = newSession(msg, pconn, config)
 			if err != nil {
+				if ce, ok := err.(ike.CookieError); ok {
+					session.SetCookie(ce.Cookie)
+				}
 				log.Warningf("drop packet: %s", err)
 				continue
 			}

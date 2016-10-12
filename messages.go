@@ -112,6 +112,10 @@ func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Tx:\n" + string(js))
 	}
+	firstPayloadType := protocol.PayloadTypeNone // no payloads are one possibility
+	if len(s.Payloads.Array) > 0 {
+		firstPayloadType = s.Payloads.Array[0].Type()
+	}
 	nextPayload := s.IkeHeader.NextPayload
 	if nextPayload == protocol.PayloadTypeSK {
 		if tkm == nil {
@@ -121,12 +125,8 @@ func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
 		payload := protocol.EncodePayloads(s.Payloads)
 		plen := len(payload) + tkm.CryptoOverhead(payload)
 		// payload header
-		firstPayload := protocol.PayloadTypeNone // no payloads are one possibility
-		if len(s.Payloads.Array) > 0 {
-			firstPayload = s.Payloads.Array[0].Type()
-		}
 		ph := protocol.PayloadHeader{
-			NextPayload:   firstPayload,
+			NextPayload:   firstPayloadType,
 			PayloadLength: uint16(plen),
 		}.Encode()
 		// prepare proper ike header
@@ -137,6 +137,7 @@ func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
 		b, err = tkm.EncryptMac(headers, payload, forInitiator)
 	} else {
 		b = protocol.EncodePayloads(s.Payloads)
+		s.IkeHeader.NextPayload = firstPayloadType
 		s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)
 		b = append(s.IkeHeader.Encode(), b...)
 	}

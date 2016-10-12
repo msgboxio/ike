@@ -34,6 +34,16 @@ func (p *Payloads) GetNotifications() (ns []*NotifyPayload) {
 	}
 	return
 }
+func (p *Payloads) GetNotification(nt NotificationType) *NotifyPayload {
+	for _, pl := range p.Array {
+		if pl.Type() == PayloadTypeN {
+			if n := pl.(*NotifyPayload); n.NotificationType == nt {
+				return n
+			}
+		}
+	}
+	return nil
+}
 
 func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err error) {
 	payloads = MakePayloads()

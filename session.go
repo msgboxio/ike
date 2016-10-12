@@ -37,6 +37,7 @@ type Session struct {
 	outgoing chan []byte
 
 	initIb, initRb []byte
+	initCookie     []byte
 
 	onAddSaCallback, onRemoveSaCallback SaCallback
 }
@@ -45,6 +46,10 @@ type Session struct {
 
 func (o *Session) Tag() string {
 	return fmt.Sprintf("%#x<=>%#x: ", o.IkeSpiI, o.IkeSpiR)
+}
+
+func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
+	o.initCookie = cn.NotificationMessage.([]byte)
 }
 
 func (o *Session) AddSaHandlers(onAddSa, onRemoveSa SaCallback) {

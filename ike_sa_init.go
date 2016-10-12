@@ -2,13 +2,33 @@ package ike
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha1"
+	"errors"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
 )
+
+type CookieError struct {
+	Cookie *protocol.NotifyPayload
+}
+
+func (e CookieError) Error() string {
+	return "Rx Cookie"
+}
+
+var MissingCookieError = errors.New("Missing COOKIE")
+
+var Version []byte
+var Secret [64]byte
+
+func init() {
+	Version = []byte{0, 0}
+	rand.Read(Secret[:])
+}
 
 // IKE_SA_INIT
 // a->b
@@ -29,13 +49,19 @@ func InitFromSession(o *Session) *Message {
 		IkeHeader: &protocol.IkeHeader{
 			SpiI:         o.IkeSpiI,
 			SpiR:         o.IkeSpiR,
-			NextPayload:  protocol.PayloadTypeSA,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        flags,
 		},
 		Payloads: protocol.MakePayloads(),
+	}
+	if o.initCookie != nil {
+		init.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader:       &protocol.PayloadHeader{},
+			NotificationType:    protocol.COOKIE,
+			NotificationMessage: o.initCookie,
+		})
 	}
 	init.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
@@ -76,14 +102,10 @@ func InitFromSession(o *Session) *Message {
 	return init
 }
 
-// InvalidKeMsg returns an encoded message with given dh transformID
-func InvalidKeMsg(spi protocol.Spi, transformID uint16) []byte {
-	buf := []byte{0, 0}
-	packets.WriteB16(buf, 0, transformID)
+func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf []byte) []byte {
 	msg := &Message{
 		IkeHeader: &protocol.IkeHeader{
 			SpiI:         spi,
-			NextPayload:  protocol.PayloadTypeN,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
@@ -95,14 +117,25 @@ func InvalidKeMsg(spi protocol.Spi, transformID uint16) []byte {
 	msg.Payloads.Add(&protocol.NotifyPayload{
 		PayloadHeader:       &protocol.PayloadHeader{},
 		ProtocolId:          protocol.IKE,
-		NotificationType:    protocol.NotificationType(protocol.INVALID_KE_PAYLOAD),
-		NotificationMessage: buf,
+		NotificationType:    nt,
+		NotificationMessage: nBuf,
 	})
 	reply, err := msg.Encode(nil, false)
 	if err != nil {
 		panic(err)
 	}
 	return reply
+}
+
+func getCookie(initI *Message) []byte {
+	// Cookie = <VersionIDofSecret> | Hash(Ni | IPi | SPIi | <secret>)
+	digest := sha1.New()
+	no := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	digest.Write(no.Nonce.Bytes())
+	digest.Write(initI.IkeHeader.SpiI)
+	digest.Write(AddrToIp(initI.RemoteAddr))
+	digest.Write(Secret[:])
+	return append(Version, digest.Sum(nil)...)
 }
 
 func CheckInitRequest(cfg *Config, m *Message) error {
@@ -115,6 +148,15 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
 	}
+	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
+		if !bytes.Equal(cookie.NotificationMessage.([]byte), getCookie(m)) {
+			return protocol.ERR_INVALID_KE_PAYLOAD
+		}
+	} else {
+		// TODO - this is only temporary; use config to enable DDOS protection
+		return MissingCookieError
+	}
+
 	if err := cfg.CheckFromInit(m); err != nil {
 		return err
 	}
@@ -131,12 +173,30 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 	return nil
 }
 
+func InitErrorNeedsReply(initI *Message, config *Config, err error) []byte {
+	if err == protocol.ERR_INVALID_KE_PAYLOAD {
+		buf := []byte{0, 0}
+		packets.WriteB16(buf, 0, config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId)
+		return notificationResponse(initI.IkeHeader.SpiI, protocol.INVALID_KE_PAYLOAD, buf)
+	} else if err == MissingCookieError {
+		return notificationResponse(initI.IkeHeader.SpiI, protocol.COOKIE, getCookie(initI))
+	}
+	return nil
+}
+
 func CheckInitResponseForSession(o *Session, m *Message) error {
 	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
 		!m.IkeHeader.Flags.IsResponse() ||
 		m.IkeHeader.Flags.IsInitiator() ||
 		m.IkeHeader.MsgId != 0 {
 		return protocol.ERR_INVALID_SYNTAX
+	}
+	// make sure responder spi is not the same as initiator spi
+	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
+		return CookieError{cookie}
 	}
 	// make sure responder spi is set
 	// in case messages are being reflected - TODO
@@ -145,10 +205,6 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 	}
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
-	}
-	// make sure responder spi is not the same as initiator spi
-	if bytes.Compare(m.IkeHeader.SpiR, m.IkeHeader.SpiI) == 0 {
-		return protocol.ERR_INVALID_SYNTAX
 	}
 	return nil
 }
@@ -215,9 +271,6 @@ func checkNatHash(digest []byte, spiI, spiR protocol.Spi, addr net.Addr) bool {
 
 func getNatHash(spiI, spiR protocol.Spi, addr net.Addr) []byte {
 	ip, port := AddrToIpPort(addr)
-	if ip4 := ip.To4(); ip4 != nil {
-		ip = ip4
-	}
 	digest := sha1.New()
 	digest.Write(spiI)
 	digest.Write(spiR)

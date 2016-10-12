@@ -75,18 +75,25 @@ func IPNetToFirstLastAddress(n *net.IPNet) (first, last net.IP, err error) {
 func AddrToIp(addr net.Addr) net.IP {
 	switch ip := addr.(type) {
 	case *net.TCPAddr:
-		return ip.IP
+		return check4(ip.IP)
 	case *net.UDPAddr:
-		return ip.IP
+		return check4(ip.IP)
 	}
 	return nil
 }
 
+func check4(ip net.IP) net.IP {
+	if ip4 := ip.To4(); ip4 != nil {
+		return ip4
+	}
+	return ip
+}
+
 func AddrToIpPort(addr net.Addr) (net.IP, int) {
 	if udp, ok := addr.(*net.UDPAddr); ok {
-		return udp.IP, udp.Port
+		return check4(udp.IP), udp.Port
 	} else if tcp, ok := addr.(*net.TCPAddr); ok {
-		return tcp.IP, tcp.Port
+		return check4(tcp.IP), tcp.Port
 	}
 	panic("enexpected addr " + addr.String())
 }
