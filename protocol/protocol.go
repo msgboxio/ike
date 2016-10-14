@@ -808,7 +808,7 @@ func (s *EncryptedPayload) Decode(b []byte) (err error) {
 type ConfigurationPayload struct {
 	*PayloadHeader
 	ConfigurationType
-	ConfigurationAttributes []ConfigurationAttribute
+	ConfigurationAttributes []*ConfigurationAttribute
 }
 
 type ConfigurationType uint8

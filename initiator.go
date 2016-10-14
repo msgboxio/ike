@@ -46,6 +46,6 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, remote, lo
 	o.authLocal = NewAuthenticator(localID, o.tkm, o.rfc7427Signatures, o.isInitiator)
 	o.authRemote = NewAuthenticator(remoteID, o.tkm, o.rfc7427Signatures, o.isInitiator)
 	o.Fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
-	o.PostEvent(state.StateEvent{Event: state.SMI_START})
+	o.PostEvent(&state.StateEvent{Event: state.SMI_START})
 	return o
 }

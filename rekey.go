@@ -104,5 +104,5 @@ func (o *ReKeySession) HandleSaRekey(msg interface{}) {
 		o.newIkeSpiR)
 	// save Data
 	o.initRb = m.Data
-	o.PostEvent(state.StateEvent{})
+	o.PostEvent(&state.StateEvent{})
 }

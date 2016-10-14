@@ -1,5 +1,7 @@
 package state
 
+type State uint32
+
 const (
 	STATE_IDLE State = iota
 	STATE_START
@@ -11,6 +13,8 @@ const (
 	STATE_CLOSING
 	STATE_FINISHED
 )
+
+type Event uint32
 
 const (
 	SUCCESS Event = iota
@@ -37,20 +41,26 @@ const (
 	ENTRY_EVENT
 )
 
+type StateEvent struct {
+	Event
+	Message interface{}
+	Error   error
+}
+
 type FsmHandler interface {
 	// actions
-	SendInit() StateEvent
-	SendAuth() StateEvent
-	InstallSa() StateEvent
-	RemoveSa() StateEvent
-	Finished() StateEvent
+	SendInit(*StateEvent) *StateEvent
+	SendAuth(*StateEvent) *StateEvent
+	InstallSa(*StateEvent) *StateEvent
+	RemoveSa(*StateEvent) *StateEvent
+	Finished(*StateEvent) *StateEvent
 
 	// checks
-	HandleIkeSaInit(interface{}) StateEvent
-	HandleIkeAuth(interface{}) StateEvent
-	CheckSa(interface{}) StateEvent
-	HandleCreateChildSa(interface{}) StateEvent
-	HandleClose(interface{}) StateEvent
+	HandleIkeSaInit(*StateEvent) *StateEvent
+	HandleIkeAuth(*StateEvent) *StateEvent
+	CheckSa(*StateEvent) *StateEvent
+	HandleCreateChildSa(*StateEvent) *StateEvent
+	HandleClose(*StateEvent) *StateEvent
 
-	CheckError(interface{}) StateEvent
+	CheckError(*StateEvent) *StateEvent
 }

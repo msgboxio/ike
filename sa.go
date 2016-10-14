@@ -71,12 +71,12 @@ func removeSa(tkm *Tkm,
 }
 
 // CheckSaForSession callback from state machine
-func checkSaForSession(o *Session, msg *Message) (s state.StateEvent) {
+func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 	// get peer spi
 	espSpi, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {
 		log.Error(err)
-		s.Data = err
+		s.Error = err
 		return
 	}
 	if o.isInitiator {
@@ -96,7 +96,7 @@ func checkSaForSession(o *Session, msg *Message) (s state.StateEvent) {
 			}
 			log.Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
-				o.PostEvent(state.StateEvent{Event: state.REKEY_START})
+				o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
 			})
 		case protocol.USE_TRANSPORT_MODE:
 			wantsTransportMode = true
@@ -110,13 +110,13 @@ func checkSaForSession(o *Session, msg *Message) (s state.StateEvent) {
 		} else if o.cfg.IsTransportMode {
 			err := errors.New("Peer Rejected Transport Mode Config")
 			log.Error(o.Tag() + err.Error())
-			s.Data = err
+			s.Error = err
 		}
 	}
 	// load additional configs
 	if err := o.cfg.CheckromAuth(msg); err != nil {
 		log.Error(err)
-		s.Data = err
+		s.Error = err
 		return
 	}
 	// TODO - check IPSEC selectors & config

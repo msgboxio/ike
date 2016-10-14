@@ -7,19 +7,11 @@ import (
 	"github.com/msgboxio/log"
 )
 
-// TODO - currently the timeout is statically configured
-const RETRY_TIMEOUT = 2
+// TODO -
+const RETRY_TIMEOUT = 2 * time.Second
 
-type Event uint32
-type State uint32
-
-type StateEvent struct {
-	Event
-	Data interface{}
-}
-
-type CheckEvent func(interface{}) StateEvent
-type Action func() StateEvent
+type CheckEvent func(*StateEvent) *StateEvent
+type Action func(*StateEvent) *StateEvent
 
 type Transition struct {
 	Dest State
@@ -53,7 +45,7 @@ type Fsm struct {
 	transitions
 	State
 
-	messages chan StateEvent
+	messages chan *StateEvent
 }
 
 func NewFsm(inputs ...map[State]UserTransitions) *Fsm {
@@ -64,15 +56,15 @@ func NewFsm(inputs ...map[State]UserTransitions) *Fsm {
 	return &Fsm{
 		transitions: trs,
 		State:       STATE_IDLE,
-		messages:    make(chan StateEvent, 10),
+		messages:    make(chan *StateEvent, 10),
 	}
 }
 
-func (f *Fsm) PostEvent(m StateEvent) {
+func (f *Fsm) PostEvent(m *StateEvent) {
 	f.messages <- m
 }
 
-func (f *Fsm) Events() <-chan StateEvent { return f.messages }
+func (f *Fsm) Events() <-chan *StateEvent { return f.messages }
 
 func (f *Fsm) CloseEvents() {
 	close(f.messages)
@@ -83,18 +75,20 @@ func (f *Fsm) CloseEvents() {
 	}
 }
 
-func (f *Fsm) runTransition(t Transition, m StateEvent) (evt StateEvent) {
+// runTransition runs the CheckEvent callback & then Action
+// in both cases it stops on error and posts the Error event
+func (f *Fsm) runTransition(t Transition, m *StateEvent) (evt *StateEvent) {
 	if t.CheckEvent != nil {
-		if evt = t.CheckEvent(m.Data); evt.Data != nil {
-			log.V(2).Infof("Check Error: %s", evt.Data)
+		if evt = t.CheckEvent(m); evt != nil && evt.Error != nil {
+			log.V(2).Infof("Check Error: %s", evt.Error)
 			// dont transition, handle error in same state
 			f.PostEvent(evt)
 			return evt
 		}
 	}
 	if t.Action != nil {
-		if evt = t.Action(); evt.Data != nil {
-			log.V(2).Infof("Action Error: %s", evt.Data)
+		if evt = t.Action(m); evt != nil && evt.Error != nil {
+			log.V(2).Infof("Action Error: %s", evt.Error)
 			// dont transition, handle error in same state
 			f.PostEvent(evt)
 			return evt
@@ -103,12 +97,12 @@ func (f *Fsm) runTransition(t Transition, m StateEvent) (evt StateEvent) {
 	return
 }
 
-func (f *Fsm) runEntryEvent(t Transition, m StateEvent) (evt StateEvent) {
+func (f *Fsm) runEntryEvent(t Transition, m *StateEvent) (evt *StateEvent) {
 	// execute entry action for new state, it does not directly cause state changes
 	tEntry, ok := f.transitions[key(ENTRY_EVENT, t.Dest)]
 	if ok {
 		log.V(2).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
-		if evt = f.runTransition(tEntry, m); evt.Data != nil {
+		if evt = f.runTransition(tEntry, m); evt != nil && evt.Error != nil {
 			return
 		}
 	}
@@ -124,25 +118,25 @@ func (f *Fsm) runTimer() {
 	go func() {
 		for {
 			// TODO - timeout is
-			time.Sleep(time.Second * RETRY_TIMEOUT)
+			time.Sleep(RETRY_TIMEOUT)
 			if f.State != curState {
 				// state changed, end the goroutine
 				break
 			}
 			// state is still the same, fire timeout event
-			f.PostEvent(StateEvent{Event: TIMEOUT})
+			f.PostEvent(&StateEvent{Event: TIMEOUT})
 		}
 	}()
 }
 
-func (f *Fsm) HandleEvent(m StateEvent) {
+func (f *Fsm) HandleEvent(m *StateEvent) {
 	t, ok := f.transitions[key(m.Event, f.State)]
 	if !ok {
 		log.V(2).Infof("Ignoring event %s, in State %s", m.Event, f.State)
 		return
 	}
 	log.V(2).Infof("Run: Event %s, in State %s", m.Event, f.State)
-	if evt := f.runTransition(t, m); evt.Data != nil {
+	if evt := f.runTransition(t, m); evt != nil && evt.Error != nil {
 		return
 	}
 	if t.Dest == f.State {
@@ -154,7 +148,7 @@ func (f *Fsm) HandleEvent(m StateEvent) {
 		return
 	}
 	// legitemate state change
-	if evt := f.runEntryEvent(t, m); evt.Data != nil {
+	if evt := f.runEntryEvent(t, m); evt != nil && evt.Error != nil {
 		return
 	}
 	log.V(2).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
