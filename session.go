@@ -19,6 +19,11 @@ type SaMessage struct {
 	IsAdd bool
 }
 
+type OutgoingMessge struct {
+	Data []byte
+	net.Addr
+}
+
 type Session struct {
 	context.Context
 	cancel context.CancelFunc
@@ -38,7 +43,7 @@ type Session struct {
 	msgIdReq, msgIdResp uint32
 
 	incoming chan *Message
-	outgoing chan []byte
+	outgoing chan *OutgoingMessge
 
 	initIb, initRb []byte
 	initCookie     []byte // TODO - remove this from sesion
@@ -124,14 +129,30 @@ func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
 	return nil
 }
 
-func (o *Session) sendMsg(buf []byte, err error) (s *state.StateEvent) {
+func incomingAddress(incoming interface{}) net.Addr {
+	msg, ok := incoming.(*Message)
+	if !ok {
+		return nil
+	}
+	return msg.RemoteAddr
+}
+
+func (o *Session) encode(msg *Message, to net.Addr) (*OutgoingMessge, error) {
+	buf, err := msg.Encode(o.tkm, o.isInitiator)
+	if err != nil {
+		return nil, err
+	}
+	return &OutgoingMessge{buf, to}, nil
+}
+
+func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) {
 	if err != nil {
 		log.Error(err)
 		s.Event = state.FAIL
 		s.Error = err
 		return
 	}
-	o.outgoing <- buf
+	o.outgoing <- msg
 	return
 }
 
@@ -183,19 +204,19 @@ func (o *Session) Finished(*state.StateEvent) (s *state.StateEvent) {
 }
 
 // SendInit callback from state machine
-func (o *Session) SendInit(*state.StateEvent) (s *state.StateEvent) {
-	initMsg := func(msgId uint32) ([]byte, error) {
+func (o *Session) SendInit(inEvt *state.StateEvent) (s *state.StateEvent) {
+	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgId = msgId
 		// encode
-		initB, err := init.Encode(o.tkm, o.isInitiator)
+		initB, err := o.encode(init, incomingAddress(inEvt.Message))
 		if err != nil {
 			return nil, err
 		}
 		if o.isInitiator {
-			o.initIb = initB
+			o.initIb = initB.Data
 		} else {
-			o.initRb = initB
+			o.initRb = initB.Data
 		}
 		return initB, nil
 	}
@@ -203,7 +224,7 @@ func (o *Session) SendInit(*state.StateEvent) (s *state.StateEvent) {
 }
 
 // SendAuth callback from state machine
-func (o *Session) SendAuth(*state.StateEvent) (s *state.StateEvent) {
+func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return &state.StateEvent{
@@ -220,7 +241,7 @@ func (o *Session) SendAuth(*state.StateEvent) (s *state.StateEvent) {
 		}
 	}
 	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
-	return o.sendMsg(auth.Encode(o.tkm, o.isInitiator))
+	return o.sendMsg(o.encode(auth, incomingAddress(inEvt.Message)))
 }
 
 // InstallSa callback from state machine
@@ -324,14 +345,14 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	info := NotifyFromSession(o, ie)
 	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
-	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
+	o.sendMsg(o.encode(info, nil))
 }
 
 func (o *Session) sendIkeSaDelete() {
 	info := DeleteFromSession(o)
 	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
-	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
+	o.sendMsg(o.encode(info, nil))
 }
 
 // SendEmptyInformational can be used for periodic keepalive
@@ -339,7 +360,7 @@ func (o *Session) SendEmptyInformational(isResponse bool) {
 	info := EmptyFromSession(o, isResponse)
 	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
 	// encode & send
-	o.sendMsg(info.Encode(o.tkm, o.isInitiator))
+	o.sendMsg(o.encode(info, nil))
 }
 
 func (o *Session) AddHostBasedSelectors(local, remote net.IP) {

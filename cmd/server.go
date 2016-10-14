@@ -66,8 +66,15 @@ func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallbac
 	// callback will run within session's goroutine
 	return func(data interface{}) error {
 		switch msg := data.(type) {
-		case []byte:
-			return ike.WritePacket(conn, msg, remote)
+		case *ike.OutgoingMessge:
+			dest := msg.Addr
+			if dest == nil {
+				dest = remote
+				log.Infof("default addr %s", remote)
+			} else {
+				log.Infof("incoming addr %s", dest)
+			}
+			return ike.WritePacket(conn, msg.Data, dest)
 		case *ike.SaMessage:
 			remoteIP := ike.AddrToIp(remote)
 			localIP := ike.AddrToIp(local)
@@ -226,14 +233,6 @@ func main() {
 		remoteAddr, err := net.ResolveUDPAddr("udp", remoteString)
 		if err != nil {
 			log.Fatalf("error resolving: %+v", err)
-		}
-		// resolution gives us v4 mapped addressees for ip4
-		if ip := remoteAddr.IP.To4(); ip != nil {
-			remoteAddr.IP = ip
-		}
-		remoteAddr = &net.UDPAddr{
-			IP:   remoteAddr.IP,
-			Port: remoteAddr.Port,
 		}
 		initiator := ike.NewInitiator(context.Background(), localId, remoteId, config)
 		initiator.SetCbHandler(ikeCallbackHandler(pconn, nil, remoteAddr))

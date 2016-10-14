@@ -60,7 +60,7 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		log.Error(err)
 		return
 	}
-	o.outgoing <- o.initIb
+	o.outgoing <- &OutgoingMessge{o.initIb, nil}
 }
 
 //  SK {SA, Nr, KEr} - ike sa
