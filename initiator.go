@@ -1,8 +1,6 @@
 package ike
 
 import (
-	"net"
-
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/state"
@@ -10,7 +8,7 @@ import (
 )
 
 // NewInitiator creates an initiator session
-func NewInitiator(parent context.Context, localID, remoteID Identity, remote, local net.Addr, cfg *Config) *Session {
+func NewInitiator(parent context.Context, localID, remoteID Identity, cfg *Config) *Session {
 	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
@@ -30,12 +28,11 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, remote, lo
 
 	cxt, cancel := context.WithCancel(parent)
 	o := &Session{
-		Context:     cxt,
-		cancel:      cancel,
-		isInitiator: true,
-		tkm:         tkm,
-		cfg:         CopyConfig(cfg),
-		// local:             local,
+		Context:           cxt,
+		cancel:            cancel,
+		isInitiator:       true,
+		tkm:               tkm,
+		cfg:               CopyConfig(cfg),
 		IkeSpiI:           MakeSpi(),
 		EspSpiI:           MakeSpi()[:4],
 		incoming:          make(chan *Message, 10),

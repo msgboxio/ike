@@ -12,8 +12,12 @@ import (
 	"github.com/msgboxio/log"
 )
 
-type SaCallback func(sa *platform.SaParams) error
-type WriteData func([]byte) error
+type ClientCallback func(interface{}) error
+
+type SaMessage struct {
+	*platform.SaParams
+	IsAdd bool
+}
 
 type Session struct {
 	context.Context
@@ -39,7 +43,7 @@ type Session struct {
 	initIb, initRb []byte
 	initCookie     []byte // TODO - remove this from sesion
 
-	onAddSaCallback, onRemoveSaCallback SaCallback
+	callback ClientCallback
 }
 
 // Housekeeping
@@ -52,19 +56,18 @@ func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
 	o.initCookie = cn.NotificationMessage.([]byte)
 }
 
-func (o *Session) AddSaHandlers(onAddSa, onRemoveSa SaCallback) {
-	o.onAddSaCallback = onAddSa
-	o.onRemoveSaCallback = onRemoveSa
+func (o *Session) SetCbHandler(cb ClientCallback) {
+	o.callback = cb
 }
 
-func (o *Session) Run(writeData WriteData) {
+func (o *Session) Run() {
 	for {
 		select {
 		case reply, ok := <-o.outgoing:
 			if !ok {
 				break
 			}
-			if err := writeData(reply); err != nil {
+			if err := o.callback(reply); err != nil {
 				o.Close(err)
 				break
 			}
@@ -227,9 +230,7 @@ func (o *Session) InstallSa(*state.StateEvent) (s *state.StateEvent) {
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
 		o.isInitiator)
-	if o.onAddSaCallback != nil {
-		o.onAddSaCallback(sa)
-	}
+	o.callback(&SaMessage{sa, true})
 	// move to STATE_MATURE state
 	o.PostEvent(&state.StateEvent{Event: state.SUCCESS})
 	return
@@ -242,9 +243,7 @@ func (o *Session) RemoveSa(*state.StateEvent) (s *state.StateEvent) {
 		o.EspSpiI, o.EspSpiR,
 		o.cfg,
 		o.isInitiator)
-	if o.onRemoveSaCallback != nil {
-		o.onRemoveSaCallback(sa)
-	}
+	o.callback(&SaMessage{sa, false})
 	return
 }
 

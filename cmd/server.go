@@ -62,39 +62,34 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certific
 	return config, localString, remoteString, roots, certs, key
 }
 
-func packetWriter(conn net.Conn, to net.Addr) ike.WriteData {
-	return func(reply []byte) error {
-		return ike.WritePacket(conn, reply, to)
-	}
-}
-func saInstaller(local, remote net.IP) ike.SaCallback {
-	return func(sa *platform.SaParams) error {
-		if sa.IsResponder {
-			sa.Ini = remote
-			sa.Res = local
-		} else {
-			sa.Ini = local
-			sa.Res = remote
+func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallback {
+	// callback will run within session's goroutine
+	return func(data interface{}) error {
+		switch msg := data.(type) {
+		case []byte:
+			return ike.WritePacket(conn, msg, remote)
+		case *ike.SaMessage:
+			remoteIP := ike.AddrToIp(remote)
+			localIP := ike.AddrToIp(local)
+			if msg.IsResponder {
+				msg.Ini = remoteIP
+				msg.Res = localIP
+			} else {
+				msg.Ini = localIP
+				msg.Res = remoteIP
+			}
+			if msg.IsAdd {
+				log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
+					msg.SpiI, msg.SpiR, msg.Ini, msg.IniNet, msg.ResNet, msg.Res)
+				err := platform.InstallChildSa(msg.SaParams)
+				log.Info("Installed Child SA; error:", err)
+				return err
+			}
+			err := platform.RemoveChildSa(msg.SaParams)
+			log.Info("Removed child SA")
+			return err
 		}
-		log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
-			sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
-		err := platform.InstallChildSa(sa)
-		log.Info("Installed Child SA; error:", err)
-		return err
-	}
-}
-func saRemover(local, remote net.IP) ike.SaCallback {
-	return func(sa *platform.SaParams) error {
-		if sa.IsResponder {
-			sa.Ini = remote
-			sa.Res = local
-		} else {
-			sa.Ini = local
-			sa.Res = remote
-		}
-		err := platform.RemoveChildSa(sa)
-		log.Info("Removed child SA")
-		return err
+		return nil
 	}
 }
 
@@ -158,46 +153,37 @@ func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Sess
 		if err != nil {
 			return nil, err
 		}
-		go session.Run(packetWriter(pconn, msg.RemoteAddr))
+		go session.Run()
 	}
 	return session, nil
 }
 
 // runs on main goroutine
 // loops until there is a socket error
-func processPackets(pconn net.Conn, config *ike.Config) {
-	for {
-		msg, err := ike.ReadMessage(pconn)
+func processPacket(pconn net.Conn, msg *ike.Message, config *ike.Config) {
+	// convert spi to uint64 for map lookup
+	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
+	// check if a session exists
+	session, found := sessions[spi]
+	if !found {
+		var err error
+		session, err = newSession(msg, pconn, config)
 		if err != nil {
-			log.Error(err)
-			break
-		}
-		// convert spi to uint64 for map lookup
-		spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
-		// check if a session exists
-		session, found := sessions[spi]
-		if !found {
-			session, err = newSession(msg, pconn, config)
-			if err != nil {
-				if ce, ok := err.(ike.CookieError); ok {
-					// let retransmission take care to sending init with cookie
-					session.SetCookie(ce.Cookie)
-				} else {
-					log.Warningf("drop packet: %s", err)
-				}
-				continue
+			if ce, ok := err.(ike.CookieError); ok {
+				// let retransmission take care to sending init with cookie
+				// session is always returned for CookieError
+				session.SetCookie(ce.Cookie)
+			} else {
+				log.Warningf("drop packet: %s", err)
 			}
-			local := ike.AddrToIp(msg.LocalAddr)
-			remote := ike.AddrToIp(msg.RemoteAddr)
-			onAddSa := saInstaller(local, remote)
-			onRemoveSa := saRemover(local, remote)
-			session.AddSaHandlers(onAddSa, onRemoveSa)
-			// host based selectors can be added directly since both addresses are available
-			session.AddHostBasedSelectors(local, remote)
-			watchSession(spi, session)
+			return
 		}
-		session.PostMessage(msg)
+		session.SetCbHandler(ikeCallbackHandler(pconn, msg.LocalAddr, msg.RemoteAddr))
+		// host based selectors can be added directly since both addresses are available
+		session.AddHostBasedSelectors(ike.AddrToIp(msg.LocalAddr), ike.AddrToIp(msg.RemoteAddr))
+		watchSession(spi, session)
 	}
+	session.PostMessage(msg)
 }
 
 func main() {
@@ -249,9 +235,10 @@ func main() {
 			IP:   remoteAddr.IP,
 			Port: remoteAddr.Port,
 		}
-		initiator := ike.NewInitiator(context.Background(), localId, remoteId, remoteAddr, pconn.LocalAddr(), config)
+		initiator := ike.NewInitiator(context.Background(), localId, remoteId, config)
+		initiator.SetCbHandler(ikeCallbackHandler(pconn, nil, remoteAddr))
 		intiators[ike.SpiToInt64(initiator.IkeSpiI)] = initiator
-		go initiator.Run(packetWriter(pconn, remoteAddr))
+		go initiator.Run()
 	}
 
 	wg := &sync.WaitGroup{}
@@ -271,9 +258,16 @@ func main() {
 		wg.Done()
 	}()
 
-	// this will return when there is a socket error
-	// usually caused by the close call above
-	processPackets(pconn, config)
+	for {
+		// this will return when there is a socket error
+		// usually caused by the close call above
+		msg, err := ike.ReadMessage(pconn)
+		if err != nil {
+			log.Error(err)
+			break
+		}
+		processPacket(pconn, msg, config)
+	}
 	cancel(context.Canceled)
 
 	wg.Wait()
