@@ -2,9 +2,11 @@ package protocol
 
 import (
 	"encoding/hex"
+	"fmt"
 
 	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
 )
 
 func (h *PayloadHeader) NextPayloadType() PayloadType {
@@ -23,10 +25,9 @@ func (h PayloadHeader) Encode() (b []byte) {
 	return
 }
 
-func (h *PayloadHeader) Decode(b []byte) (err error) {
+func (h *PayloadHeader) Decode(b []byte) error {
 	if len(b) < 4 {
-		log.V(LOG_CODEC_ERR).Infof("Packet Too short : %d", len(b))
-		return ERR_INVALID_SYNTAX
+		return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Packet Too short : %d", len(b)))
 	}
 	pt, _ := packets.ReadB8(b, 0)
 	h.NextPayload = PayloadType(pt)
@@ -35,5 +36,5 @@ func (h *PayloadHeader) Decode(b []byte) (err error) {
 	}
 	h.PayloadLength, _ = packets.ReadB16(b, 2)
 	log.V(LOG_CODEC).Infof("Payload Header: %+v from \n%s", *h, hex.Dump(b))
-	return
+	return nil
 }

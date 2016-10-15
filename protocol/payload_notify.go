@@ -3,8 +3,8 @@ package protocol
 import (
 	"time"
 
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
 )
 
 func (s *NotifyPayload) Type() PayloadType {
@@ -36,17 +36,13 @@ func (s *NotifyPayload) Encode() (b []byte) {
 
 func (s *NotifyPayload) Decode(b []byte) (err error) {
 	if len(b) < 4 {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload length")
 	}
 	pId, _ := packets.ReadB8(b, 0)
 	s.ProtocolId = ProtocolId(pId)
 	spiLen, _ := packets.ReadB8(b, 1)
 	if len(b) < 4+int(spiLen) {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload length")
 	}
 	nType, _ := packets.ReadB16(b, 2)
 	s.NotificationType = NotificationType(nType)
@@ -55,18 +51,14 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 	switch s.NotificationType {
 	case AUTH_LIFETIME:
 		if ltime, errc := packets.ReadB32(data, 0); errc != nil {
-			log.V(LOG_CODEC_ERR).Info("")
-			err = ERR_INVALID_SYNTAX
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload length")
 		} else {
 			s.NotificationMessage = time.Second * time.Duration(ltime)
 		}
 	case SIGNATURE_HASH_ALGORITHMS:
 		// list of 16-bit hash algorithm identifiers
 		if len(data)%2 != 0 {
-			log.V(LOG_CODEC_ERR).Info("SIGNATURE_HASH_ALGORITHMS data is bad")
-			err = ERR_INVALID_SYNTAX
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload SIGNATURE_HASH_ALGORITHMS")
 		}
 		var algos []HashAlgorithmId
 		numAlgs := len(data) / 2
@@ -80,16 +72,12 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 	case COOKIE:
 		// check if data is <= 64 bytes
 		if len(data) == 0 || len(data) > 64 {
-			log.V(LOG_CODEC_ERR).Infof("Bad Cookie length: %d", len(data))
-			err = ERR_INVALID_SYNTAX
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload COOKIE")
 		}
 		s.NotificationMessage = append([]byte{}, data...)
 	case SET_WINDOW_SIZE:
 		if len(data) != 4 {
-			log.V(LOG_CODEC_ERR).Infof("Bad window size: %d", len(data))
-			err = ERR_INVALID_SYNTAX
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload SET_WINDOW_SIZE")
 		}
 		wsize, _ := packets.ReadB32(data, 0)
 		s.NotificationMessage = wsize

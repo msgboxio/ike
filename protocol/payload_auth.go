@@ -1,6 +1,11 @@
 package protocol
 
-import "github.com/msgboxio/packets"
+import (
+	"fmt"
+
+	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
+)
 
 func (s *AuthPayload) Type() PayloadType {
 	return PayloadTypeAUTH
@@ -11,16 +16,15 @@ func (s *AuthPayload) Encode() (b []byte) {
 	return append(b, s.Data...)
 }
 
-func (s *AuthPayload) Decode(b []byte) (err error) {
+func (s *AuthPayload) Decode(b []byte) error {
 	if len(b) < 4 {
-		err = ErrF(ERR_INVALID_SYNTAX, "auth too small %d < %d", len(b), 4)
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("auth too small %d < %d", len(b), 4))
 	}
 	// Header has already been decoded
 	authMethod, _ := packets.ReadB8(b, 0)
 	s.AuthMethod = AuthMethod(authMethod)
 	s.Data = append([]byte{}, b[4:]...)
-	return
+	return nil
 }
 
 func (s *SignatureAuth) Encode() (b []byte) {
@@ -28,10 +32,9 @@ func (s *SignatureAuth) Encode() (b []byte) {
 	return append(b, s.Signature...)
 }
 
-func (s *SignatureAuth) Decode(b []byte) (err error) {
+func (s *SignatureAuth) Decode(b []byte) error {
 	if len(b) < 1 {
-		err = ErrF(ERR_INVALID_SYNTAX, "signature auth too small %d < %d", len(b), 1)
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("signature auth too small %d < %d", len(b), 1))
 	}
 	asnLen, _ := packets.ReadB8(b, 0)
 	s.Asn1Data = append([]byte{}, b[1:1+asnLen]...)

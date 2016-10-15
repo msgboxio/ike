@@ -1,8 +1,8 @@
 package protocol
 
 import (
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
 )
 
 func (s *DeletePayload) Type() PayloadType {
@@ -20,11 +20,9 @@ func (s *DeletePayload) Encode() (b []byte) {
 	packets.WriteB16(b, 2, uint16(nspi))
 	return
 }
-func (s *DeletePayload) Decode(b []byte) (err error) {
+func (s *DeletePayload) Decode(b []byte) error {
 	if len(b) < 4 {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, "Delete payload length")
 	}
 	pid, _ := packets.ReadB8(b, 0)
 	s.ProtocolId = ProtocolId(pid)
@@ -32,14 +30,12 @@ func (s *DeletePayload) Decode(b []byte) (err error) {
 	nspi, _ := packets.ReadB16(b, 2)
 	b = b[4:]
 	if len(b) < (int(lspi) * int(nspi)) {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, "Delete payload length")
 	}
 	for i := 0; i < int(nspi); i++ {
 		spi := append([]byte{}, b[:int(lspi)]...)
 		s.Spis = append(s.Spis, spi)
 		b = b[:int(lspi)]
 	}
-	return
+	return nil
 }

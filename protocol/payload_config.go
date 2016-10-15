@@ -1,27 +1,29 @@
 package protocol
 
-import "github.com/msgboxio/packets"
+import (
+	"fmt"
+
+	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
+)
 
 func (s *ConfigurationPayload) Type() PayloadType  { return PayloadTypeCP }
 func (s *ConfigurationPayload) Encode() (b []byte) { return }
-func (s *ConfigurationPayload) Decode(b []byte) (err error) {
+func (s *ConfigurationPayload) Decode(b []byte) error {
 	if len(b) < 4 {
-		err = ErrF(ERR_INVALID_SYNTAX, "payload too small %d < %d", len(b), 4)
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("payload too small %d < %d", len(b), 4))
 	}
 	cfgType, _ := packets.ReadB8(b, 0)
 	s.ConfigurationType = ConfigurationType(cfgType)
 	b = b[4:]
 	for len(b) > 0 {
 		if len(b) < 4 {
-			err = ErrF(ERR_INVALID_SYNTAX, "Attribute too small %d < %d", len(b), 4)
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Attribute too small %d < %d", len(b), 4))
 		}
 		aType, _ := packets.ReadB16(b, 0)
 		aLen, _ := packets.ReadB16(b, 2)
 		if len(b) < 4+int(aLen) {
-			err = ErrF(ERR_INVALID_SYNTAX, "Attribute value too small %d < %d", len(b), 4+int(aLen))
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Attribute value too small %d < %d", len(b), 4+int(aLen)))
 		}
 		switch ConfigurationAttributeType(aType) {
 		case INTERNAL_IP4_ADDRESS:
@@ -44,5 +46,5 @@ func (s *ConfigurationPayload) Decode(b []byte) (err error) {
 		s.ConfigurationAttributes = append(s.ConfigurationAttributes, attr)
 		b = b[aLen+4:]
 	}
-	return
+	return nil
 }

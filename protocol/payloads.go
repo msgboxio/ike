@@ -3,8 +3,10 @@ package protocol
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 // Payloads
@@ -45,23 +47,21 @@ func (p *Payloads) GetNotification(nt NotificationType) *NotifyPayload {
 	return nil
 }
 
-func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err error) {
-	payloads = MakePayloads()
+func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
+	payloads := MakePayloads()
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
-			log.V(LOG_CODEC_ERR).Info("payload is too small, %d < %d", len(b), PAYLOAD_HEADER_LENGTH)
-			err = ERR_INVALID_SYNTAX
-			return
+			return nil, errors.Wrap(ERR_INVALID_SYNTAX,
+				fmt.Sprintf("payload is too small, %d < %d", len(b), PAYLOAD_HEADER_LENGTH))
 		}
 		pHeader := &PayloadHeader{}
-		if err = pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
-			return
+		if err := pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
+			return nil, err
 		}
 		if (len(b) < int(pHeader.PayloadLength)) ||
 			(int(pHeader.PayloadLength) < PAYLOAD_HEADER_LENGTH) {
-			log.V(LOG_CODEC_ERR).Info("incorrect payload length in payload header")
-			err = ERR_INVALID_SYNTAX
-			return
+			return nil, errors.Wrap(ERR_INVALID_SYNTAX,
+				fmt.Sprintf("incorrect payload length in payload header"))
 		}
 		var payload Payload
 		switch nextPayload {
@@ -98,13 +98,11 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err 
 		case PayloadTypeEAP:
 			payload = &EapPayload{PayloadHeader: pHeader}
 		default:
-			log.V(LOG_CODEC_ERR).Infof("Invalid Payload Type received: 0x%x", nextPayload)
-			err = ERR_INVALID_SYNTAX
-			return
+			return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Invalid Payload Type received: 0x%x", nextPayload))
 		}
 		pbuf := b[PAYLOAD_HEADER_LENGTH:pHeader.PayloadLength]
-		if err = payload.Decode(pbuf); err != nil {
-			return
+		if err := payload.Decode(pbuf); err != nil {
+			return nil, err
 		}
 		if log.V(LOG_CODEC) {
 			js, _ := json.Marshal(payload)
@@ -113,16 +111,15 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (payloads *Payloads, err 
 		payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
 			// log.V(1).Infof("Received %s: encrypted payloads %s", s.IkeHeader.ExchangeType, *payloads)
-			return
+			return payloads, nil
 		}
 		nextPayload = pHeader.NextPayload
 		b = b[pHeader.PayloadLength:]
 	}
 	if len(b) > 0 {
-		log.V(LOG_CODEC_ERR).Infof("remaining %d\n%s", len(b), hex.Dump(b))
-		err = ERR_INVALID_SYNTAX
+		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("remaining %d\n%s", len(b), hex.Dump(b)))
 	}
-	return
+	return payloads, nil
 }
 
 func EncodePayloads(payloads *Payloads) (b []byte) {

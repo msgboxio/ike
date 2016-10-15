@@ -2,24 +2,23 @@ package protocol
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net"
 
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
 )
 
 func decodeSelector(b []byte) (sel *Selector, used int, err error) {
 	if len(b) < MIN_LEN_SELECTOR {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = errors.Wrap(ERR_INVALID_SYNTAX, "Selector length")
 		return
 	}
 	stype, _ := packets.ReadB8(b, 0)
 	id, _ := packets.ReadB8(b, 1)
 	slen, _ := packets.ReadB16(b, 2)
 	if len(b) < int(slen) {
-		log.V(LOG_CODEC_ERR).Infof("bad selector length\n%s", hex.Dump(b))
-		err = ERR_INVALID_SYNTAX
+		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("bad selector length\n%s", hex.Dump(b)))
 		return
 	}
 	sport, _ := packets.ReadB16(b, 4)
@@ -29,8 +28,7 @@ func decodeSelector(b []byte) (sel *Selector, used int, err error) {
 		iplen = net.IPv6len
 	}
 	if len(b) < 8+2*iplen {
-		log.V(LOG_CODEC_ERR).Info("")
-		err = ERR_INVALID_SYNTAX
+		err = errors.Wrap(ERR_INVALID_SYNTAX, "Selector length")
 		return
 	}
 	sel = &Selector{
@@ -67,27 +65,22 @@ func (s *TrafficSelectorPayload) Encode() (b []byte) {
 	}
 	return
 }
-func (s *TrafficSelectorPayload) Decode(b []byte) (err error) {
+func (s *TrafficSelectorPayload) Decode(b []byte) error {
 	if len(b) < MIN_LEN_TRAFFIC_SELECTOR {
-		err = ERR_INVALID_SYNTAX
-		log.V(LOG_CODEC_ERR).Info("")
-		return
+		return errors.Wrap(ERR_INVALID_SYNTAX, "TrafficSelector length")
 	}
 	numSel, _ := packets.ReadB8(b, 0)
 	b = b[4:]
 	for len(b) > 0 {
-		sel, used, serr := decodeSelector(b)
-		if serr != nil {
-			err = serr
-			return
+		sel, used, err := decodeSelector(b)
+		if err != nil {
+			return err
 		}
 		s.Selectors = append(s.Selectors, sel)
 		b = b[used:]
 		if len(s.Selectors) != int(numSel) {
-			err = ERR_INVALID_SYNTAX
-			log.V(LOG_CODEC_ERR).Info("")
-			return
+			return errors.Wrap(ERR_INVALID_SYNTAX, "wrong number of selectors")
 		}
 	}
-	return
+	return nil
 }

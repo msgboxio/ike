@@ -1,6 +1,11 @@
 package protocol
 
-import "github.com/msgboxio/packets"
+import (
+	"fmt"
+
+	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
+)
 
 //   Proposal Substructure
 
@@ -20,7 +25,7 @@ func (prop *SaProposal) IsSpiSizeCorrect(spiSize int) bool {
 
 func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 	if len(b) < MIN_LEN_PROPOSAL {
-		err = ErrF(ERR_INVALID_SYNTAX, "proposal too small %d < %d", len(b), MIN_LEN_PROPOSAL)
+		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("proposal too small %d < %d", len(b), MIN_LEN_PROPOSAL))
 		return
 	}
 	prop = &SaProposal{}
@@ -37,18 +42,18 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 	// spi
 	used = MIN_LEN_PROPOSAL + int(spiSize)
 	if len(b) < used {
-		err = ErrF(ERR_INVALID_SYNTAX, "proposal length too small %d < %d", len(b), used)
+		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("proposal length too small %d < %d", len(b), used))
 		return
 	}
 	prop.Spi = append([]byte{}, b[MIN_LEN_PROPOSAL:used]...)
 	// proposal
 	if (int(propLength) < MIN_LEN_PROPOSAL) ||
 		(int(propLength) < used) {
-		err = ErrF(ERR_INVALID_SYNTAX, "proposal length too small %d < %d", propLength, MIN_LEN_PROPOSAL)
+		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("proposal length too small %d < %d", propLength, MIN_LEN_PROPOSAL))
 		return
 	}
 	if len(b) < int(propLength) {
-		err = ErrF(ERR_INVALID_SYNTAX, "invalid length of proposal %d < %d", len(b), used+int(propLength))
+		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("invalid length of proposal %d < %d", len(b), used+int(propLength)))
 		return
 	}
 	b = b[used:int(propLength)]
@@ -62,15 +67,15 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 		b = b[usedT:]
 		if trans.IsLast {
 			if len(b) > 0 {
-				err = ErrF(ERR_INVALID_SYNTAX, "Extra bytes at end of proposal: %d", len(b))
+				err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Extra bytes at end of proposal: %d", len(b)))
 				return
 			}
 			break
 		}
 	}
 	if len(prop.SaTransforms) != int(numTransforms) {
-		err = ErrF(ERR_INVALID_SYNTAX, "Incorrect number of transforms: %d != %d",
-			len(prop.SaTransforms), numTransforms)
+		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Incorrect number of transforms: %d != %d",
+			len(prop.SaTransforms), numTransforms))
 		return
 	}
 	used = int(propLength)

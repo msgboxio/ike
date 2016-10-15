@@ -1,6 +1,6 @@
 package protocol
 
-import "github.com/msgboxio/log"
+import "github.com/pkg/errors"
 
 // SA payload
 
@@ -25,9 +25,7 @@ func (s *SaPayload) Decode(b []byte) (err error) {
 		b = b[used:]
 		if prop.IsLast {
 			if len(b) > 0 {
-				log.V(LOG_CODEC_ERR).Info("")
-				err = ERR_INVALID_SYNTAX
-				return
+				return errors.Wrap(ERR_INVALID_SYNTAX, "SA payload has extra data")
 			}
 			break
 		}
