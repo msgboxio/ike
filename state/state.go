@@ -61,6 +61,5 @@ type FsmHandler interface {
 	CheckSa(*StateEvent) *StateEvent
 	HandleCreateChildSa(*StateEvent) *StateEvent
 	HandleClose(*StateEvent) *StateEvent
-
 	CheckError(*StateEvent) *StateEvent
 }

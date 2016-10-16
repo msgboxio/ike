@@ -2,11 +2,10 @@ package ike
 
 import (
 	"crypto/rand"
-	"errors"
-	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
 )
 
 func SpiToInt64(spi protocol.Spi) uint64 {
@@ -33,7 +32,7 @@ func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err 
 	props := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload).Proposals
 	for _, p := range props {
 		if !p.IsSpiSizeCorrect(len(p.Spi)) {
-			err = fmt.Errorf("weird spi size :%+v", *p)
+			err = errors.Errorf("weird spi size :%+v", *p)
 			return
 		}
 		if p.ProtocolId == pid {

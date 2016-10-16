@@ -117,7 +117,8 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
 		b = b[pHeader.PayloadLength:]
 	}
 	if len(b) > 0 {
-		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("remaining %d\n%s", len(b), hex.Dump(b)))
+		return nil, errors.Wrap(ERR_INVALID_SYNTAX,
+			fmt.Sprintf("remaining %d\n%s", len(b), hex.Dump(b)))
 	}
 	return payloads, nil
 }

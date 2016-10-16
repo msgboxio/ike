@@ -5,11 +5,10 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
-	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 var asnCertAuthTypes = map[string]x509.SignatureAlgorithm{}
@@ -68,10 +67,10 @@ func VerifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 	// check if specified signature algorithm is available
 	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
 		if err := checkSignature(signed, sigAuth.Signature, method, cert); err != nil {
-			return fmt.Errorf("Ike Auth failed: with method %s, %s", method, err)
+			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
 		}
 	} else {
-		return fmt.Errorf("Ike Auth failed: auth method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
+		return errors.Errorf("Ike Auth failed: auth method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
 	}
 	return nil
 }

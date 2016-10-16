@@ -3,8 +3,9 @@ package ike
 import (
 	"crypto/rsa"
 	"crypto/x509"
-	"errors"
 	"io/ioutil"
+
+	"github.com/pkg/errors"
 )
 
 func LoadRoot(caCert string) (*x509.CertPool, error) {

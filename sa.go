@@ -1,13 +1,13 @@
 package ike
 
 import (
-	"errors"
 	"time"
 
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 func addSa(tkm *Tkm,
@@ -37,8 +37,8 @@ func addSa(tkm *Tkm,
 		SpiR:            int(SpiR),
 		IsTransportMode: cfg.IsTransportMode,
 	}
-	if !forInitiator {
-		sa.IsResponder = true
+	if forInitiator {
+		sa.IsInitiator = true
 	}
 	return sa
 }
@@ -64,8 +64,8 @@ func removeSa(tkm *Tkm,
 		SpiR:            int(SpiR),
 		IsTransportMode: cfg.IsTransportMode,
 	}
-	if !forInitiator {
-		sa.IsResponder = true
+	if forInitiator {
+		sa.IsInitiator = true
 	}
 	return sa
 }

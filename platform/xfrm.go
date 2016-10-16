@@ -4,11 +4,11 @@ package platform
 
 import (
 	"encoding/json"
-	"fmt"
 	"net"
 	"syscall"
 
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 )
 
@@ -30,14 +30,14 @@ func makeTemplate(src, dst net.IP, reqId uint32, isTransportMode bool) netlink.X
 }
 
 func makeSaPolicies(reqId uint32, sa *SaParams) (policies []*netlink.XfrmPolicy) {
-	// ini
+	// initiator
 	ini := &netlink.XfrmPolicy{
 		Src:     sa.IniNet,
 		Dst:     sa.ResNet,
 		Proto:   0,
 		SrcPort: sa.IniPort,
 		DstPort: sa.ResPort,
-		Dir:     netlink.XFRM_DIR_OUT,
+		Dir:     netlink.XFRM_DIR_IN,
 		// Mark: &netlink.XfrmMark{
 		// Value: 0xabff22,
 		// Mask:  0xffffffff,
@@ -45,8 +45,8 @@ func makeSaPolicies(reqId uint32, sa *SaParams) (policies []*netlink.XfrmPolicy)
 		Priority: 10,
 	}
 	ini.Tmpls = append(ini.Tmpls, makeTemplate(sa.Ini, sa.Res, reqId, sa.IsTransportMode))
-	if sa.IsResponder {
-		ini.Dir = netlink.XFRM_DIR_IN
+	if sa.IsInitiator {
+		ini.Dir = netlink.XFRM_DIR_OUT
 	}
 	policies = append(policies, ini)
 
@@ -57,15 +57,15 @@ func makeSaPolicies(reqId uint32, sa *SaParams) (policies []*netlink.XfrmPolicy)
 		Proto:   0,
 		SrcPort: sa.ResPort,
 		DstPort: sa.IniPort,
-		Dir:     netlink.XFRM_DIR_IN,
+		Dir:     netlink.XFRM_DIR_OUT,
 		// Mark: &netlink.XfrmMark{
 		// Value: 0xabff22,
 		// Mask:  0xffffffff,
 		// },
 		Priority: 10,
 	}
-	if sa.IsResponder {
-		resp.Dir = netlink.XFRM_DIR_OUT
+	if sa.IsInitiator {
+		resp.Dir = netlink.XFRM_DIR_IN
 	}
 	resp.Tmpls = append(resp.Tmpls, makeTemplate(sa.Res, sa.Ini, reqId, sa.IsTransportMode))
 	policies = append(policies, resp)
@@ -157,9 +157,9 @@ func InstallChildSa(sa *SaParams) error {
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
-				err = fmt.Errorf("Skipped adding policy %v because it already exists", policy)
+				err = errors.Errorf("Skipped adding policy %v because it already exists", policy)
 			} else {
-				err = fmt.Errorf("Failed to add policy %v: %v", policy, err)
+				err = errors.Errorf("Failed to add policy %v: %v", policy, err)
 			}
 			log.Errorf("Error adding policy: %s", err)
 			return err
@@ -170,10 +170,10 @@ func InstallChildSa(sa *SaParams) error {
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
 			if err == syscall.EEXIST {
-				err = fmt.Errorf("Skipped adding state %v because it already exists", state)
+				err = errors.Errorf("Skipped adding state %v because it already exists", state)
 			} else {
 				statejs, _ := json.Marshal(state)
-				err = fmt.Errorf("Failed to add state %s: %v", string(statejs), err)
+				err = errors.Errorf("Failed to add state %s: %v", string(statejs), err)
 			}
 			log.Errorf("%s", err)
 			return err
@@ -187,16 +187,14 @@ func RemoveChildSa(sa *SaParams) error {
 		log.V(3).Infof("removing Policy: %+v", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {
-			err = fmt.Errorf("Failed to remove policy %v: %v", policy, err)
-			return err
+			return errors.Errorf("Failed to remove policy %v: %v", policy, err)
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
 		log.V(3).Infof("removing State: %+v", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateDel(state); err != nil {
-			err = fmt.Errorf("Failed to remove state %+v: %v", state, err)
-			return err
+			return errors.Errorf("Failed to remove state %+v: %v", state, err)
 		}
 	}
 	return nil

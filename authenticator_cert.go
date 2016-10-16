@@ -4,10 +4,9 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
-	"errors"
-	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 // CertAuthenticator is an Authenticator
@@ -37,10 +36,10 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte,
 	// certificate is not required to sign
 	// it is transferred to peer, and hopefully signature algos are compatible
 	if certId.Certificate == nil {
-		return nil, fmt.Errorf("missing certificate")
+		return nil, errors.Errorf("missing certificate")
 	}
 	if certId.PrivateKey == nil {
-		return nil, fmt.Errorf("missing private key")
+		return nil, errors.Errorf("missing private key")
 	}
 	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
 	return Sign(certId.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certId.PrivateKey)
@@ -57,7 +56,7 @@ func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 	}
 	// ensure key used to compute a digital signature belongs to the name in the ID payload
 	if bytes.Compare(idP.Data, r.userCertificate.RawSubject) != 0 {
-		return fmt.Errorf("Ike Auth failed: incorrect id in certificate: %s",
+		return errors.Errorf("Ike Auth failed: incorrect id in certificate: %s",
 			hex.Dump(r.userCertificate.RawSubject))
 	}
 	// TODO - ensure that the ID is authorized
@@ -66,7 +65,7 @@ func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 		Roots: certId.Roots,
 	}
 	if _, err := r.userCertificate.Verify(opts); err != nil {
-		return fmt.Errorf("Ike Auth failed: unable to verify certificate: %s",
+		return errors.Errorf("Ike Auth failed: unable to verify certificate: %s",
 			err)
 	}
 	signed := r.tkm.SignB(initB, idP.Encode(), !r.forInitiator)

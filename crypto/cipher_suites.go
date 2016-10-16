@@ -1,7 +1,7 @@
 package crypto
 
 import (
-	"fmt"
+	"github.com/pkg/errors"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
@@ -36,7 +36,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 		case protocol.TRANSFORM_TYPE_DH:
 			dh, ok := kexAlgoMap[protocol.DhTransformId(tr.Transform.TransformId)]
 			if !ok {
-				return nil, fmt.Errorf("Unsupported dh transfom %d", tr.Transform.TransformId)
+				return nil, errors.Errorf("Unsupported dh transfom %d", tr.Transform.TransformId)
 			}
 			cs.DhGroup = dh
 		case protocol.TRANSFORM_TYPE_PRF:
@@ -51,27 +51,27 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 			var ok bool
 			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
 				if aead, keyLen, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
-					return nil, fmt.Errorf("Unsupported cipher transfom %d", tr.Transform.TransformId)
+					return nil, errors.Errorf("Unsupported cipher transfom %d", tr.Transform.TransformId)
 				}
 			}
 			cs.KeyLen = keyLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_INTEG:
 			var ok bool
 			if cipher, ok = integrityTransform(tr.Transform.TransformId, cipher); !ok {
-				return nil, fmt.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
+				return nil, errors.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
 			}
 			cs.MacKeyLen = cipher.macKeyLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_ESN:
 		// nothing
 		default:
-			return nil, fmt.Errorf("Unsupported transfom type %d", tr.Transform.Type)
+			return nil, errors.Errorf("Unsupported transfom type %d", tr.Transform.Type)
 		} // end switch
 	} // end loop
 	if cipher == nil && aead == nil {
-		return nil, fmt.Errorf("cipher transfoms were not set")
+		return nil, errors.Errorf("cipher transfoms were not set")
 	}
 	if cipher != nil && aead != nil {
-		return nil, fmt.Errorf("invalid cipher transfoms combination")
+		return nil, errors.Errorf("invalid cipher transfoms combination")
 	}
 	if cipher != nil {
 		cs.Cipher = cipher
@@ -84,7 +84,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 
 func (cs *CipherSuite) CheckIkeTransforms() error {
 	if cs.DhGroup == nil || cs.Prf == nil {
-		return fmt.Errorf("invalid cipher transfoms combination")
+		return errors.Errorf("invalid cipher transfoms combination")
 	}
 	if log.V(2) {
 		log.Infof("IKE CipherSuite: %+v", *cs)

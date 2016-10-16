@@ -10,5 +10,5 @@ type SaParams struct {
 	EspEi, EspAi, EspEr, EspAr []byte
 	SpiI, SpiR                 int
 	IsTransportMode            bool
-	IsResponder                bool
+	IsInitiator                bool
 }

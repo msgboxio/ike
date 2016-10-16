@@ -10,6 +10,7 @@ import (
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 type ClientCallback func(interface{}) error
@@ -363,8 +364,7 @@ func (o *Session) SendEmptyInformational(isResponse bool) {
 	o.sendMsg(o.encode(info, nil))
 }
 
-func (o *Session) AddHostBasedSelectors(local, remote net.IP) {
-	log.Infoln(o.Tag() + "Adding host based traffic selectors")
+func (o *Session) AddHostBasedSelectors(local, remote net.IP) error {
 	slen := len(local) * 8
 	ini := remote
 	res := local
@@ -372,21 +372,21 @@ func (o *Session) AddHostBasedSelectors(local, remote net.IP) {
 		ini = local
 		res = remote
 	}
-	o.cfg.AddSelector(
+	return o.cfg.AddSelector(
 		&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
 		&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
 }
 
 func (o *Session) isMessageValid(m *Message) error {
 	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
-		return fmt.Errorf("different initiator Spi %s", spi)
+		return errors.Errorf("different initiator Spi %s", spi)
 	}
 	// Dont check Responder SPI. initiator IKE_SA_INIT does not have it
 	// for un-encrypted payloads, make sure that the state is correct
 	if m.IkeHeader.NextPayload != protocol.PayloadTypeSK {
 		// TODO - remove IDLE
 		if o.Fsm.State != state.STATE_IDLE && o.Fsm.State != state.STATE_START {
-			return fmt.Errorf("unexpected unencrypted message in state: %s", o.Fsm.State)
+			return errors.Errorf("unexpected unencrypted message in state: %s", o.Fsm.State)
 		}
 	}
 	// check sequence numbers
@@ -394,16 +394,16 @@ func (o *Session) isMessageValid(m *Message) error {
 	if m.IkeHeader.Flags.IsResponse() {
 		// response id ought to be the same as our request id
 		if seq != o.msgIdReq {
-			return protocol.ErrF(protocol.ERR_INVALID_MESSAGE_ID, "unexpected response id %d, expected %d",
-				seq, o.msgIdReq)
+			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
+				fmt.Sprintf("unexpected response id %d, expected %d", seq, o.msgIdReq))
 		}
 		// requestId has been confirmed, increment it for next request
 		o.msgIdReq++
 	} else { // request
 		// TODO - does not handle our responses getting lost
 		if seq != o.msgIdResp {
-			return protocol.ErrF(protocol.ERR_INVALID_MESSAGE_ID, "unexpected request id %d, expected %d",
-				seq, o.msgIdResp)
+			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
+				fmt.Sprintf("unexpected request id %d, expected %d", seq, o.msgIdResp))
 		}
 		// incremented by sender
 	}

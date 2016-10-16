@@ -2,11 +2,10 @@ package ike
 
 import (
 	"crypto/x509"
-	"errors"
-	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 type authParams struct {
@@ -166,18 +165,18 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authentic
 		}
 		cert := certP.(*protocol.CertPayload)
 		if cert.CertEncodingType != protocol.X_509_CERTIFICATE_SIGNATURE {
-			return fmt.Errorf("Ike Auth failed: cert encoding not supported: %v", cert.CertEncodingType)
+			return errors.Errorf("Ike Auth failed: cert encoding not supported: %v", cert.CertEncodingType)
 		}
 		// cert.data is DER-encoded X.509 certificate
 		x509Cert, err := x509.ParseCertificate(cert.Data)
 		if err != nil {
-			return fmt.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
+			return errors.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
 		}
 		certAuth := authenticator.(*CertAuthenticator)
 		certAuth.SetUserCertificate(x509Cert)
 		return certAuth.Verify(initB, idP, authP.Data)
 	default:
-		return fmt.Errorf("Ike Auth failed: auth method not supported: %s", authP.AuthMethod)
+		return errors.Errorf("Ike Auth failed: auth method not supported: %s", authP.AuthMethod)
 	}
 }
 
@@ -191,7 +190,7 @@ func HandleAuthForSession(o *Session, m *Message) error {
 			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
 				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
 				// TODO - for now, we should simply end the IKE_SA
-				return fmt.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
+				return errors.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
 			}
 		}
 		return err

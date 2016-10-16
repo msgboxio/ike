@@ -1,11 +1,11 @@
 package ike
 
 import (
-	"errors"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 type Config struct {
@@ -83,18 +83,18 @@ func SelectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
 }
 
 // AddSelector builds selector from address & mask
-func (cfg *Config) AddSelector(initiator, responder *net.IPNet) error {
+func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
 	tsI, err := SelectorFromAddress(initiator)
 	if err != nil {
-		return err
+		return
 	}
 	cfg.TsI = tsI
 	tsR, err := SelectorFromAddress(responder)
 	if err != nil {
-		return err
+		return
 	}
 	cfg.TsR = tsR
-	return nil
+	return
 }
 
 // CheckFromInit takes an IkeSaInit message and checks

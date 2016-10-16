@@ -2,7 +2,6 @@ package ike
 
 import (
 	"bytes"
-	"errors"
 	"io"
 	"net"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"golang.org/x/net/ipv6"
 
 	"github.com/msgboxio/log"
+	"github.com/pkg/errors"
 )
 
 func FirstLastAddressToIPNet(start, end net.IP) *net.IPNet {
@@ -151,7 +151,7 @@ func Listen(network, address string) (net.Conn, error) {
 func listenUDP4(localString string) (p4 *pconnV4, err error) {
 	udp, err := net.ListenPacket("udp4", localString)
 	if err != nil {
-		return
+		return nil, errors.Wrap(err, "lsten")
 	}
 	p := ipv4.NewPacketConn(udp)
 	// the interface could be set to any(0.0.0.0)
@@ -171,7 +171,7 @@ func listenUDP4(localString string) (p4 *pconnV4, err error) {
 func listenUDP6(localString string) (p6 *pconnV6, err error) {
 	udp, err := net.ListenPacket("udp", localString)
 	if err != nil {
-		return
+		return nil, errors.Wrap(err, "lsten")
 	}
 	p := ipv6.NewPacketConn(udp)
 	// the interface could be set to any(0.0.0.0)
@@ -213,7 +213,9 @@ func readPacketV6(p *pconnV6) (b []byte, remoteAddr net.Addr, localIP net.IP, er
 	n, cm, remoteAddr, err := p.ReadFrom(b)
 	if err == nil {
 		b = b[:n]
-		localIP = cm.Dst
+		if cm != nil { // nil on mac
+			localIP = cm.Dst
+		}
 	}
 	log.V(1).Infof("%d from %v", n, remoteAddr)
 	return

@@ -4,10 +4,10 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
-	"fmt"
 	"hash"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 // Pseudo Random Function
@@ -28,7 +28,7 @@ func prfTranform(prfId uint16) (*Prf, error) {
 	case protocol.PRF_HMAC_SHA1:
 		return &Prf{macPrf(sha1.New), sha1.Size, prf}, nil
 	default:
-		return nil, fmt.Errorf("Unsupported PRF transfom: %s", prfId)
+		return nil, errors.Errorf("Unsupported PRF transfom: %s", prfId)
 	}
 }
 

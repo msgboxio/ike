@@ -5,10 +5,10 @@ import (
 	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"hash"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 type macFunc func(key, data []byte) []byte
@@ -55,7 +55,7 @@ func verifyMac(key, b []byte, macLen int, macFn macFunc) error {
 	msgMAC := b[l-macLen:]
 	expectedMAC := macFn(key, msg)[:macLen]
 	if !hmac.Equal(msgMAC, expectedMAC) {
-		return fmt.Errorf("HMAC verify failed: \n%svs\n%s",
+		return errors.Errorf("HMAC verify failed: \n%svs\n%s",
 			hex.Dump(msgMAC), hex.Dump(expectedMAC))
 	}
 	return nil

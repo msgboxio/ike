@@ -26,9 +26,8 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New("received signal: " + sig.String()))
 }
 
-func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certificate, *rsa.PrivateKey) {
-	var localString, remoteString string
-	flag.StringVar(&localString, "local", "0.0.0.0:5000", "address to bind to")
+func loadConfig() (config *ike.Config, localString string, remoteString string, roots *x509.CertPool, certs []*x509.Certificate, key *rsa.PrivateKey) {
+	flag.StringVar(&localString, "local", "0.0.0.0:4500", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
 
 	var isTunnelMode bool
@@ -42,24 +41,30 @@ func loadConfig() (*ike.Config, string, string, *x509.CertPool, []*x509.Certific
 	flag.Set("logtostderr", "true")
 	flag.Parse()
 
-	config := ike.DefaultConfig()
+	config = ike.DefaultConfig()
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
-	roots, err := ike.LoadRoot(caFile)
-	if err != nil {
-		log.Fatal(err)
+	var err error
+	if caFile != "" {
+		roots, err = ike.LoadRoot(caFile)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
-	certs, err := ike.LoadCerts(certFile)
-	if err != nil {
-		log.Warningf("Cert: %s", err)
+	if certFile != "" {
+		certs, err = ike.LoadCerts(certFile)
+		if err != nil {
+			log.Warningf("Cert: %s", err)
+		}
 	}
-	key, err := ike.LoadKey(keyFile)
-	if err != nil {
-		log.Warningf("Key: %s", err)
+	if keyFile != "" {
+		key, err = ike.LoadKey(keyFile)
+		if err != nil {
+			log.Warningf("Key: %s", err)
+		}
 	}
-
-	return config, localString, remoteString, roots, certs, key
+	return
 }
 
 func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallback {
@@ -78,10 +83,9 @@ func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallbac
 		case *ike.SaMessage:
 			remoteIP := ike.AddrToIp(remote)
 			localIP := ike.AddrToIp(local)
-			if msg.IsResponder {
-				msg.Ini = remoteIP
-				msg.Res = localIP
-			} else {
+			msg.Ini = remoteIP
+			msg.Res = localIP
+			if msg.IsInitiator {
 				msg.Ini = localIP
 				msg.Res = remoteIP
 			}
@@ -218,7 +222,7 @@ func main() {
 		}()
 	}
 
-	pconn, err := ike.Listen("udp", localString)
+	pconn, err := ike.Listen("udp4", localString)
 	if err != nil {
 		log.Fatal(err)
 	}
