@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"hash"
 
@@ -16,7 +17,7 @@ type macFunc func(key, data []byte) []byte
 func (macFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
 
 func integrityTransform(cipherId uint16, cipher *simpleCipher) (*simpleCipher, bool) {
-	macLen, macKeyLength, macFunc, ok := _integrityTransform(cipherId)
+	macLen, truncLen, macFunc, ok := _integrityTransform(cipherId)
 	if !ok {
 		return nil, false
 	}
@@ -24,14 +25,18 @@ func integrityTransform(cipherId uint16, cipher *simpleCipher) (*simpleCipher, b
 		cipher = &simpleCipher{}
 	}
 	cipher.macFunc = macFunc
-	cipher.macKeyLen = macKeyLength
+	cipher.macTruncLen = truncLen
 	cipher.macLen = macLen
 	cipher.AuthTransformId = protocol.AuthTransformId(cipherId)
 	return cipher, true
 }
 
-func _integrityTransform(trfId uint16) (macLen, macKeyLength int, macFunc macFunc, ok bool) {
+func _integrityTransform(trfId uint16) (macLen, truncLen int, macFunc macFunc, ok bool) {
 	switch protocol.AuthTransformId(trfId) {
+	case protocol.AUTH_HMAC_SHA2_512_256:
+		return 32 /* truncated */, sha512.Size256, hashMac(sha512.New, 32), true
+	case protocol.AUTH_HMAC_SHA2_384_192:
+		return 24 /* truncated */, sha512.Size384, hashMac(sha512.New384, 24), true
 	case protocol.AUTH_HMAC_SHA2_256_128:
 		return 16 /* truncated */, sha256.Size, hashMac(sha256.New, 16), true
 	case protocol.AUTH_HMAC_SHA1_96:

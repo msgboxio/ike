@@ -20,7 +20,7 @@ type CipherSuite struct {
 	DhGroup dhGroup
 
 	// Lengths, in bytes, of the key material needed for each component.
-	KeyLen, MacKeyLen int
+	KeyLen, MacTruncLen int
 }
 
 // Build a CipherSuite from the given transfom
@@ -60,7 +60,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 			if cipher, ok = integrityTransform(tr.Transform.TransformId, cipher); !ok {
 				return nil, errors.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
 			}
-			cs.MacKeyLen = cipher.macKeyLen // TODO - 2 places
+			cs.MacTruncLen = cipher.macTruncLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_ESN:
 		// nothing
 		default:

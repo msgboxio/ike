@@ -7,6 +7,7 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
@@ -93,12 +94,89 @@ func makeSaPolicies(reqId, priority int, sa *SaParams) (policies []*netlink.Xfrm
 	return policies
 }
 
+func addKeys(sa *SaParams, auth, crypt, aead *netlink.XfrmStateAlgo, forInitiator bool) {
+	if auth != nil {
+		auth.Key = sa.EspAr
+		if forInitiator {
+			auth.Key = sa.EspAi
+		}
+	}
+	if crypt != nil {
+		crypt.Key = sa.EspEr
+		if forInitiator {
+			crypt.Key = sa.EspEi
+		}
+	}
+	if aead != nil {
+		aead.Key = sa.EspEr
+		if forInitiator {
+			aead.Key = sa.EspEi
+		}
+	}
+}
+
+func encrTransform(tr *protocol.SaTransform) (crypt, aead *netlink.XfrmStateAlgo) {
+	switch protocol.EncrTransformId(tr.Transform.TransformId) {
+	case protocol.AEAD_AES_GCM_16:
+		return nil, &netlink.XfrmStateAlgo{
+			Name:   "rfc4106(gcm(aes))",
+			ICVLen: int(tr.KeyLength),
+		}
+	case protocol.ENCR_AES_CBC:
+		return &netlink.XfrmStateAlgo{
+			Name: "cbc(aes)",
+		}, nil
+	}
+	return
+}
+
+func authTransform(tr *protocol.SaTransform) (auth *netlink.XfrmStateAlgo) {
+	switch protocol.AuthTransformId(tr.Transform.TransformId) {
+	case protocol.AUTH_HMAC_SHA1_96:
+		return &netlink.XfrmStateAlgo{
+			Name:        "hmac(sha1)",
+			TruncateLen: 96,
+		}
+	case protocol.AUTH_HMAC_SHA2_256_128:
+		return &netlink.XfrmStateAlgo{
+			Name:        "hmac(sha256)",
+			TruncateLen: 128,
+		}
+	case protocol.AUTH_HMAC_SHA2_384_192:
+		return &netlink.XfrmStateAlgo{
+			Name:        "hmac(sha384)",
+			TruncateLen: 192,
+		}
+	case protocol.AUTH_HMAC_SHA2_512_256:
+		return &netlink.XfrmStateAlgo{
+			Name:        "hmac(sha512)",
+			TruncateLen: 256,
+		}
+	}
+	return
+}
+
+func espTransforms(sa *SaParams, forInitiator bool) (auth, crypt, aead *netlink.XfrmStateAlgo) {
+	for ttype, transform := range sa.EspTransforms {
+		switch ttype {
+		case protocol.TRANSFORM_TYPE_ENCR:
+			crypt, aead = encrTransform(transform)
+		case protocol.TRANSFORM_TYPE_INTEG:
+			auth = authTransform(transform)
+		}
+	}
+	addKeys(sa, auth, crypt, aead, forInitiator)
+	return
+}
+
 func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	mode := netlink.XFRM_MODE_TUNNEL
 	if sa.IsTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
 	}
-	out := &netlink.XfrmState{
+	// initiator
+	authI, cryptI, aeadI := espTransforms(sa, true)
+	initiator := &netlink.XfrmState{
 		Src:          sa.Ini,
 		Dst:          sa.Res,
 		Proto:        netlink.XFRM_PROTO_ESP,
@@ -106,30 +184,21 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Spi:          sa.SpiR,
 		Reqid:        reqid,
 		ReplayWindow: 32,
-		Auth: &netlink.XfrmStateAlgo{
-			Name:        "hmac(sha256)",
-			Key:         sa.EspAi,
-			TruncateLen: 128,
-		},
-		Crypt: &netlink.XfrmStateAlgo{
-			Name: "cbc(aes)",
-			Key:  sa.EspEi,
-		},
-		// Aead: &netlink.XfrmStateAlgo{
-		// 	Name:   "rfc4106(gcm(aes))",
-		// 	Key:    sa.EspEi,
-		// 	ICVLen: 256,
-		// },
+		Auth:         authI,
+		Crypt:        cryptI,
+		Aead:         aeadI,
 	}
 	if sa.IniPort != 0 && sa.ResPort != 0 {
-		out.Encap = &netlink.XfrmStateEncap{
+		initiator.Encap = &netlink.XfrmStateEncap{
 			Type:    netlink.XFRM_ENCAP_ESPINUDP,
 			SrcPort: sa.IniPort,
 			DstPort: sa.ResPort,
 		}
 	}
-	states = append(states, out)
-	in := &netlink.XfrmState{
+	states = append(states, initiator)
+	// initiator
+	authR, cryptR, aeadR := espTransforms(sa, false)
+	responder := &netlink.XfrmState{
 		Src:          sa.Res,
 		Dst:          sa.Ini,
 		Proto:        netlink.XFRM_PROTO_ESP,
@@ -137,30 +206,19 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Spi:          sa.SpiI,
 		Reqid:        reqid,
 		ReplayWindow: 32,
-		Auth: &netlink.XfrmStateAlgo{
-			Name:        "hmac(sha256)",
-			Key:         sa.EspAr,
-			TruncateLen: 128,
-		},
-		Crypt: &netlink.XfrmStateAlgo{
-			Name: "cbc(aes)",
-			Key:  sa.EspEr,
-		},
-		// Aead: &netlink.XfrmStateAlgo{
-		// 	Name:   "rfc4106(gcm(aes))",
-		// 	Key:    sa.EspEr,
-		// 	ICVLen: 256,
-		// },
+		Auth:         authR,
+		Crypt:        cryptR,
+		Aead:         aeadR,
 	}
 	if sa.IniPort != 0 && sa.ResPort != 0 {
-		in.Encap = &netlink.XfrmStateEncap{
+		responder.Encap = &netlink.XfrmStateEncap{
 			Type:    netlink.XFRM_ENCAP_ESPINUDP,
 			SrcPort: sa.ResPort,
 			DstPort: sa.IniPort,
 		}
 	}
-	states = append(states, in)
-	return states
+	states = append(states, responder)
+	return
 }
 
 func InstallChildSa(sa *SaParams) error {

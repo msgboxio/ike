@@ -36,6 +36,7 @@ func addSa(tkm *Tkm,
 		SpiI:            int(SpiI),
 		SpiR:            int(SpiR),
 		IsTransportMode: cfg.IsTransportMode,
+		EspTransforms:   cfg.ProposalEsp,
 	}
 	if forInitiator {
 		sa.IsInitiator = true

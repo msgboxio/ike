@@ -137,7 +137,7 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	} else {
 		SKEYSEED = t.skeySeedRekey(old_SK_D)
 	}
-	kmLen := 3*t.suite.Prf.Length + 2*t.suite.KeyLen + 2*t.suite.MacKeyLen
+	kmLen := 3*t.suite.Prf.Length + 2*t.suite.KeyLen + 2*t.suite.MacTruncLen
 	// KEYMAT =  = prf+ (SKEYSEED, Ni | Nr | SPIi | SPIr)
 	KEYMAT := t.prfplus(SKEYSEED,
 		append(append(t.Ni.Bytes(), t.Nr.Bytes()...), append(spiI, spiR...)...),
@@ -146,10 +146,10 @@ func (t *Tkm) IsaCreate(spiI, spiR []byte, old_SK_D []byte) {
 	// SK_d, SK_pi, and SK_pr MUST be prfLength
 	offset := t.suite.Prf.Length
 	t.skD = KEYMAT[0:offset]
-	t.skAi = KEYMAT[offset : offset+t.suite.MacKeyLen]
-	offset += t.suite.MacKeyLen
-	t.skAr = KEYMAT[offset : offset+t.suite.MacKeyLen]
-	offset += t.suite.MacKeyLen
+	t.skAi = KEYMAT[offset : offset+t.suite.MacTruncLen]
+	offset += t.suite.MacTruncLen
+	t.skAr = KEYMAT[offset : offset+t.suite.MacTruncLen]
+	offset += t.suite.MacTruncLen
 	t.skEi = KEYMAT[offset : offset+t.suite.KeyLen]
 	offset += t.suite.KeyLen
 	t.skEr = KEYMAT[offset : offset+t.suite.KeyLen]
@@ -197,18 +197,18 @@ func (t *Tkm) EncryptMac(headers, payload []byte, forInitiator bool) (b []byte, 
 }
 
 func (t *Tkm) IpsecSaCreate(spiI, spiR []byte) (espEi, espAi, espEr, espAr []byte) {
-	kmLen := 2*t.espSuite.KeyLen + 2*t.espSuite.MacKeyLen
+	kmLen := 2*t.espSuite.KeyLen + 2*t.espSuite.MacTruncLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(t.Ni.Bytes(), t.Nr.Bytes()...),
 		kmLen)
 
 	offset := t.espSuite.KeyLen
 	espEi = KEYMAT[0:offset]
-	espAi = KEYMAT[offset : offset+t.espSuite.MacKeyLen]
-	offset += t.espSuite.MacKeyLen
+	espAi = KEYMAT[offset : offset+t.espSuite.MacTruncLen]
+	offset += t.espSuite.MacTruncLen
 	espEr = KEYMAT[offset : offset+t.espSuite.KeyLen]
 	offset += t.espSuite.KeyLen
-	espAr = KEYMAT[offset : offset+t.espSuite.MacKeyLen]
+	espAr = KEYMAT[offset : offset+t.espSuite.MacTruncLen]
 	// fmt.Printf("ESP keys :\nEi:\n%sAi:\n%sEr:\n%sAr\n%s",
 	// 	hex.Dump(espEi),
 	// 	hex.Dump(espAi),

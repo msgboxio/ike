@@ -52,7 +52,7 @@ func _cipherTransform(cipherId uint16) (int, cipherFunc, bool) {
 // Cipher interface implementation
 
 type simpleCipher struct {
-	macKeyLen, macLen int
+	macTruncLen, macLen int
 	macFunc
 
 	keyLen, ivLen, blockLen int
