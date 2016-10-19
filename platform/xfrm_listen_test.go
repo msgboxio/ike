@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 func TestListenClose(t *testing.T) {
-	l := ListenForEvents(context.Background())
+	l := ListenForEvents(context.Background(), nil)
 	time.Sleep(100 * time.Millisecond)
 	if err := l.Err(); err != nil {
 		t.Fatal(err)
@@ -28,12 +31,18 @@ func command(t *testing.T, str string) error {
 	splits := strings.Split(str, " ")
 	cmd := exec.Command(splits[0], splits[1:]...)
 	out, err := cmd.CombinedOutput()
-	t.Log(string(out))
+	t.Logf("cmd: %s ; out: %s", str, string(out))
 	return err
 }
 
 func TestListen(t *testing.T) {
-	l := ListenForEvents(context.Background())
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	cb := func(msg interface{}) {
+		t.Log(spew.Sdump(msg))
+		wg.Done()
+	}
+	l := ListenForEvents(context.Background(), cb)
 	if err := l.Err(); err != nil {
 		t.Fatal(err)
 	}
@@ -44,9 +53,16 @@ func TestListen(t *testing.T) {
 	if err := command(t, cmd); err != nil {
 		t.Fatal(err)
 	}
+	wg.Wait()
+
+	wg.Add(1)
 	l.Close()
 	<-l.Done()
 	if err := l.Err(); err != context.Canceled {
+		t.Fatal(err)
+	}
+
+	if err := command(t, "ip xfrm policy flush"); err != nil {
 		t.Fatal(err)
 	}
 }

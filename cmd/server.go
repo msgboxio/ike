@@ -12,6 +12,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
@@ -212,7 +213,10 @@ func main() {
 	log.Infof("Available interfaces %+v", ifs)
 	// this should load the xfrm modules
 	// requires root
-	if xfrm := platform.ListenForEvents(cxt); xfrm != nil {
+	cb := func(msg interface{}) {
+		log.V(3).Infof("xfrm: \n%s", spew.Sdump(msg))
+	}
+	if xfrm := platform.ListenForEvents(cxt, cb); xfrm != nil {
 		go func() {
 			<-xfrm.Done()
 			if err := xfrm.Err(); err != context.Canceled {
@@ -222,7 +226,7 @@ func main() {
 		}()
 	}
 
-	pconn, err := ike.Listen("udp4", localString)
+	pconn, err := ike.Listen("udp", localString)
 	if err != nil {
 		log.Fatal(err)
 	}

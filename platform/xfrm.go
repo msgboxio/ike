@@ -13,7 +13,7 @@ import (
 )
 
 // src & dst are tunnel endpoints; ignored for transport mode
-func makeTemplate(src, dst net.IP, reqId uint32, isTransportMode bool) netlink.XfrmPolicyTmpl {
+func makeTemplate(src, dst net.IP, reqId int, isTransportMode bool) netlink.XfrmPolicyTmpl {
 	mode := netlink.XFRM_MODE_TUNNEL
 	if isTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
@@ -25,13 +25,13 @@ func makeTemplate(src, dst net.IP, reqId uint32, isTransportMode bool) netlink.X
 		Dst:   dst,
 		Proto: netlink.XFRM_PROTO_ESP,
 		Mode:  mode,
-		Reqid: int(reqId),
+		Reqid: reqId,
 	}
 }
 
-func makeSaPolicies(reqId uint32, sa *SaParams) (policies []*netlink.XfrmPolicy) {
+func makeSaPolicies(reqId, priority int, sa *SaParams) (policies []*netlink.XfrmPolicy) {
 	// initiator
-	ini := &netlink.XfrmPolicy{
+	iniP := &netlink.XfrmPolicy{
 		Src:     sa.IniNet,
 		Dst:     sa.ResNet,
 		Proto:   0,
@@ -42,16 +42,16 @@ func makeSaPolicies(reqId uint32, sa *SaParams) (policies []*netlink.XfrmPolicy)
 		// Value: 0xabff22,
 		// Mask:  0xffffffff,
 		// },
-		Priority: 10,
+		Priority: priority,
 	}
-	ini.Tmpls = append(ini.Tmpls, makeTemplate(sa.Ini, sa.Res, reqId, sa.IsTransportMode))
+	iniT := makeTemplate(sa.Ini, sa.Res, reqId, sa.IsTransportMode)
+	iniP.Tmpls = append(iniP.Tmpls, iniT)
 	if sa.IsInitiator {
-		ini.Dir = netlink.XFRM_DIR_OUT
+		iniP.Dir = netlink.XFRM_DIR_OUT
 	}
-	policies = append(policies, ini)
-
+	policies = append(policies, iniP)
 	// responder
-	resp := &netlink.XfrmPolicy{
+	resP := &netlink.XfrmPolicy{
 		Src:     sa.ResNet,
 		Dst:     sa.IniNet,
 		Proto:   0,
@@ -62,21 +62,33 @@ func makeSaPolicies(reqId uint32, sa *SaParams) (policies []*netlink.XfrmPolicy)
 		// Value: 0xabff22,
 		// Mask:  0xffffffff,
 		// },
-		Priority: 10,
+		Priority: priority,
 	}
 	if sa.IsInitiator {
-		resp.Dir = netlink.XFRM_DIR_IN
+		resP.Dir = netlink.XFRM_DIR_IN
 	}
-	resp.Tmpls = append(resp.Tmpls, makeTemplate(sa.Res, sa.Ini, reqId, sa.IsTransportMode))
-	policies = append(policies, resp)
+	resT := makeTemplate(sa.Res, sa.Ini, reqId, sa.IsTransportMode)
+	resP.Tmpls = append(resP.Tmpls, resT)
+	policies = append(policies, resP)
 	if !sa.IsTransportMode {
-		// fwd ??
-		// TODO - lost forwarding functionality for now
-		// fwd := &netlink.XfrmPolicy{
-		// Dir:      netlink.XFRM_DIR_FWD,
-		// Priority: 1795,
-		// }
-		// policies = append(policies, fwd)
+		// fwd for local tunnel endpoint
+		fwdP := iniP
+		fwdT := iniT
+		if sa.IsInitiator {
+			fwdP = resP
+			fwdT = resT
+		}
+		fwd := &netlink.XfrmPolicy{
+			Src:      fwdP.Src,
+			Dst:      fwdP.Dst,
+			Proto:    0,
+			SrcPort:  fwdP.SrcPort,
+			DstPort:  fwdP.DstPort,
+			Dir:      netlink.XFRM_DIR_FWD,
+			Priority: priority,
+		}
+		fwd.Tmpls = append(fwd.Tmpls, fwdT) // used same template
+		policies = append(policies, fwd)
 	}
 	return policies
 }
@@ -106,7 +118,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		// Aead: &netlink.XfrmStateAlgo{
 		// 	Name:   "rfc4106(gcm(aes))",
 		// 	Key:    sa.EspEi,
-		// 	ICVLen: 128,
+		// 	ICVLen: 256,
 		// },
 	}
 	if sa.IniPort != 0 && sa.ResPort != 0 {
@@ -137,7 +149,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		// Aead: &netlink.XfrmStateAlgo{
 		// 	Name:   "rfc4106(gcm(aes))",
 		// 	Key:    sa.EspEr,
-		// 	ICVLen: 128,
+		// 	ICVLen: 256,
 		// },
 	}
 	if sa.IniPort != 0 && sa.ResPort != 0 {
@@ -152,7 +164,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 }
 
 func InstallChildSa(sa *SaParams) error {
-	for _, policy := range makeSaPolicies(256, sa) {
+	for _, policy := range makeSaPolicies(256, 16, sa) {
 		log.V(3).Infof("adding Policy: %+v", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
@@ -183,7 +195,7 @@ func InstallChildSa(sa *SaParams) error {
 }
 
 func RemoveChildSa(sa *SaParams) error {
-	for _, policy := range makeSaPolicies(256, sa) {
+	for _, policy := range makeSaPolicies(256, 16, sa) {
 		log.V(3).Infof("removing Policy: %+v", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {

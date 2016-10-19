@@ -13,22 +13,6 @@ import (
 
 /*
 
-AES-CCM : for iot(802.15.4 requires aes-ccm 128b keys) rfc4307bis-10
-
-AES-GCM :
-cipher - AES block cipher in Counter Mode (AES-CTR).
-MAC- universal hash called GHASH, encrypted with AES-CTR.
-
-4 inputs:
-	secret key
-	IV (called nonce in ESP context, to differentiate from IKE IV)
-	plaintext
-	input for additional authenticated data (AAD)
-
-2 outputs:
-	plaintext
-	auth tag (icv)
-
 sk payload ->
                         1                   2                   3
     0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
@@ -62,18 +46,6 @@ A (additional data) ->
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
    ! Next Payload  !C!  RESERVED   !         Payload Length        !
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-
-K - key; 128, 192 or 256 bit; fn(ks_ex)
-Salt - GCM (4B), CCM (3B)
-N - 12B (11 for CCM) == Salt(not in payload) + IV
-IV - 8B (GCM & CCM)
-ICV(T, auth tag) - integ check value; 16 B, MAY support 8, 12 B; fn(A,C)
-
-len(C) == len(P) + len(T)
-C,T <= fn(K, N, P, A)
-
-ICV 12 is not recommended
-K 192 bits is not recommended
 
 length of SK_ai and SK_ar is 0
 SK_ei and SK_er include salt bytes

@@ -24,6 +24,6 @@ type Listener struct {
 }
 
 func (Listener) Close() {}
-func ListenForEvents(context.Context) (listener *Listener) {
+func ListenForEvents(context.Context, func(interface{})) (listener *Listener) {
 	return
 }
