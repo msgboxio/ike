@@ -149,9 +149,10 @@ func (o *Session) encode(msg *Message, to net.Addr) (*OutgoingMessge, error) {
 func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) {
 	if err != nil {
 		log.Error(err)
-		s.Event = state.FAIL
-		s.Error = err
-		return
+		return &state.StateEvent{
+			Event: state.FAIL,
+			Error: err,
+		}
 	}
 	o.outgoing <- msg
 	return

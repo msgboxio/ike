@@ -68,7 +68,7 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 	return
 }
 
-func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallback {
+func ikeCallbackHandler(conn ike.Conn, local, remote net.Addr) ike.ClientCallback {
 	// callback will run within session's goroutine
 	return func(data interface{}) error {
 		switch msg := data.(type) {
@@ -78,7 +78,7 @@ func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallbac
 				dest = remote
 				log.Infof("send to default addr %s", remote)
 			}
-			return ike.WritePacket(conn, msg.Data, dest)
+			return conn.WritePacket(msg.Data, dest)
 		case *ike.SaMessage:
 			remoteIP := ike.AddrToIp(remote)
 			localIP := ike.AddrToIp(local)
@@ -133,7 +133,7 @@ func watchSession(spi uint64, session *ike.Session) {
 	}()
 }
 
-func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Session, error) {
+func newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config) (*ike.Session, error) {
 	// needed later
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 	var err error
@@ -154,7 +154,7 @@ func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Sess
 		if err = ike.CheckInitRequest(config, msg); err != nil {
 			// handle errors that need reply
 			if reply := ike.InitErrorNeedsReply(msg, config, err); reply != nil {
-				ike.WritePacket(pconn, reply, msg.RemoteAddr)
+				pconn.WritePacket(reply, msg.RemoteAddr)
 			}
 			return nil, err
 		}
@@ -170,7 +170,7 @@ func newSession(msg *ike.Message, pconn net.Conn, config *ike.Config) (*ike.Sess
 
 // runs on main goroutine
 // loops until there is a socket error
-func processPacket(pconn net.Conn, msg *ike.Message, config *ike.Config) {
+func processPacket(pconn ike.Conn, msg *ike.Message, config *ike.Config) {
 	// convert spi to uint64 for map lookup
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 	// check if a session exists
