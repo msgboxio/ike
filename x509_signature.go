@@ -54,7 +54,7 @@ func init() {
 	}
 }
 
-func VerifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate) error {
+func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate) error {
 	// if using plain rsa signature, verify using SHA1
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 		return checkSignature(signed, signature, x509.SHA1WithRSA, cert)
@@ -70,21 +70,17 @@ func VerifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
 		}
 	} else {
-		return errors.Errorf("Ike Auth failed: auth method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
+		return errors.Errorf("Ike Auth failed: signature method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
 	}
 	return nil
 }
 
 func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm, cert *x509.Certificate) error {
-	log.V(1).Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
-		cert.SignatureAlgorithm, algorithm)
-	if err := cert.CheckSignature(algorithm, signed, signature); err != nil {
-		return err
+	if cert.SignatureAlgorithm != algorithm {
+		log.V(1).Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
+			cert.SignatureAlgorithm, algorithm)
 	}
-	if log.V(2) {
-		log.Infof("Ike CERT Auth of %+v successful", cert.Subject)
-	}
-	return nil
+	return cert.CheckSignature(algorithm, signed, signature)
 }
 
 func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.PrivateKey) ([]byte, error) {

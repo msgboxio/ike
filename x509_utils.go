@@ -3,6 +3,7 @@ package ike
 import (
 	"crypto/rsa"
 	"crypto/x509"
+	"fmt"
 	"io/ioutil"
 
 	"github.com/pkg/errors"
@@ -38,4 +39,22 @@ func LoadKey(keyFile string) (*rsa.PrivateKey, error) {
 		return nil, err
 	}
 	return x509.ParsePKCS1PrivateKey(keyPEM)
+}
+
+// FormatCert receives certificate and formats in human-readable format
+func FormatCert(c *x509.Certificate) string {
+	var ips []string
+	for _, ip := range c.IPAddresses {
+		ips = append(ips, ip.String())
+	}
+	altNames := append(ips, c.DNSNames...)
+	res := fmt.Sprintf(
+		"Issuer: CN=%s | Subject: CN=%s | CA: %t ",
+		c.Issuer.CommonName, c.Subject.CommonName, c.IsCA,
+	)
+	res += fmt.Sprintf("| Not before: %s Not After: %s", c.NotBefore, c.NotAfter)
+	if len(altNames) > 0 {
+		res += fmt.Sprintf(" | Alternate Names: %v", altNames)
+	}
+	return res
 }

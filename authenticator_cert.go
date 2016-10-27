@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -41,6 +42,9 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte,
 	if certId.PrivateKey == nil {
 		return nil, errors.Errorf("missing private key")
 	}
+	if log.V(2) {
+		log.Infof("Ike Auth: OUR CERT: %s", FormatCert(certId.Certificate))
+	}
 	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
 	return Sign(certId.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certId.PrivateKey)
 }
@@ -53,6 +57,9 @@ func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 	}
 	if r.userCertificate == nil {
 		return errors.New("Ike Auth failed: missing Certificate")
+	}
+	if log.V(2) {
+		log.Infof("Ike Auth: PEER CERT: %s", FormatCert(r.userCertificate))
 	}
 	// ensure key used to compute a digital signature belongs to the name in the ID payload
 	if bytes.Compare(idP.Data, r.userCertificate.RawSubject) != 0 {
@@ -69,7 +76,7 @@ func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 			err)
 	}
 	signed := r.tkm.SignB(initB, idP.Encode(), !r.forInitiator)
-	return VerifySignature(r.AuthMethod(), signed, authData, r.userCertificate)
+	return verifySignature(r.AuthMethod(), signed, authData, r.userCertificate)
 }
 
 func (r *CertAuthenticator) SetUserCertificate(cert *x509.Certificate) {

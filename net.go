@@ -60,7 +60,7 @@ func networkNumberAndMask(n *net.IPNet) (ip net.IP, m net.IPMask) {
 func IPNetToFirstLastAddress(n *net.IPNet) (first, last net.IP, err error) {
 	ip, m := networkNumberAndMask(n)
 	if ip == nil {
-		err = errors.New("cannot extract bounds from address")
+		err = errors.New("cannot extract bounds from address: " + n.String())
 		return
 	}
 	last = make([]byte, len(ip))
@@ -138,7 +138,22 @@ func (c *pconnV6) LocalAddr() net.Addr {
 
 var ErrorUdpOnly = errors.New("only udp is supported for now")
 
+func resolveUDP(address string) (string, error) {
+	addr, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return "", err
+	}
+	if addr.IP.To4() == nil {
+		return "udp4", nil
+	}
+	return "udp", nil
+}
+
 func Listen(network, address string) (net.Conn, error) {
+	network, err := resolveUDP(address)
+	if err != nil {
+		return nil, err
+	}
 	switch network {
 	case "udp4":
 		return listenUDP4(address)

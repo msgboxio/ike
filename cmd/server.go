@@ -76,9 +76,7 @@ func ikeCallbackHandler(conn net.Conn, local, remote net.Addr) ike.ClientCallbac
 			dest := msg.Addr
 			if dest == nil {
 				dest = remote
-				log.Infof("default addr %s", remote)
-			} else {
-				log.Infof("incoming addr %s", dest)
+				log.Infof("send to default addr %s", remote)
 			}
 			return ike.WritePacket(conn, msg.Data, dest)
 		case *ike.SaMessage:
@@ -192,7 +190,9 @@ func processPacket(pconn net.Conn, msg *ike.Message, config *ike.Config) {
 		}
 		session.SetCbHandler(ikeCallbackHandler(pconn, msg.LocalAddr, msg.RemoteAddr))
 		// host based selectors can be added directly since both addresses are available
-		session.AddHostBasedSelectors(ike.AddrToIp(msg.LocalAddr), ike.AddrToIp(msg.RemoteAddr))
+		if err := session.AddHostBasedSelectors(ike.AddrToIp(msg.LocalAddr), ike.AddrToIp(msg.RemoteAddr)); err != nil {
+			log.Warningf("could not add selectors: %s", err)
+		}
 		watchSession(spi, session)
 	}
 	session.PostMessage(msg)

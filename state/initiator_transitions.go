@@ -38,6 +38,10 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 				Action:     h.RemoveSa,
 				Dest:       STATE_FINISHED,
 			},
+			FAIL: Transition{
+				Action: h.RemoveSa,
+				Dest:   STATE_FINISHED,
+			},
 			DELETE_IKE_SA: Transition{
 				Dest: STATE_FINISHED,
 			},

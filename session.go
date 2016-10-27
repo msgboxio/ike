@@ -226,6 +226,7 @@ func (o *Session) SendInit(inEvt *state.StateEvent) (s *state.StateEvent) {
 
 // SendAuth callback from state machine
 func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
+	log.V(1).Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return &state.StateEvent{
@@ -233,7 +234,6 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
-	log.V(1).Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	auth := AuthFromSession(o)
 	if auth == nil {
 		return &state.StateEvent{
