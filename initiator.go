@@ -28,19 +28,18 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, cfg *Confi
 
 	cxt, cancel := context.WithCancel(parent)
 	o := &Session{
-		Context:           cxt,
-		cancel:            cancel,
-		isInitiator:       true,
-		tkm:               tkm,
-		cfg:               *cfg,
-		IkeSpiI:           MakeSpi(),
-		EspSpiI:           MakeSpi()[:4],
-		incoming:          make(chan *Message, 10),
-		rfc7427Signatures: true,
+		Context:     cxt,
+		cancel:      cancel,
+		isInitiator: true,
+		tkm:         tkm,
+		cfg:         *cfg,
+		IkeSpiI:     MakeSpi(),
+		EspSpiI:     MakeSpi()[:4],
+		incoming:    make(chan *Message, 10),
 	}
 
-	o.authLocal = NewAuthenticator(localID, o.tkm, o.rfc7427Signatures, o.isInitiator)
-	o.authRemote = NewAuthenticator(remoteID, o.tkm, o.rfc7427Signatures, o.isInitiator)
+	o.authLocal = NewAuthenticator(localID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authRemote = NewAuthenticator(remoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	o.Fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
 	o.PostEvent(&state.StateEvent{Event: state.SMI_START})
 	return o

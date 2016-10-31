@@ -22,8 +22,6 @@ type Session struct {
 
 	tkm                   *Tkm
 	authRemote, authLocal Authenticator
-	// should we use rfc7427 signature algos?
-	rfc7427Signatures bool
 
 	isInitiator         bool
 	IkeSpiI, IkeSpiR    protocol.Spi
@@ -154,14 +152,6 @@ func (o *Session) Close(err error) {
 	o.sendIkeSaDelete()
 	// TODO - start timeout to delete sa if peers does not reply
 	o.PostEvent(&state.StateEvent{Event: state.DELETE_IKE_SA, Error: err})
-}
-
-// SetHashAlgorithms callback from ike sa init
-func (o *Session) SetHashAlgorithms(isEnabled bool) {
-	if !isEnabled && o.rfc7427Signatures {
-		log.Warningln("Peer is not using secure signatures")
-	}
-	o.rfc7427Signatures = isEnabled
 }
 
 // actions from FSM

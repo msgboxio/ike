@@ -6,6 +6,7 @@ import (
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
+	"github.com/pkg/errors"
 )
 
 // IKE_SA_INIT
@@ -55,7 +56,7 @@ func InitFromSession(o *Session) *Message {
 		Nonce:         nonce,
 	})
 	// HashAlgorithmId has been set
-	if o.rfc7427Signatures {
+	if o.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE {
 		init.Payloads.Add(&protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			NotificationType: protocol.SIGNATURE_HASH_ALGORITHMS,
@@ -118,10 +119,12 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
 		// check if cookie is correct
 		if !bytes.Equal(cookie.NotificationMessage.([]byte), getCookie(m)) {
-			return protocol.ERR_INVALID_KE_PAYLOAD
+			log.Warning("invalid cookie")
+			return MissingCookieError
 		}
 	} else {
 		// TODO - this is only temporary; use config to enable DDOS protection
+		log.Info("requesting cookie")
 		return MissingCookieError
 	}
 
@@ -143,26 +146,29 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 
 func InitErrorNeedsReply(initI *Message, config *Config, err error) []byte {
 	if err == protocol.ERR_INVALID_KE_PAYLOAD {
+		// ask PEER for correct DH type
 		buf := []byte{0, 0}
 		packets.WriteB16(buf, 0, config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId)
 		return notificationResponse(initI.IkeHeader.SpiI, protocol.INVALID_KE_PAYLOAD, buf)
 	} else if err == MissingCookieError {
+		// ask peer to send cookie
 		return notificationResponse(initI.IkeHeader.SpiI, protocol.COOKIE, getCookie(initI))
 	}
 	return nil
 }
 
 func CheckInitResponseForSession(o *Session, m *Message) error {
-	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
-		!m.IkeHeader.Flags.IsResponse() ||
-		m.IkeHeader.Flags.IsInitiator() ||
-		m.IkeHeader.MsgId != 0 {
+	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT || // message must be init
+		!m.IkeHeader.Flags.IsResponse() || // must be response
+		m.IkeHeader.Flags.IsInitiator() || // must be a responder
+		m.IkeHeader.MsgId != 0 { // id must be zero
 		return protocol.ERR_INVALID_SYNTAX
 	}
 	// make sure responder spi is not the same as initiator spi
 	if bytes.Equal(m.IkeHeader.SpiR, m.IkeHeader.SpiI) {
 		return protocol.ERR_INVALID_SYNTAX
 	}
+	// peer needs a cookie
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
 		return CookieError{cookie}
 	}
@@ -177,17 +183,45 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 	return nil
 }
 
-// SetInitiatorParameters sets session parameters from incoming IKE_SA_INIT response
-func SetInitiatorParameters(o *Session, m *Message) {
-	// for responder these were set by factory
-	// responders nonce
-	no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	o.tkm.Nr = no.Nonce
-	// responders spi
-	o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
+func checkSignatureAlgo(o *Session, isEnabled bool) error {
+	if !isEnabled {
+		log.Warningf(o.Tag() + "Not using secure signatures")
+		if o.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
+			return errors.New("Peer is not using secure signatures")
+		}
+	}
+	return nil
 }
 
 func HandleInitForSession(o *Session, m *Message) error {
+	// process notifications
+	var rfc7427Signatures = false
+	for _, ns := range m.Payloads.GetNotifications() {
+		switch ns.NotificationType {
+		case protocol.SIGNATURE_HASH_ALGORITHMS:
+			log.V(2).Infof(o.Tag()+"Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
+			rfc7427Signatures = true
+		case protocol.NAT_DETECTION_DESTINATION_IP:
+			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.LocalAddr) {
+				log.V(2).Infof("HOST nat detected: %s", m.LocalAddr)
+			}
+		case protocol.NAT_DETECTION_SOURCE_IP:
+			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.RemoteAddr) {
+				log.V(2).Infof("PEER nat detected: %s", m.RemoteAddr)
+			}
+		}
+	}
+	if err := checkSignatureAlgo(o, rfc7427Signatures); err != nil {
+		return err
+	}
+
+	if o.isInitiator {
+		// peer responders nonce
+		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+		o.tkm.Nr = no.Nonce
+		// peer responders spi
+		o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
+	}
 	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// check NAT-T payload to determine if there is a NAT between the two peers
@@ -210,23 +244,5 @@ func HandleInitForSession(o *Session, m *Message) error {
 	} else {
 		o.initIb = m.Data
 	}
-	// process notifications
-	var rfc7427Signatures = false
-	for _, ns := range m.Payloads.GetNotifications() {
-		switch ns.NotificationType {
-		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			log.V(2).Infof(o.Tag()+"Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
-			rfc7427Signatures = true
-		case protocol.NAT_DETECTION_DESTINATION_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.LocalAddr) {
-				log.V(2).Infof("HOST nat detected: %s", m.LocalAddr)
-			}
-		case protocol.NAT_DETECTION_SOURCE_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.RemoteAddr) {
-				log.V(2).Infof("PEER nat detected: %s", m.RemoteAddr)
-			}
-		}
-	}
-	o.SetHashAlgorithms(rfc7427Signatures)
 	return nil
 }

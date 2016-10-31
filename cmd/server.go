@@ -113,13 +113,12 @@ func newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config) (*ike.Sess
 		}
 		// rewrite LocalAddr
 		ike.ContextCallback(session).(*callback).local = msg.LocalAddr
-		ike.SetInitiatorParameters(session, msg)
 		// remove from initiators map
 		delete(intiators, spi)
 	} else {
 		// is it a IKE_SA_INIT req ?
 		if err = ike.CheckInitRequest(config, msg); err != nil {
-			// handle errors that need reply
+			// handle errors that need reply: COOKIE or DH
 			if reply := ike.InitErrorNeedsReply(msg, config, err); reply != nil {
 				pconn.WritePacket(reply, msg.RemoteAddr)
 			}
