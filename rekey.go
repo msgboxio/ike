@@ -47,11 +47,9 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		dhTransformId: o.newTkm.suite.DhGroup.TransformId(),
 		dhPublic:      o.newTkm.DhPublic,
 	})
-	var msgId uint32
+	msgId := o.msgIdResp
 	if o.isInitiator {
 		msgId = o.msgIdReq
-	} else {
-		msgId = o.msgIdResp
 	}
 	init.IkeHeader.MsgId = msgId
 	// encode & send
@@ -60,7 +58,7 @@ func (o *ReKeySession) SendIkeSaRekey() {
 		log.Error(err)
 		return
 	}
-	o.outgoing <- &OutgoingMessge{o.initIb, nil}
+	// TODO - send
 }
 
 //  SK {SA, Nr, KEr} - ike sa

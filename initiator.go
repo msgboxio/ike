@@ -32,11 +32,10 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, cfg *Confi
 		cancel:            cancel,
 		isInitiator:       true,
 		tkm:               tkm,
-		cfg:               CopyConfig(cfg),
+		cfg:               *cfg,
 		IkeSpiI:           MakeSpi(),
 		EspSpiI:           MakeSpi()[:4],
 		incoming:          make(chan *Message, 10),
-		outgoing:          make(chan *OutgoingMessge, 10),
 		rfc7427Signatures: true,
 	}
 

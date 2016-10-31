@@ -16,7 +16,6 @@ import (
 type Conn interface {
 	ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, err error)
 	WritePacket(reply []byte, remoteAddr net.Addr) error
-	LocalAddr() net.Addr
 	Close() error
 }
 
@@ -26,18 +25,10 @@ func (c *pconnV4) Close() error {
 	return c.Conn.Close()
 }
 
-func (c *pconnV4) LocalAddr() net.Addr {
-	return c.Conn.LocalAddr()
-}
-
 type pconnV6 ipv6.PacketConn
 
 func (c *pconnV6) Close() error {
 	return c.Conn.Close()
-}
-
-func (c *pconnV6) LocalAddr() net.Addr {
-	return c.Conn.LocalAddr()
 }
 
 var ErrorUdpOnly = errors.New("only udp is supported for now")
@@ -92,6 +83,7 @@ func listenUDP4(localString string) (p4 *pconnV4, err error) {
 			return nil, err
 		}
 	}
+	log.Infof("socket listening: %s", udp.LocalAddr())
 	return (*pconnV4)(p), nil
 }
 
@@ -112,6 +104,7 @@ func listenUDP6(localString string) (p6 *pconnV6, err error) {
 			return nil, err
 		}
 	}
+	log.Infof("socket listening: %s", udp.LocalAddr())
 	return (*pconnV6)(p), nil
 }
 
@@ -183,7 +176,7 @@ func ReadMessage(conn Conn) (*Message, error) {
 			log.Error(err)
 			continue
 		}
-		port := conn.LocalAddr().(*net.UDPAddr).Port
+		port := InnerConn(conn).LocalAddr().(*net.UDPAddr).Port
 		msg.LocalAddr = &net.UDPAddr{
 			IP:   localIP,
 			Port: port,
@@ -200,7 +193,7 @@ func InnerConn(p Conn) net.Conn {
 	} else if p6Conn, ok := p.(*pconnV6); ok {
 		return p6Conn.Conn
 	}
-	return nil
+	panic("invalid Conn")
 }
 
 // copied from golang.org/x/net/internal/nettest

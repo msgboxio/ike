@@ -35,12 +35,11 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 		Context:           cxt,
 		cancel:            cancel,
 		tkm:               tkm,
-		cfg:               CopyConfig(cfg),
+		cfg:               *cfg,
 		IkeSpiI:           ikeSpiI,
 		IkeSpiR:           MakeSpi(),
 		EspSpiR:           MakeSpi()[:4],
 		incoming:          make(chan *Message, 10),
-		outgoing:          make(chan *OutgoingMessge, 10),
 		rfc7427Signatures: true,
 	}
 

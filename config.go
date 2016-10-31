@@ -32,16 +32,6 @@ func DefaultConfig() *Config {
 	}
 }
 
-func CopyConfig(cfg *Config) *Config {
-	return &Config{
-		ProposalIke:     cfg.ProposalIke,
-		ProposalEsp:     cfg.ProposalEsp,
-		TsI:             cfg.TsI,
-		TsR:             cfg.TsR,
-		IsTransportMode: cfg.IsTransportMode,
-	}
-}
-
 // CheckProposals checks if incoming proposals include our configuration
 func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.Proposals) error {
 	for _, prop := range proposals {

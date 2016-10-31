@@ -6,24 +6,11 @@ import (
 	"net"
 
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
-
-type ClientCallback func(interface{}) error
-
-type SaMessage struct {
-	*platform.SaParams
-	IsAdd bool
-}
-
-type OutgoingMessge struct {
-	Data []byte
-	net.Addr
-}
 
 type Session struct {
 	context.Context
@@ -31,7 +18,7 @@ type Session struct {
 	*state.Fsm
 	isClosing bool
 
-	cfg *Config // copy of Config given to us
+	cfg Config // copy of Config given to us
 
 	tkm                   *Tkm
 	authRemote, authLocal Authenticator
@@ -44,12 +31,9 @@ type Session struct {
 	msgIdReq, msgIdResp uint32
 
 	incoming chan *Message
-	outgoing chan *OutgoingMessge
 
 	initIb, initRb []byte
 	initCookie     []byte // TODO - remove this from sesion
-
-	callback ClientCallback
 }
 
 // Housekeeping
@@ -62,21 +46,9 @@ func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
 	o.initCookie = cn.NotificationMessage.([]byte)
 }
 
-func (o *Session) SetCbHandler(cb ClientCallback) {
-	o.callback = cb
-}
-
 func (o *Session) Run() {
 	for {
 		select {
-		case reply, ok := <-o.outgoing:
-			if !ok {
-				break
-			}
-			if err := o.callback(reply); err != nil {
-				o.Close(err)
-				break
-			}
 		case msg, ok := <-o.incoming:
 			if !ok {
 				break
@@ -148,13 +120,17 @@ func (o *Session) encode(msg *Message, to net.Addr) (*OutgoingMessge, error) {
 
 func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) {
 	if err != nil {
+		goto fail
+	}
+	err = ContextCallback(o).SendMessage(msg)
+fail:
+	if err != nil {
 		log.Error(err)
 		return &state.StateEvent{
 			Event: state.FAIL,
 			Error: err,
 		}
 	}
-	o.outgoing <- msg
 	return
 }
 
@@ -192,13 +168,7 @@ func (o *Session) SetHashAlgorithms(isEnabled bool) {
 
 // Finished is called by state machine upon entering finished state
 func (o *Session) Finished(*state.StateEvent) (s *state.StateEvent) {
-	if queued := len(o.outgoing); queued > 0 {
-		// drain queue by going round the block again
-		o.PostEvent(&state.StateEvent{Event: state.FINISHED})
-		return
-	}
 	close(o.incoming)
-	close(o.outgoing)
 	o.CloseEvents()
 	log.Info(o.Tag() + "Finished; cancel context")
 	o.cancel(context.Canceled)
@@ -251,9 +221,9 @@ func (o *Session) InstallSa(*state.StateEvent) (s *state.StateEvent) {
 	sa := addSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
-		o.cfg,
+		&o.cfg,
 		o.isInitiator)
-	o.callback(&SaMessage{sa, true})
+	ContextCallback(o).AddSa(sa)
 	// move to STATE_MATURE state
 	o.PostEvent(&state.StateEvent{Event: state.SUCCESS})
 	return
@@ -264,9 +234,9 @@ func (o *Session) RemoveSa(*state.StateEvent) (s *state.StateEvent) {
 	sa := removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
-		o.cfg,
+		&o.cfg,
 		o.isInitiator)
-	o.callback(&SaMessage{sa, false})
+	ContextCallback(o).RemoveSa(sa)
 	return
 }
 
