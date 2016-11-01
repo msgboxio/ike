@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rsa"
-	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,17 +25,18 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New("received signal: " + sig.String()))
 }
 
-func loadConfig() (config *ike.Config, localString string, remoteString string, roots *x509.CertPool, certs []*x509.Certificate, key *rsa.PrivateKey) {
+func loadConfig() (config *ike.Config, localString string, remoteString string) {
 	flag.StringVar(&localString, "local", "0.0.0.0:4500", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
 
 	var isTunnelMode bool
 	flag.BoolVar(&isTunnelMode, "tunnel", false, "use tunnel mode?")
 
-	var caFile, certFile, keyFile string
+	var caFile, certFile, keyFile, peerID string
 	flag.StringVar(&caFile, "ca", "", "PEM encoded ca certificate")
 	flag.StringVar(&certFile, "cert", "", "PEM encoded peer certificate")
 	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
+	flag.StringVar(&peerID, "peer", "", "Peer ID")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -46,25 +45,29 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
-	var err error
+	// crypto keys & names
 	if caFile != "" {
-		roots, err = ike.LoadRoot(caFile)
+		roots, err := ike.LoadRoot(caFile)
 		if err != nil {
 			log.Fatal(err)
 		}
+		remoteId.Roots = roots
 	}
 	if certFile != "" {
-		certs, err = ike.LoadCerts(certFile)
+		certs, err := ike.LoadCerts(certFile)
 		if err != nil {
 			log.Warningf("Cert: %s", err)
 		}
+		localId.Certificate = certs[0]
 	}
 	if keyFile != "" {
-		key, err = ike.LoadKey(keyFile)
+		key, err := ike.LoadKey(keyFile)
 		if err != nil {
 			log.Warningf("Key: %s", err)
 		}
+		localId.PrivateKey = key
 	}
+	remoteId.Name = peerID
 	return
 }
 
@@ -214,15 +217,9 @@ func processPacket(pconn ike.Conn, msg *ike.Message, config *ike.Config) {
 }
 
 func main() {
-	config, localString, remoteString, roots, cert, key := loadConfig()
+	config, localString, remoteString := loadConfig()
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel)
-
-	if cert != nil {
-		localId.Certificate = cert[0]
-	}
-	localId.PrivateKey = key
-	remoteId.Roots = roots
 
 	ifs, _ := net.InterfaceAddrs()
 	log.Infof("Available interfaces %+v", ifs)

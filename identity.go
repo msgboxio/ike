@@ -40,6 +40,7 @@ type CertIdentity struct {
 	Certificate *x509.Certificate
 	PrivateKey  *rsa.PrivateKey
 	Roots       *x509.CertPool
+	Name        string
 }
 
 func (c *CertIdentity) IdType() protocol.IdType {

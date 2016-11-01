@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -28,6 +29,33 @@ func (p *Payloads) Get(t PayloadType) Payload {
 func (p *Payloads) Add(t Payload) {
 	p.Array = append(p.Array, t)
 }
+func (p *Payloads) GetCertchain() (chain []*x509.Certificate, err error) {
+	for _, pl := range p.Array {
+		if pl.Type() == PayloadTypeCERT {
+			certP, ok := pl.(*CertPayload)
+			if !ok {
+				err = errors.Errorf("unexpected payload; logic error")
+				break
+			}
+			if certP.CertEncodingType != X_509_CERTIFICATE_SIGNATURE {
+				err = errors.Errorf("cert encoding not supported: %v", certP.CertEncodingType)
+				break
+			}
+			// cert.data is DER-encoded X.509 certificate
+			x509Cert, err := x509.ParseCertificate(certP.Data)
+			if err != nil {
+				err = errors.Errorf("unable to parse cert: %s", err)
+				break
+			}
+			chain = append(chain, x509Cert)
+		}
+	}
+	if len(chain) == 0 {
+		err = errors.New("Missing certificates")
+	}
+	return
+}
+
 func (p *Payloads) GetNotifications() (ns []*NotifyPayload) {
 	for _, pl := range p.Array {
 		if pl.Type() == PayloadTypeN {

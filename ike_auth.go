@@ -1,7 +1,9 @@
 package ike
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/hex"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
@@ -154,29 +156,47 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authentic
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		if err := authenticator.Verify(initB, idP, authP.Data); err != nil {
+		return authenticator.Verify(initB, idP, authP.Data)
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
+		chain, err := msg.Payloads.GetCertchain()
+		if err != nil {
 			return err
 		}
-		return nil
-	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		certP := msg.Payloads.Get(protocol.PayloadTypeCERT)
-		if certP == nil {
-			return errors.New("Ike Auth failed: certificate is required")
+		cert := FormatCert(chain[0])
+		if log.V(2) {
+			log.Infof("Ike Auth: PEER CERT: %+v", cert)
 		}
-		cert := certP.(*protocol.CertPayload)
-		if cert.CertEncodingType != protocol.X_509_CERTIFICATE_SIGNATURE {
-			return errors.Errorf("Ike Auth failed: cert encoding not supported: %v", cert.CertEncodingType)
+		// ensure key used to compute a digital signature belongs to the name in the ID payload
+		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
+			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
 		}
-		// cert.data is DER-encoded X.509 certificate
-		x509Cert, err := x509.ParseCertificate(cert.Data)
-		if err != nil {
-			return errors.Errorf("Ike Auth failed: uanble to parse cert: %s", err)
+		// find authenticator
+		certAuth, ok := authenticator.(*CertAuthenticator)
+		if !ok {
+			return errors.New("Certificate authentication is required")
 		}
-		certAuth := authenticator.(*CertAuthenticator)
-		certAuth.SetUserCertificate(x509Cert)
+		// find identity
+		certID, ok := certAuth.identity.(*CertIdentity)
+		if !ok {
+			// should never happen
+			panic("logic error")
+		}
+		// Verify validity of certificate
+		opts := x509.VerifyOptions{
+			Roots: certID.Roots,
+		}
+		if _, err := chain[0].Verify(opts); err != nil {
+			return errors.Errorf("Unable to verify certificate: %s", err)
+		}
+		// ensure that ID in cert is authorized
+		if !MatchNameFromCert(&cert, certID.Name) {
+			return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
+		}
+		// verify signature
+		certAuth.SetUserCertificate(chain[0])
 		return certAuth.Verify(initB, idP, authP.Data)
 	default:
-		return errors.Errorf("Ike Auth failed: auth method not supported: %s", authP.AuthMethod)
+		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
 	}
 }
 
@@ -206,7 +226,7 @@ func HandleAuthForSession(o *Session, m *Message) error {
 	}
 	// authenticate peer
 	if err := authenticate(m, initB, idP, o.authRemote); err != nil {
-		log.Info(o.Tag() + err.Error())
+		log.Infof(o.Tag()+"IKE Auth Failed: %+v", err)
 		return protocol.ERR_AUTHENTICATION_FAILED
 	}
 	log.V(1).Info(o.Tag() + "IKE SA AUTHENTICATED")
