@@ -30,8 +30,8 @@ type Session struct {
 
 	incoming chan *Message
 
-	initIb, initRb []byte
-	initCookie     []byte // TODO - remove this from sesion
+	initIb, initRb  []byte
+	responderCookie []byte // TODO - remove this from sesion
 }
 
 // Housekeeping
@@ -41,7 +41,7 @@ func (o *Session) Tag() string {
 }
 
 func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
-	o.initCookie = cn.NotificationMessage.([]byte)
+	o.responderCookie = cn.NotificationMessage.([]byte)
 }
 
 func (o *Session) Run() {

@@ -35,11 +35,11 @@ func InitFromSession(o *Session) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	if o.initCookie != nil {
+	if o.responderCookie != nil {
 		init.Payloads.Add(&protocol.NotifyPayload{
 			PayloadHeader:       &protocol.PayloadHeader{},
 			NotificationType:    protocol.COOKIE,
-			NotificationMessage: o.initCookie,
+			NotificationMessage: o.responderCookie,
 		})
 	}
 	init.Payloads.Add(&protocol.SaPayload{
@@ -106,6 +106,7 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf [
 	return reply
 }
 
+// CheckInitRequest checks IKE_SA_INIT requests
 func CheckInitRequest(cfg *Config, m *Message) error {
 	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
 		m.IkeHeader.Flags.IsResponse() ||
@@ -116,22 +117,23 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
 	}
+	// did we get a COOKIE ?
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
-		// check if cookie is correct
+		// is COOKIE correct ?
 		if !bytes.Equal(cookie.NotificationMessage.([]byte), getCookie(m)) {
 			log.Warning("invalid cookie")
 			return MissingCookieError
 		}
-	} else {
-		// TODO - this is only temporary; use config to enable DDOS protection
+	} else if cfg.ThrottleInitRequests {
 		log.Info("requesting cookie")
 		return MissingCookieError
 	}
-
-	if err := cfg.CheckFromInit(m); err != nil {
+	// get SA payload
+	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	// check ike proposal
+	if err := cfg.CheckProposals(protocol.IKE, ikeSa.Proposals); err != nil {
 		return err
 	}
-	// TODO - check if config is usable
 	// check if transforms are usable
 	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	// make sure dh tranform id is the one that was accepted

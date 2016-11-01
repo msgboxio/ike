@@ -25,6 +25,18 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New("received signal: " + sig.String()))
 }
 
+// var localId = &ike.PskIdentities{
+// Primary: "ak@msgbox.io",
+// Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+// }
+var localId = &ike.CertIdentity{}
+
+// var remoteId = &ike.PskIdentities{
+// Primary: "bk@msgbox.io",
+// Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
+// }
+var remoteId = &ike.CertIdentity{}
+
 func loadConfig() (config *ike.Config, localString string, remoteString string) {
 	flag.StringVar(&localString, "local", "0.0.0.0:4500", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
@@ -70,18 +82,6 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	remoteId.Name = peerID
 	return
 }
-
-// var localId = &ike.PskIdentities{
-// Primary: "ak@msgbox.io",
-// Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-// }
-var localId = &ike.CertIdentity{}
-
-// var remoteId = &ike.PskIdentities{
-// Primary: "bk@msgbox.io",
-// Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
-// }
-var remoteId = &ike.CertIdentity{}
 
 // map of initiator spi -> session
 var sessions = make(map[uint64]*ike.Session)

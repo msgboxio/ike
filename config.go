@@ -13,8 +13,9 @@ type Config struct {
 
 	TsI, TsR []*protocol.Selector
 
-	IsTransportMode bool
-	AuthMethod      protocol.AuthMethod
+	IsTransportMode      bool
+	AuthMethod           protocol.AuthMethod
+	ThrottleInitRequests bool
 }
 
 // StrongSwan recommendations for cipher suite
@@ -87,14 +88,6 @@ func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
 	}
 	cfg.TsR = tsR
 	return
-}
-
-// CheckFromInit takes an IkeSaInit message and checks
-// if acceptable IKE proposal is available
-func (cfg *Config) CheckFromInit(initI *Message) error {
-	// get SA payload
-	ikeSa := initI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	return cfg.CheckProposals(protocol.IKE, ikeSa.Proposals)
 }
 
 // CheckromAuth checks esp proposal & selector
