@@ -1,5 +1,4 @@
 .vscode
-cli
 client*
 server*
 gce.sh

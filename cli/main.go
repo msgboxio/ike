@@ -90,8 +90,6 @@ var sessions = ike.NewSessions()
 var intiators = ike.NewSessions()
 
 // runs on main goroutine
-// sesions map has data race
-// delete operation runs in a seperate goroutime - worth fixing ?
 func watchSession(spi uint64, session *ike.Session) {
 	sessions.Add(spi, session)
 	// wait for session to finish

@@ -31,7 +31,7 @@ type Session struct {
 	incoming chan *Message
 
 	initIb, initRb  []byte
-	responderCookie []byte // TODO - remove this from sesion
+	responderCookie []byte // TODO - remove this from session
 }
 
 // Housekeeping
