@@ -49,7 +49,7 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	flag.StringVar(&caFile, "ca", "", "PEM encoded ca certificate")
 	flag.StringVar(&certFile, "cert", "", "PEM encoded peer certificate")
 	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
-	flag.StringVar(&peerID, "peer", "", "Peer ID")
+	flag.StringVar(&peerID, "peerid", "", "Peer ID")
 
 	flag.Set("logtostderr", "true")
 	flag.Parse()
@@ -85,19 +85,19 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 }
 
 // map of initiator spi -> session
-var sessions = make(map[uint64]*ike.Session)
+var sessions = ike.NewSessions()
 
-var intiators = make(map[uint64]*ike.Session)
+var intiators = ike.NewSessions()
 
 // runs on main goroutine
 // sesions map has data race
 // delete operation runs in a seperate goroutime - worth fixing ?
 func watchSession(spi uint64, session *ike.Session) {
-	sessions[spi] = session
+	sessions.Add(spi, session)
 	// wait for session to finish
 	go func() {
 		<-session.Done()
-		delete(sessions, spi)
+		sessions.Remove(spi)
 		log.Infof("Removed IKE SA 0x%x", spi)
 	}()
 }
@@ -107,7 +107,7 @@ func newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config) (*ike.Sess
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 	var err error
 	// check if this is a response to our INIT request
-	session, found := intiators[spi]
+	session, found := intiators.Get(spi)
 	if found {
 		// TODO - check if we already have a connection to this host
 		// close the initiator session if we do
@@ -118,7 +118,7 @@ func newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config) (*ike.Sess
 		// rewrite LocalAddr
 		ike.ContextCallback(session).(*callback).local = msg.LocalAddr
 		// remove from initiators map
-		delete(intiators, spi)
+		intiators.Remove(spi)
 	} else {
 		// is it a IKE_SA_INIT req ?
 		if err = ike.CheckInitRequest(config, msg); err != nil {
@@ -199,7 +199,7 @@ func processPacket(pconn ike.Conn, msg *ike.Message, config *ike.Config) {
 	// convert spi to uint64 for map lookup
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 	// check if a session exists
-	session, found := sessions[spi]
+	session, found := sessions.Get(spi)
 	if !found {
 		var err error
 		session, err = newSession(msg, pconn, config)
@@ -232,7 +232,7 @@ func runInitiator(remoteString string, pconn ike.Conn, config *ike.Config) {
 				}
 				withCb := ike.WithCallback(context.Background(), ikeCallback(pconn, nil, remoteAddr))
 				initiator := ike.NewInitiator(withCb, localId, remoteId, config)
-				intiators[ike.SpiToInt64(initiator.IkeSpiI)] = initiator
+				intiators.Add(ike.SpiToInt64(initiator.IkeSpiI), initiator)
 				go initiator.Run()
 				// wait for initiator to finish
 				<-initiator.Done()
@@ -285,12 +285,12 @@ func main() {
 		// wait for app shutdown
 		<-cxt.Done()
 		// shutdown sessions
-		for _, session := range sessions {
+		sessions.ForEach(func(session *ike.Session) {
 			// rely on this to drain replies
 			session.Close(cxt.Err())
 			// wait until client is done
 			<-session.Done()
-		}
+		})
 		pconn.Close()
 		wg.Done()
 	}()
