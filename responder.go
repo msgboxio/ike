@@ -8,7 +8,7 @@ import (
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
-func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Config, initI *Message) (*Session, error) {
+func NewResponder(parent context.Context, cfg *Config, initI *Message) (*Session, error) {
 	cs, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		return nil, err
@@ -42,8 +42,8 @@ func NewResponder(parent context.Context, localID, remoteID Identity, cfg *Confi
 		incoming: make(chan *Message, 10),
 	}
 
-	o.authLocal = NewAuthenticator(localID, o.tkm, cfg.AuthMethod, o.isInitiator)
-	o.authRemote = NewAuthenticator(remoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	o.Fsm = state.NewFsm(state.ResponderTransitions(o), state.CommonTransitions(o))
 	o.PostEvent(&state.StateEvent{Event: state.SMI_START})
 	return o, nil

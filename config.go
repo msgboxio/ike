@@ -11,10 +11,11 @@ import (
 type Config struct {
 	ProposalIke, ProposalEsp protocol.Transforms
 
-	TsI, TsR []*protocol.Selector
+	LocalID, RemoteID Identity
+	AuthMethod        protocol.AuthMethod
 
+	TsI, TsR             []*protocol.Selector
 	IsTransportMode      bool
-	AuthMethod           protocol.AuthMethod
 	ThrottleInitRequests bool
 }
 

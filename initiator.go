@@ -8,7 +8,7 @@ import (
 )
 
 // NewInitiator creates an initiator session
-func NewInitiator(parent context.Context, localID, remoteID Identity, cfg *Config) *Session {
+func NewInitiator(parent context.Context, cfg *Config) *Session {
 	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		log.Error(err)
@@ -38,8 +38,8 @@ func NewInitiator(parent context.Context, localID, remoteID Identity, cfg *Confi
 		incoming:    make(chan *Message, 10),
 	}
 
-	o.authLocal = NewAuthenticator(localID, o.tkm, cfg.AuthMethod, o.isInitiator)
-	o.authRemote = NewAuthenticator(remoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	o.Fsm = state.NewFsm(state.InitiatorTransitions(o), state.CommonTransitions(o))
 	o.PostEvent(&state.StateEvent{Event: state.SMI_START})
 	return o
