@@ -1,6 +1,7 @@
 package main
 
 import (
+	cxt "context"
 	"errors"
 	"flag"
 	"fmt"
@@ -175,6 +176,11 @@ func (ret *callback) RemoveSa(sa *platform.SaParams) error {
 	log.Info("Removed child SA")
 	return err
 }
+func (ret *callback) NewSa(session *ike.Session) error {
+	log.Info("NEW SA NEEDED")
+	session.Close(cxt.DeadlineExceeded)
+	return nil
+}
 
 // when sending the first packet as initiator, local address is missing
 // so it needs to be replaced
@@ -216,6 +222,28 @@ func processPacket(pconn ike.Conn, msg *ike.Message, config *ike.Config) {
 	session.PostMessage(msg)
 }
 
+func runInitiator(remoteString string, pconn ike.Conn, config *ike.Config) {
+	if remoteString != "" {
+		go func() {
+			for { // restart conn
+				remoteAddr, err := net.ResolveUDPAddr("udp", remoteString)
+				if err != nil {
+					log.Fatalf("error resolving: %+v", err)
+				}
+				withCb := ike.WithCallback(context.Background(), ikeCallback(pconn, nil, remoteAddr))
+				initiator := ike.NewInitiator(withCb, localId, remoteId, config)
+				intiators[ike.SpiToInt64(initiator.IkeSpiI)] = initiator
+				go initiator.Run()
+				// wait for initiator to finish
+				<-initiator.Done()
+				if initiator.Err() == cxt.DeadlineExceeded {
+					break
+				}
+			}
+		}()
+	}
+}
+
 func main() {
 	config, localString, remoteString := loadConfig()
 	cxt, cancel := context.WithCancel(context.Background())
@@ -248,16 +276,7 @@ func main() {
 		log.Error(err)
 	}
 
-	if remoteString != "" {
-		remoteAddr, err := net.ResolveUDPAddr("udp", remoteString)
-		if err != nil {
-			log.Fatalf("error resolving: %+v", err)
-		}
-		cxt := ike.WithCallback(context.Background(), ikeCallback(pconn, nil, remoteAddr))
-		initiator := ike.NewInitiator(cxt, localId, remoteId, config)
-		intiators[ike.SpiToInt64(initiator.IkeSpiI)] = initiator
-		go initiator.Run()
-	}
+	runInitiator(remoteString, pconn, config)
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)

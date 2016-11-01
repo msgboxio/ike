@@ -97,6 +97,7 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 			}
 			log.Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
+				log.Info(o.Tag() + "Lifetime Expired")
 				o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
 			})
 		case protocol.USE_TRANSPORT_MODE:

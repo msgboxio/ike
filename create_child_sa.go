@@ -23,9 +23,11 @@ type childSaParams struct {
 
 	proposals []*protocol.SaProposal
 
-	nonce         *big.Int
-	dhTransformId protocol.DhTransformId
-	dhPublic      *big.Int
+	nonce           *big.Int
+	dhTransformId   protocol.DhTransformId
+	dhPublic        *big.Int
+	tsI, tsR        []*protocol.Selector
+	isTransportMode bool
 }
 
 func makeIkeChildSa(p childSaParams) *Message {
@@ -47,18 +49,42 @@ func makeIkeChildSa(p childSaParams) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
+	if p.tsI != nil && p.tsR != nil {
+		child.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader:    &protocol.PayloadHeader{},
+			NotificationType: protocol.REKEY_SA,
+		})
+	}
+	if p.isTransportMode {
+		child.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader:    &protocol.PayloadHeader{},
+			NotificationType: protocol.USE_TRANSPORT_MODE,
+		})
+	}
 	child.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		Proposals:     p.proposals,
+	})
+	child.Payloads.Add(&protocol.NoncePayload{
+		PayloadHeader: &protocol.PayloadHeader{},
+		Nonce:         p.nonce,
 	})
 	child.Payloads.Add(&protocol.KePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		DhTransformId: p.dhTransformId,
 		KeyData:       p.dhPublic,
 	})
-	child.Payloads.Add(&protocol.NoncePayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		Nonce:         p.nonce,
-	})
+	if p.tsI != nil && p.tsR != nil {
+		child.Payloads.Add(&protocol.TrafficSelectorPayload{
+			PayloadHeader:              &protocol.PayloadHeader{},
+			TrafficSelectorPayloadType: protocol.PayloadTypeTSi,
+			Selectors:                  p.tsI,
+		})
+		child.Payloads.Add(&protocol.TrafficSelectorPayload{
+			PayloadHeader:              &protocol.PayloadHeader{},
+			TrafficSelectorPayloadType: protocol.PayloadTypeTSr,
+			Selectors:                  p.tsR,
+		})
+	}
 	return child
 }

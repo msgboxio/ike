@@ -33,6 +33,7 @@ type Callback interface {
 	SendMessage(*OutgoingMessge) error
 	AddSa(*platform.SaParams) error
 	RemoveSa(*platform.SaParams) error
+	NewSa(*Session) error
 }
 
 type dummy struct{}

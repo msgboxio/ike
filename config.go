@@ -30,8 +30,9 @@ func DefaultConfig() *Config {
 		// ProposalIke: protocol.IKE_AES_GCM_16_MODP3072,
 		ProposalIke: protocol.IKE_AES128GCM16_PRFSHA256_ECP256,
 		// ProposalEsp: protocol.ESP_AES_CBC_SHA2_256,
-		ProposalEsp: protocol.ESP_AES_GCM_16,
-		AuthMethod:  protocol.AUTH_DIGITAL_SIGNATURE,
+		ProposalEsp:          protocol.ESP_AES_GCM_16,
+		AuthMethod:           protocol.AUTH_DIGITAL_SIGNATURE,
+		ThrottleInitRequests: true,
 	}
 }
 

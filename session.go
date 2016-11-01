@@ -279,14 +279,17 @@ func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
 }
 
 func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEvent) {
-	s = &state.StateEvent{Event: state.AUTH_FAIL}
 	m := evt.Message.(*Message)
-	if err := m.EnsurePayloads(InitPayloads); err == nil {
-		log.Infof(o.Tag() + "peer requests IKE rekey")
-	} else {
-		log.Infof(o.Tag() + "peer requests IPSEC rekey")
+	if m != nil {
+		if err := m.EnsurePayloads(InitPayloads); err == nil {
+			log.Infof(o.Tag() + "peer requests IKE rekey")
+		} else {
+			log.Infof(o.Tag() + "peer requests IPSEC rekey")
+		}
+		// do we need to send NO_ADDITIONAL_SAS ?
 	}
-	s.Error = protocol.ERR_NO_ADDITIONAL_SAS
+	// ask user to create new SA
+	ContextCallback(o).NewSa(o)
 	return
 }
 
