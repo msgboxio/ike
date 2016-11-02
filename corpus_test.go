@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
@@ -50,7 +51,7 @@ func TestIkeMsgGen(t *testing.T) {
 	params := &Session{
 		isInitiator: true,
 		tkm:         tkm,
-		cfg:         cfg,
+		cfg:         *cfg,
 		IkeSpiI:     ikeSpi,
 		IkeSpiR:     MakeSpi(),
 	}
@@ -75,6 +76,7 @@ func TestIkeMsgGen(t *testing.T) {
 		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
 		cfg.TsI, cfg.TsR,
 		&PskAuthenticator{tkm, true, ids},
+		time.Hour,
 	}, initIb)
 	// overwrite NextPayload
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi

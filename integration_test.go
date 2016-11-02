@@ -16,22 +16,6 @@ var pskId = &PskIdentities{
 var cfg = DefaultConfig()
 var localAddr, remoteAddr net.Addr
 
-func saInstaller(ch chan *platform.SaParams) SaCallback {
-	return func(sa *platform.SaParams) error {
-		ch <- sa
-		return nil
-	}
-}
-func saRemover(sa *platform.SaParams) error {
-	return nil
-}
-func packetWriter(ch chan []byte) WriteData {
-	return func(reply []byte) error {
-		ch <- reply
-		return nil
-	}
-}
-
 func TestIntPsk(t *testing.T) {
 	testWithIdentity(t, pskId, pskId)
 }
@@ -64,22 +48,22 @@ func testWithCert(t testing.TB) {
 	}
 	remoteID := &CertIdentity{
 		Roots: roots,
+		Name:  "172.17.0.1",
 	}
 	testWithIdentity(t, localID, remoteID)
 }
 
-func runInitiator(t testing.TB, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
-	initiator := NewInitiator(context.Background(), locid, remid, remoteAddr, localAddr, cfg)
-	initiator.AddSaHandlers(onSa, saRemover)
+func runInitiator(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
+	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})
+	initiator := NewInitiator(withCb, cfg)
 	// run state machine, will send initI on given channel
-	go initiator.Run(writeTo)
+	go initiator.Run()
 	// wait for initR
 	initR, err := DecodeMessage(<-readFrom)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// use initR
-	SetInitiatorParameters(initiator, initR)
 	// process initR, send authI
 	initiator.PostMessage(initR)
 	// wait for auhtR
@@ -91,19 +75,35 @@ func runInitiator(t testing.TB, readFrom <-chan []byte, locid, remid Identity, o
 	initiator.PostMessage(authR)
 }
 
-func runResponder(t testing.TB, readFrom <-chan []byte, locid, remid Identity, onSa SaCallback, writeTo WriteData) {
+type cb struct {
+	writeTo chan []byte
+	saTo    chan *platform.SaParams
+}
+
+func (c *cb) SendMessage(s *Session, msg *OutgoingMessge) error {
+	c.writeTo <- msg.Data
+	return nil
+}
+func (c *cb) AddSa(s *Session, sa *platform.SaParams) error {
+	c.saTo <- sa
+	return nil
+}
+func (c *cb) RemoveSa(*Session, *platform.SaParams) error { return nil }
+func (c *cb) RekeySa(*Session) error                      { return nil }
+
+func runResponder(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
 	// wait for initI
 	initI, err := DecodeMessage(<-readFrom)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// create responder
-	responder, err := NewResponder(context.Background(), locid, remid, cfg, initI)
+	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})
+	responder, err := NewResponder(withCb, cfg, initI)
 	if err != nil {
 		t.Fatal(err)
 	}
-	go responder.Run(writeTo)
-	responder.AddSaHandlers(onSa, saRemover)
+	go responder.Run()
 	// initI to responder, will send initR
 	responder.PostMessage(initI)
 	// wait for authI
@@ -116,14 +116,16 @@ func runResponder(t testing.TB, readFrom <-chan []byte, locid, remid Identity, o
 }
 
 func testWithIdentity(t testing.TB, locid, remid Identity) {
+	cfg.LocalID = locid
+	cfg.RemoteID = remid
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg.AddSelector(net, net)
 	chi := make(chan []byte, 1)
 	chr := make(chan []byte, 1)
 	sa := make(chan *platform.SaParams, 1)
 
-	go runInitiator(t, chi, locid, remid, saInstaller(sa), packetWriter(chr))
-	go runResponder(t, chr, locid, remid, saInstaller(sa), packetWriter(chi))
+	go runInitiator(t, chi, chr, sa)
+	go runResponder(t, chr, chi, sa)
 
 	// receive the 2 sa
 	sa1 := <-sa
