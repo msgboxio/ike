@@ -115,15 +115,30 @@ func main() {
 	}
 	// requires root
 	if err := platform.SetSocketBypas(ike.InnerConn(pconn), syscall.AF_INET6); err != nil {
-		log.Error(err)
+		log.Fatal(err)
 	}
+
+	cmd := cmd.NewCmd(pconn, cmd.IkeCallback{
+		AddSa: func(sa *platform.SaParams) error {
+			log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
+				sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
+			err := platform.InstallChildSa(sa)
+			log.Info("Installed Child SA; error:", err)
+			return err
+		},
+		RemoveSa: func(sa *platform.SaParams) error {
+			err := platform.RemoveChildSa(sa)
+			log.Info("Removed child SA")
+			return err
+		},
+	})
 
 	if remoteString != "" {
 		remoteAddr, err := net.ResolveUDPAddr("udp", remoteString)
 		if err != nil {
 			log.Fatalf("error resolving: %+v", err)
 		}
-		cmd.RunInitiator(remoteAddr, pconn, config)
+		cmd.RunInitiator(remoteAddr, config)
 	}
 
 	wg := &sync.WaitGroup{}
@@ -137,7 +152,7 @@ func main() {
 		wg.Done()
 	}()
 
-	err = cmd.Run(pconn, config)
+	err = cmd.Run(config)
 	// this will return when there is a socket error
 	// usually caused by the close call above
 	log.Error(err)

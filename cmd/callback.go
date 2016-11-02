@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	cxt "context"
 	"net"
 
 	"github.com/msgboxio/ike"
@@ -9,9 +8,14 @@ import (
 	"github.com/msgboxio/log"
 )
 
+// when sending the first packet as initiator, local address is missing
+// so it needs to be replaced
+
 type callback struct {
-	conn          ike.Conn
-	local, remote net.Addr
+	conn              ike.Conn
+	local, remote     net.Addr
+	forAdd, forRemove func(*platform.SaParams) error
+	forRekeySa        func(session *ike.Session)
 }
 
 func saAddr(sa *platform.SaParams, local, remote net.Addr) {
@@ -24,7 +28,7 @@ func saAddr(sa *platform.SaParams, local, remote net.Addr) {
 		sa.Res = remoteIP
 	}
 }
-func (ret *callback) SendMessage(msg *ike.OutgoingMessge) error {
+func (ret *callback) SendMessage(session *ike.Session, msg *ike.OutgoingMessge) error {
 	dest := msg.Addr
 	if dest == nil {
 		dest = ret.remote
@@ -32,33 +36,15 @@ func (ret *callback) SendMessage(msg *ike.OutgoingMessge) error {
 	}
 	return ret.conn.WritePacket(msg.Data, dest)
 }
-func (ret *callback) AddSa(sa *platform.SaParams) error {
+func (ret *callback) AddSa(session *ike.Session, sa *platform.SaParams) error {
 	saAddr(sa, ret.local, ret.remote)
-	log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
-		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
-	err := platform.InstallChildSa(sa)
-	log.Info("Installed Child SA; error:", err)
-	return err
+	return ret.forAdd(sa)
 }
-func (ret *callback) RemoveSa(sa *platform.SaParams) error {
+func (ret *callback) RemoveSa(session *ike.Session, sa *platform.SaParams) error {
 	saAddr(sa, ret.local, ret.remote)
-	err := platform.RemoveChildSa(sa)
-	log.Info("Removed child SA")
-	return err
+	return ret.forRemove(sa)
 }
-func (ret *callback) NewSa(session *ike.Session) error {
-	log.Info("NEW SA NEEDED")
-	session.Close(cxt.DeadlineExceeded)
+func (ret *callback) RekeySa(session *ike.Session) error {
+	ret.forRekeySa(session)
 	return nil
-}
-
-// when sending the first packet as initiator, local address is missing
-// so it needs to be replaced
-func ikeCallback(_conn ike.Conn, _local, _remote net.Addr) ike.Callback {
-	// callback will run within session's goroutine
-	return &callback{
-		local:  _local,
-		remote: _remote,
-		conn:   _conn,
-	}
 }

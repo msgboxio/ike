@@ -120,7 +120,7 @@ func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) 
 	if err != nil {
 		goto fail
 	}
-	err = ContextCallback(o).SendMessage(msg)
+	err = ContextCallback(o).SendMessage(o, msg)
 fail:
 	if err != nil {
 		log.Error(err)
@@ -213,7 +213,7 @@ func (o *Session) InstallSa(*state.StateEvent) (s *state.StateEvent) {
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
-	ContextCallback(o).AddSa(sa)
+	ContextCallback(o).AddSa(o, sa)
 	// move to STATE_MATURE state
 	o.PostEvent(&state.StateEvent{Event: state.SUCCESS})
 	return
@@ -226,7 +226,7 @@ func (o *Session) RemoveSa(*state.StateEvent) (s *state.StateEvent) {
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
-	ContextCallback(o).RemoveSa(sa)
+	ContextCallback(o).RemoveSa(o, sa)
 	return
 }
 
@@ -289,7 +289,7 @@ func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEven
 		// do we need to send NO_ADDITIONAL_SAS ?
 	}
 	// ask user to create new SA
-	ContextCallback(o).NewSa(o)
+	ContextCallback(o).RekeySa(o)
 	return
 }
 

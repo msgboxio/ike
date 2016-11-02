@@ -30,16 +30,8 @@ type OutgoingMessge struct {
 }
 
 type Callback interface {
-	SendMessage(*OutgoingMessge) error
-	AddSa(*platform.SaParams) error
-	RemoveSa(*platform.SaParams) error
-	NewSa(*Session) error
+	SendMessage(*Session, *OutgoingMessge) error
+	AddSa(*Session, *platform.SaParams) error
+	RemoveSa(*Session, *platform.SaParams) error
+	RekeySa(*Session) error
 }
-
-type dummy struct{}
-
-func (*dummy) SendMessage(*OutgoingMessge) error { return nil }
-func (*dummy) AddSa(*platform.SaParams) error    { return nil }
-func (*dummy) RemoveSa(*platform.SaParams) error { return nil }
-
-var dummyCb dummy
