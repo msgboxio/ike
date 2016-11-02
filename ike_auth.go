@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
+	"time"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
@@ -16,7 +17,8 @@ type authParams struct {
 	spiI, spiR      protocol.Spi
 	proposals       []*protocol.SaProposal
 	tsI, tsR        []*protocol.Selector
-	Authenticator
+	authenticator   Authenticator
+	lifetime        time.Duration
 }
 
 // IKE_AUTH
@@ -47,8 +49,8 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	id := params.Authenticator.Identity()
-	switch params.Authenticator.AuthMethod() {
+	id := params.authenticator.Identity()
+	switch params.authenticator.AuthMethod() {
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		certId, ok := id.(*CertIdentity)
 		if !ok {
@@ -72,14 +74,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		Data:          id.Id(),
 	}
 	auth.Payloads.Add(iDp)
-	signature, err := params.Authenticator.Sign(initB, iDp)
+	signature, err := params.authenticator.Sign(initB, iDp)
 	if err != nil {
 		log.Error(err)
 		return nil
 	}
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		AuthMethod:    params.Authenticator.AuthMethod(),
+		AuthMethod:    params.authenticator.AuthMethod(),
 		Data:          signature,
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
@@ -111,6 +113,14 @@ func makeAuth(params *authParams, initB []byte) *Message {
 			NotificationType: protocol.INITIAL_CONTACT,
 		})
 	}
+	if !params.isInitiator && params.lifetime != 0 {
+		auth.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader: &protocol.PayloadHeader{},
+			// ProtocolId:       IKE,
+			NotificationType:    protocol.AUTH_LIFETIME,
+			NotificationMessage: params.lifetime,
+		})
+	}
 	return auth
 }
 
@@ -133,11 +143,15 @@ func AuthFromSession(o *Session) *Message {
 	}
 	return makeAuth(
 		&authParams{
-			o.isInitiator,
-			o.cfg.IsTransportMode,
-			o.IkeSpiI, o.IkeSpiR,
-			prop, o.cfg.TsI, o.cfg.TsR,
-			o.authLocal,
+			isInitiator:     o.isInitiator,
+			isTransportMode: o.cfg.IsTransportMode,
+			spiI:            o.IkeSpiI,
+			spiR:            o.IkeSpiR,
+			proposals:       prop,
+			tsI:             o.cfg.TsI,
+			tsR:             o.cfg.TsR,
+			authenticator:   o.authLocal,
+			lifetime:        o.cfg.Lifetime,
 		}, initB)
 }
 

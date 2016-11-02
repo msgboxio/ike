@@ -279,8 +279,8 @@ func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
 }
 
 func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEvent) {
-	m := evt.Message.(*Message)
-	if m != nil {
+	if evt.Message != nil {
+		m := evt.Message.(*Message)
 		if err := m.EnsurePayloads(InitPayloads); err == nil {
 			log.Infof(o.Tag() + "peer requests IKE rekey")
 		} else {

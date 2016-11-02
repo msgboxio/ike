@@ -2,6 +2,7 @@ package ike
 
 import (
 	"net"
+	"time"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/log"
@@ -17,6 +18,7 @@ type Config struct {
 	TsI, TsR             []*protocol.Selector
 	IsTransportMode      bool
 	ThrottleInitRequests bool
+	Lifetime             time.Duration
 }
 
 // StrongSwan recommendations for cipher suite
@@ -34,6 +36,7 @@ func DefaultConfig() *Config {
 		ProposalEsp: protocol.ESP_AES_GCM_16,
 		AuthMethod:  protocol.AUTH_DIGITAL_SIGNATURE,
 		// ThrottleInitRequests: true,
+		Lifetime: time.Hour,
 	}
 }
 

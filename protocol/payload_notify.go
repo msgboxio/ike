@@ -17,6 +17,11 @@ func (s *NotifyPayload) Encode() (b []byte) {
 	b = append(b, s.Spi...)
 	switch s.NotificationType {
 	case AUTH_LIFETIME:
+		lft := s.NotificationMessage.(time.Duration)
+		buf := make([]byte, 4)
+		// time in seconds
+		packets.WriteB32(buf, 0, uint32(lft.Seconds()))
+		b = append(b, buf...)
 	case SIGNATURE_HASH_ALGORITHMS:
 		algos := s.NotificationMessage.([]HashAlgorithmId)
 		buf := make([]byte, len(algos)*2)
