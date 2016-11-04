@@ -56,16 +56,14 @@ func (i *IkeCmd) watchSession(spi uint64, session *ike.Session) {
 }
 
 func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config) (*ike.Session, error) {
-	// needed later
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
-	var err error
 	// check if this is a response to our INIT request
 	session, found := i.initiators.Get(spi)
 	if found {
 		// TODO - check if we already have a connection to this host
 		// close the initiator session if we do
 		// check if incoming message is an acceptable Init Response
-		if err = ike.CheckInitResponseForSession(session, msg); err != nil {
+		if err := ike.CheckInitResponseForSession(session, msg); err != nil {
 			return session, err
 		}
 		// rewrite LocalAddr
@@ -74,7 +72,7 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 		i.initiators.Remove(spi)
 	} else {
 		// is it a IKE_SA_INIT req ?
-		if err = ike.CheckInitRequest(config, msg); err != nil {
+		if err := ike.CheckInitRequest(config, msg); err != nil {
 			// handle errors that need reply: COOKIE or DH
 			if reply := ike.InitErrorNeedsReply(msg, config, err); reply != nil {
 				pconn.WritePacket(reply, msg.RemoteAddr)
@@ -91,6 +89,7 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 			forRekeySa: i.RekeySa,
 		}
 		cxt := ike.WithCallback(context.Background(), cb)
+		var err error
 		session, err = ike.NewResponder(cxt, config, msg)
 		if err != nil {
 			return nil, err
@@ -101,7 +100,6 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 }
 
 // runs on main goroutine
-// loops until there is a socket error
 func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config) {
 	// convert spi to uint64 for map lookup
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
@@ -129,6 +127,7 @@ func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config) {
 	session.PostMessage(msg)
 }
 
+// RunInitiator starts & watches over on initiator session
 func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config) {
 	go func() {
 		for { // restart conn
@@ -140,7 +139,11 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config) {
 				forRekeySa: i.RekeySa,
 			}
 			withCb := ike.WithCallback(context.Background(), cb)
-			initiator := ike.NewInitiator(withCb, config)
+			initiator, err := ike.NewInitiator(withCb, config)
+			if err != nil {
+				log.Errorln("could not start Initiator: ", err)
+				return
+			}
 			i.initiators.Add(ike.SpiToInt64(initiator.IkeSpiI), initiator)
 			go initiator.Run()
 			// wait for initiator to finish
@@ -153,6 +156,7 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config) {
 	}()
 }
 
+// ShutDown closes all active IKE sessions
 func (i *IkeCmd) ShutDown(err error) {
 	// shutdown sessions
 	i.sessions.ForEach(func(session *ike.Session) {
@@ -163,6 +167,7 @@ func (i *IkeCmd) ShutDown(err error) {
 	})
 }
 
+// Run loops until there is a socket error
 func (i *IkeCmd) Run(config *ike.Config) error {
 	for {
 		// this will return with error when there is a socket error

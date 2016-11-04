@@ -32,7 +32,7 @@ func (ret *callback) SendMessage(session *ike.Session, msg *ike.OutgoingMessge) 
 	dest := msg.Addr
 	if dest == nil {
 		dest = ret.remote
-		log.Infof("send to default addr %s", ret.remote)
+		log.V(2).Infof("send to default addr %s", ret.remote)
 	}
 	return ret.conn.WritePacket(msg.Data, dest)
 }

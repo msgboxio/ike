@@ -37,7 +37,11 @@ type Session struct {
 // Housekeeping
 
 func (o *Session) Tag() string {
-	return fmt.Sprintf("%#x<=>%#x: ", o.IkeSpiI, o.IkeSpiR)
+	ini := "[I]"
+	if !o.isInitiator {
+		ini = "[R]"
+	}
+	return fmt.Sprintf(ini+"%#x<=>%#x: ", o.IkeSpiI, o.IkeSpiR)
 }
 
 func (o *Session) SetCookie(cn *protocol.NotifyPayload) {

@@ -4,7 +4,6 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 )
 
 // Cipher interface provides Encryption & Integrity Protection
@@ -86,15 +85,9 @@ func (cs *CipherSuite) CheckIkeTransforms() error {
 	if cs.DhGroup == nil || cs.Prf == nil {
 		return errors.Errorf("invalid cipher transfoms combination")
 	}
-	if log.V(2) {
-		log.Infof("IKE CipherSuite: %+v", *cs)
-	}
 	return nil
 }
 
 func (cs *CipherSuite) CheckEspTransforms() error {
-	if log.V(2) {
-		log.Infof("ESP CipherSuite: %+v", *cs)
-	}
 	return nil
 }

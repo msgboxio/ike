@@ -2,10 +2,12 @@ package ike
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"testing"
 
 	"github.com/msgboxio/ike/platform"
+	"github.com/msgboxio/log"
 )
 
 var pskId = &PskIdentities{
@@ -55,7 +57,15 @@ func testWithCert(t testing.TB) {
 
 func runInitiator(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
 	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})
-	initiator := NewInitiator(withCb, cfg)
+	initiator, err := NewInitiator(withCb, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, err := json.Marshal(initiator)
+	if err != nil {
+		log.Info(err)
+	}
+	t.Log(string(js))
 	// run state machine, will send initI on given channel
 	go initiator.Run()
 	// wait for initR

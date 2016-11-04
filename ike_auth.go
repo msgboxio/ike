@@ -166,11 +166,20 @@ func AuthFromSession(o *Session) *Message {
 // TODO: RFC 7427 - Signature Authentication in IKEv2
 
 // authenticates peer
-func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authenticator Authenticator) error {
+func authenticate(o *Session, msg *Message) error {
+	var idP *protocol.IdPayload
+	var initB []byte
+	if o.isInitiator {
+		initB = o.initRb
+		idP = msg.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
+	} else {
+		initB = o.initIb
+		idP = msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
+	}
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		return authenticator.Verify(initB, idP, authP.Data)
+		return o.authRemote.Verify(initB, idP, authP.Data)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		chain, err := msg.Payloads.GetCertchain()
 		if err != nil {
@@ -178,14 +187,14 @@ func authenticate(msg *Message, initB []byte, idP *protocol.IdPayload, authentic
 		}
 		cert := FormatCert(chain[0])
 		if log.V(2) {
-			log.Infof("Ike Auth: PEER CERT: %+v", cert)
+			log.Infof(o.Tag()+"Ike Auth: PEER CERT: %+v", cert)
 		}
 		// ensure key used to compute a digital signature belongs to the name in the ID payload
 		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
 			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
 		}
 		// find authenticator
-		certAuth, ok := authenticator.(*CertAuthenticator)
+		certAuth, ok := o.authRemote.(*CertAuthenticator)
 		if !ok {
 			return errors.New("Certificate authentication is required")
 		}
@@ -229,17 +238,8 @@ func HandleAuthForSession(o *Session, m *Message) error {
 		}
 		return err
 	}
-	var idP *protocol.IdPayload
-	var initB []byte
-	if o.isInitiator {
-		initB = o.initRb
-		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
-	} else {
-		initB = o.initIb
-		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
-	}
 	// authenticate peer
-	if err := authenticate(m, initB, idP, o.authRemote); err != nil {
+	if err := authenticate(o, m); err != nil {
 		log.Infof(o.Tag()+"IKE Auth Failed: %+v", err)
 		return protocol.ERR_AUTHENTICATION_FAILED
 	}

@@ -95,9 +95,9 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 			if lft <= 2*time.Second {
 				reauth = 0
 			}
-			log.Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
+			log.V(1).Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
-				log.Info(o.Tag() + "Lifetime Expired")
+				log.V(1).Info(o.Tag() + "Lifetime Expired")
 				o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
 			})
 		case protocol.USE_TRANSPORT_MODE:
@@ -105,10 +105,10 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 		}
 	}
 	if wantsTransportMode && o.cfg.IsTransportMode {
-		log.Info(o.Tag() + "Using Transport Mode")
+		log.V(1).Info(o.Tag() + "Using Transport Mode")
 	} else {
 		if wantsTransportMode {
-			log.Info(o.Tag() + "Peer wanted Transport mode, forcing Tunnel mode")
+			log.V(1).Info(o.Tag() + "Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			err := errors.New("Peer Rejected Transport Mode Config")
 			log.Error(o.Tag() + err.Error())
@@ -121,6 +121,5 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 		s.Error = err
 		return
 	}
-	// TODO - check IPSEC selectors & config
 	return
 }
