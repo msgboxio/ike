@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 )
 
 /*
@@ -111,7 +111,7 @@ func (cs *aeadCipher) Overhead(clear []byte) int {
 
 const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
 
-func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
+func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) (dec []byte, err error) {
 	// Encryption key has salt appended to it
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
@@ -124,7 +124,7 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 	ct := ike[ADLEN+cs.ivLen : len(ike)-cs.icvLen]
 	icv := ike[len(ike)-cs.icvLen:]
 	nonce := append(append([]byte{}, salt...), iv...) // 12B; 4B salt + 8B iv
-	if log.V(4) {
+	if log.Level == logrus.DebugLevel {
 		log.Infof("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
 			hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(ad), hex.Dump(ct), hex.Dump(icv))
 	}
@@ -139,14 +139,14 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	if log.V(4) {
-		log.Infof("Padlen:%d\nClear:\n%s",
+	if log.Level == logrus.DebugLevel {
+		log.Debugf("Padlen:%d\nClear:\n%s",
 			padlen, hex.Dump(clear))
 	}
 	return
 }
 
-func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte, err error) {
+func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte, log *logrus.Logger) (encr []byte, err error) {
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
 	aead, err := cs.aeadFunc(key)
@@ -167,8 +167,8 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte) (encr []byte
 		payload = append(payload, pad...)
 	}
 	encr = aead.Seal([]byte{}, nonce, payload, headers)
-	if log.V(4) {
-		log.Infof("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
+	if log.Level == logrus.DebugLevel {
+		log.Debugf("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
 			hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(headers), padlen, hex.Dump(encr[len(payload):]))
 	}
 	encr = append(append(headers, ivBytes...), encr...)

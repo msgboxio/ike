@@ -3,7 +3,6 @@ package ike
 import (
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
-	"github.com/msgboxio/log"
 )
 
 type InfoParams struct {
@@ -109,7 +108,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 	if del := plds.Get(protocol.PayloadTypeD); del != nil {
 		dp := del.(*protocol.DeletePayload)
 		if dp.ProtocolId == protocol.IKE {
-			log.Infof(o.Tag()+"Peer remove IKE SA : %#x", msg.IkeHeader.SpiI)
+			o.Logger.Infof("Peer remove IKE SA")
 			return &state.StateEvent{
 				Event:   state.MSG_DELETE_IKE_SA,
 				Message: msg.IkeHeader.SpiI,
@@ -117,7 +116,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
-				log.Infof(o.Tag()+"Peer remove ESP SA : %#x", spi)
+				o.Logger.Infof("Peer remove ESP SA : %#x", spi)
 				return &state.StateEvent{
 					Event:   state.MSG_DELETE_ESP_SA,
 					Message: spi,
@@ -131,7 +130,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 	if note := plds.Get(protocol.PayloadTypeN); note != nil {
 		np := note.(*protocol.NotifyPayload)
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-			log.Infof(o.Tag()+"Received Informational Error: %v", err)
+			o.Logger.Infof("Received Informational Error: %v", err)
 			return &state.StateEvent{
 				Event:   state.FAIL,
 				Error:   err,
@@ -142,7 +141,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 	// Configuration
 	if cfg := plds.Get(protocol.PayloadTypeCP); cfg != nil {
 		cp := cfg.(*protocol.ConfigurationPayload)
-		log.V(1).Infof("Configuration: %+v", cp)
+		o.Logger.Infof("Configuration: %+v", cp)
 		// TODO
 	}
 	return nil

@@ -4,8 +4,8 @@ import (
 	"crypto/hmac"
 	"encoding/hex"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -16,6 +16,8 @@ type PskAuthenticator struct {
 	tkm          *Tkm
 	forInitiator bool
 	identity     Identity
+
+	log *logrus.Logger
 }
 
 func (psk *PskAuthenticator) Identity() Identity {
@@ -36,9 +38,7 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte
 		return nil, errors.Errorf("No Secret for %s", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), psk.forInitiator)
-	if log.V(2) {
-		log.Infof("Ike PSK Auth as %s", string(idP.Data))
-	}
+	psk.log.Debug("Ike PSK Auth as ", string(idP.Data))
 	// TODO : tkm.Auth always uses the hash negotiated with prf
 	prf := psk.tkm.suite.Prf
 	return prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length], nil
@@ -54,11 +54,8 @@ func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authD
 	prf := psk.tkm.suite.Prf
 	signedB := prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length]
 	// compare
-	if hmac.Equal(signedB, authData) {
-		if log.V(2) {
-			log.Infof("Ike PSK Auth of %s successful", string(idP.Data))
-		}
-		return nil
+	if !hmac.Equal(signedB, authData) {
+		return errors.Errorf("Ike PSK Auth of %s failed: \n%s vs \n%s", string(idP.Data), hex.Dump(signedB), hex.Dump(authData))
 	}
-	return errors.Errorf("Ike PSK Auth of %s failed: \n%s vs \n%s", string(idP.Data), hex.Dump(signedB), hex.Dump(authData))
+	return nil
 }

@@ -6,9 +6,9 @@ import (
 	"context"
 	"net"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
-	"github.com/msgboxio/log"
 )
 
 type IkeCallback struct {
@@ -51,11 +51,11 @@ func (i *IkeCmd) watchSession(spi uint64, session *ike.Session) {
 	go func() {
 		<-session.Done()
 		i.sessions.Remove(spi)
-		log.Infof("Removed IKE SA 0x%x", spi)
+		session.Logger.Infof("Removed IKE SA")
 	}()
 }
 
-func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config) (*ike.Session, error) {
+func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config, log *logrus.Logger) (*ike.Session, error) {
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 	// check if this is a response to our INIT request
 	session, found := i.initiators.Get(spi)
@@ -67,7 +67,7 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 			return session, err
 		}
 		// rewrite LocalAddr
-		ike.ContextCallback(session).(*callback).local = msg.LocalAddr
+		ike.ContextCallback(session).(*callback).setAddresses(msg.LocalAddr, msg.RemoteAddr)
 		// remove from initiators map
 		i.initiators.Remove(spi)
 	} else {
@@ -75,7 +75,11 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 		if err := ike.CheckInitRequest(config, msg); err != nil {
 			// handle errors that need reply: COOKIE or DH
 			if reply := ike.InitErrorNeedsReply(msg, config, err); reply != nil {
-				pconn.WritePacket(reply, msg.RemoteAddr)
+				data, err := msg.Encode(nil, false, log)
+				if err != nil {
+					log.Errorf("error encoding init reply %+v", err)
+				}
+				pconn.WritePacket(data, msg.RemoteAddr)
 			}
 			return nil, err
 		}
@@ -90,7 +94,7 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 		}
 		cxt := ike.WithCallback(context.Background(), cb)
 		var err error
-		session, err = ike.NewResponder(cxt, config, msg)
+		session, err = ike.NewResponder(cxt, config, msg, log)
 		if err != nil {
 			return nil, err
 		}
@@ -100,27 +104,27 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 }
 
 // runs on main goroutine
-func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config) {
+func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config, log *logrus.Logger) {
 	// convert spi to uint64 for map lookup
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
 	// check if a session exists
 	session, found := i.sessions.Get(spi)
 	if !found {
 		var err error
-		session, err = i.newSession(msg, i.conn, config)
+		session, err = i.newSession(msg, i.conn, config, log)
 		if err != nil {
 			if ce, ok := err.(ike.CookieError); ok {
 				// let retransmission take care to sending init with cookie
 				// session is always returned for CookieError
 				session.SetCookie(ce.Cookie)
 			} else {
-				log.Warningf("drop packet: %s", err)
+				log.Warning("drop packet: ", err)
 			}
 			return
 		}
 		// host based selectors can be added directly since both addresses are available
 		if err := session.AddHostBasedSelectors(ike.AddrToIp(msg.LocalAddr), ike.AddrToIp(msg.RemoteAddr)); err != nil {
-			log.Warningf("could not add selectors: %s", err)
+			log.Warningf("could not add selectors: ", err)
 		}
 		i.watchSession(spi, session)
 	}
@@ -128,7 +132,7 @@ func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config) {
 }
 
 // RunInitiator starts & watches over on initiator session
-func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config) {
+func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config, log *logrus.Logger) {
 	go func() {
 		for { // restart conn
 			cb := &callback{
@@ -139,7 +143,7 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config) {
 				forRekeySa: i.RekeySa,
 			}
 			withCb := ike.WithCallback(context.Background(), cb)
-			initiator, err := ike.NewInitiator(withCb, config)
+			initiator, err := ike.NewInitiator(withCb, config, log)
 			if err != nil {
 				log.Errorln("could not start Initiator: ", err)
 				return
@@ -150,7 +154,7 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config) {
 			<-initiator.Done()
 			// TODO - currently this is break before make
 			if initiator.Err() == cxt.DeadlineExceeded {
-				log.Info(initiator.Tag() + "ReKeying: ")
+				initiator.Logger.Info("ReKeying: ")
 			}
 		}
 	}()
@@ -168,13 +172,13 @@ func (i *IkeCmd) ShutDown(err error) {
 }
 
 // Run loops until there is a socket error
-func (i *IkeCmd) Run(config *ike.Config) error {
+func (i *IkeCmd) Run(config *ike.Config, log *logrus.Logger) error {
 	for {
 		// this will return with error when there is a socket error
-		msg, err := ike.ReadMessage(i.conn)
+		msg, err := ike.ReadMessage(i.conn, log)
 		if err != nil {
 			return err
 		}
-		i.processPacket(msg, config)
+		i.processPacket(msg, config, log)
 	}
 }

@@ -6,8 +6,8 @@ import (
 	"net"
 	"testing"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/platform"
-	"github.com/msgboxio/log"
 )
 
 var pskId = &PskIdentities{
@@ -55,36 +55,6 @@ func testWithCert(t testing.TB) {
 	testWithIdentity(t, localID, remoteID)
 }
 
-func runInitiator(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
-	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})
-	initiator, err := NewInitiator(withCb, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	js, err := json.Marshal(initiator)
-	if err != nil {
-		log.Info(err)
-	}
-	t.Log(string(js))
-	// run state machine, will send initI on given channel
-	go initiator.Run()
-	// wait for initR
-	initR, err := DecodeMessage(<-readFrom)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// use initR
-	// process initR, send authI
-	initiator.PostMessage(initR)
-	// wait for auhtR
-	authR, err := DecodeMessage(<-readFrom)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// process authR
-	initiator.PostMessage(authR)
-}
-
 type cb struct {
 	writeTo chan []byte
 	saTo    chan *platform.SaParams
@@ -100,16 +70,49 @@ func (c *cb) AddSa(s *Session, sa *platform.SaParams) error {
 }
 func (c *cb) RemoveSa(*Session, *platform.SaParams) error { return nil }
 func (c *cb) RekeySa(*Session) error                      { return nil }
+func (c *cb) IkeAuth(*Session, error)                     {}
+
+func runInitiator(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
+	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})
+	log := logrus.StandardLogger()
+	initiator, err := NewInitiator(withCb, cfg, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, err := json.Marshal(initiator)
+	if err != nil {
+		log.Info(err)
+	}
+	t.Log(string(js))
+	// run state machine, will send initI on given channel
+	go initiator.Run()
+	// wait for initR
+	initR, err := DecodeMessage(<-readFrom, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// use initR
+	// process initR, send authI
+	initiator.PostMessage(initR)
+	// wait for auhtR
+	authR, err := DecodeMessage(<-readFrom, log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// process authR
+	initiator.PostMessage(authR)
+}
 
 func runResponder(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
+	log := logrus.StandardLogger()
 	// wait for initI
-	initI, err := DecodeMessage(<-readFrom)
+	initI, err := DecodeMessage(<-readFrom, log)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// create responder
 	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})
-	responder, err := NewResponder(withCb, cfg, initI)
+	responder, err := NewResponder(withCb, cfg, initI, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,7 +120,7 @@ func runResponder(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platfo
 	// initI to responder, will send initR
 	responder.PostMessage(initI)
 	// wait for authI
-	authI, err := DecodeMessage(<-readFrom)
+	authI, err := DecodeMessage(<-readFrom, log)
 	if err != nil {
 		t.Fatal(err)
 	}

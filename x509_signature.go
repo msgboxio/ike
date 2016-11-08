@@ -6,8 +6,8 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -54,7 +54,7 @@ func init() {
 	}
 }
 
-func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate) error {
+func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate, log *logrus.Logger) error {
 	// if using plain rsa signature, verify using SHA1
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 		return checkSignature(signed, signature, x509.SHA1WithRSA, cert)
@@ -66,6 +66,10 @@ func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 	}
 	// check if specified signature algorithm is available
 	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
+		if cert.SignatureAlgorithm != method {
+			log.Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
+				cert.SignatureAlgorithm, method)
+		}
 		if err := checkSignature(signed, sigAuth.Signature, method, cert); err != nil {
 			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
 		}
@@ -76,14 +80,11 @@ func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 }
 
 func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm, cert *x509.Certificate) error {
-	if cert.SignatureAlgorithm != algorithm {
-		log.V(1).Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
-			cert.SignatureAlgorithm, algorithm)
-	}
 	return cert.CheckSignature(algorithm, signed, signature)
 }
 
-func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.PrivateKey) ([]byte, error) {
+func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.PrivateKey, log *logrus.Logger) ([]byte, error) {
+	log.Infof("Signing Using SignatureAlgorithm: %v", authMethod)
 	// if using a plain old signature, this is all we need
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 		return sign(x509.SHA1WithRSA, signed, private)
@@ -101,7 +102,6 @@ func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed [
 }
 
 func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey) (signature []byte, err error) {
-	log.V(1).Infof("Signing Using SignatureAlgorithm: %v", algo)
 	var hashType crypto.Hash
 
 	switch algo {

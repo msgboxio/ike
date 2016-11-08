@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
@@ -28,7 +29,8 @@ func TestTkm(t *testing.T) {
 	}
 
 	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048
-	suite, _ := crypto.NewCipherSuite(transforms)
+	log := logrus.StandardLogger()
+	suite, _ := crypto.NewCipherSuite(transforms, log)
 	tkm := &Tkm{
 		suite:    suite,
 		Ni:       Nonce,

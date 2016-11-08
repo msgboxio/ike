@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 )
@@ -25,9 +26,9 @@ var ids = PskIdentities{
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-func initiatorTkm(t *testing.T) *Tkm {
+func initiatorTkm(t *testing.T, log *logrus.Logger) *Tkm {
 	config := newConfig()
-	suite, err := crypto.NewCipherSuite(config.ProposalIke)
+	suite, err := crypto.NewCipherSuite(config.ProposalIke, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,8 +46,9 @@ func initiatorTkm(t *testing.T) *Tkm {
 }
 
 func TestIkeMsgGen(t *testing.T) {
+	log := logrus.StandardLogger()
 	cfg := newConfig()
-	tkm := initiatorTkm(t)
+	tkm := initiatorTkm(t, log)
 	ikeSpi := MakeSpi()
 	params := &Session{
 		isInitiator: true,
@@ -59,7 +61,7 @@ func TestIkeMsgGen(t *testing.T) {
 	init := InitFromSession(params)
 	init.IkeHeader.MsgId = 42
 	// encode & write init msg
-	initIb, err := init.Encode(tkm, true)
+	initIb, err := init.Encode(tkm, true, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,20 +71,23 @@ func TestIkeMsgGen(t *testing.T) {
 	// PskIdentities
 	ids := &PskIdentities{}
 	// auth
-	authI := makeAuth(&authParams{
+	authI, err := makeAuth(&authParams{
 		true,
 		cfg.IsTransportMode,
 		params.IkeSpiI, params.IkeSpiR,
 		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
 		cfg.TsI, cfg.TsR,
-		&PskAuthenticator{tkm, true, ids},
+		&PskAuthenticator{tkm, true, ids, log},
 		time.Hour,
 	}, initIb)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// overwrite NextPayload
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
 	authI.IkeHeader.MsgId = 43
 	// encode & write authI msg
-	authIb, err := authI.Encode(tkm, true)
+	authIb, err := authI.Encode(tkm, true, log)
 	if err != nil {
 		t.Fatal(err)
 	}

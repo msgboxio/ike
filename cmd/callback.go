@@ -5,7 +5,6 @@ import (
 
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
-	"github.com/msgboxio/log"
 )
 
 // when sending the first packet as initiator, local address is missing
@@ -16,6 +15,11 @@ type callback struct {
 	local, remote     net.Addr
 	forAdd, forRemove func(*platform.SaParams) error
 	forRekeySa        func(session *ike.Session)
+}
+
+func (c *callback) setAddresses(local, remote net.Addr) {
+	c.local = local
+	c.remote = remote
 }
 
 func saAddr(sa *platform.SaParams, local, remote net.Addr) {
@@ -32,17 +36,29 @@ func (ret *callback) SendMessage(session *ike.Session, msg *ike.OutgoingMessge) 
 	dest := msg.Addr
 	if dest == nil {
 		dest = ret.remote
-		log.V(2).Infof("send to default addr %s", ret.remote)
 	}
 	return ret.conn.WritePacket(msg.Data, dest)
 }
+func (ret *callback) IkeAuth(session *ike.Session, err error) {
+	if err == nil {
+		session.Logger.Info("IKE auth SUCCESS")
+	} else {
+		session.Logger.Warningf("IKE auth FAILED: %+v", err)
+	}
+}
 func (ret *callback) AddSa(session *ike.Session, sa *platform.SaParams) error {
 	saAddr(sa, ret.local, ret.remote)
-	return ret.forAdd(sa)
+	err := ret.forAdd(sa)
+	session.Logger.Infof("Installed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
+		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
+	return err
 }
 func (ret *callback) RemoveSa(session *ike.Session, sa *platform.SaParams) error {
 	saAddr(sa, ret.local, ret.remote)
-	return ret.forRemove(sa)
+	err := ret.forRemove(sa)
+	session.Logger.Infof("Removed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
+		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
+	return err
 }
 func (ret *callback) RekeySa(session *ike.Session) error {
 	ret.forRekeySa(session)

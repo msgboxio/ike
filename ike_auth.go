@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -29,7 +28,8 @@ type authParams struct {
 //  HDR(SPIi=xxx, SPIr=yyy, IKE_AUTH, Flags: Response, Message ID=1)
 //  SK {IDr, [CERT,] AUTH, SAr2, TSi, TSr}
 // signed1 : init[i/r]B | N[r/i]
-func makeAuth(params *authParams, initB []byte) *Message {
+
+func makeAuth(params *authParams, initB []byte) (*Message, error) {
 	// spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, signed1 []byte, tkm *Tkm, isTransportMode bool) *Message {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
@@ -55,11 +55,10 @@ func makeAuth(params *authParams, initB []byte) *Message {
 		certId, ok := id.(*CertIdentity)
 		if !ok {
 			// should never happen
-			panic("Logic Error")
+			return nil, errors.New("missing Certificate Identity")
 		}
 		if certId.Certificate == nil {
-			log.Error("missing cert")
-			return nil
+			return nil, errors.New("missing Identity")
 		}
 		auth.Payloads.Add(&protocol.CertPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
@@ -76,8 +75,7 @@ func makeAuth(params *authParams, initB []byte) *Message {
 	auth.Payloads.Add(iDp)
 	signature, err := params.authenticator.Sign(initB, iDp)
 	if err != nil {
-		log.Error(err)
-		return nil
+		return nil, err
 	}
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
@@ -121,11 +119,11 @@ func makeAuth(params *authParams, initB []byte) *Message {
 			NotificationMessage: params.lifetime,
 		})
 	}
-	return auth
+	return auth, nil
 }
 
 // SendAuth callback from state machine
-func AuthFromSession(o *Session) *Message {
+func AuthFromSession(o *Session) (*Message, error) {
 	// proposal
 	var prop []*protocol.SaProposal
 	// part of signed octet
@@ -155,40 +153,50 @@ func AuthFromSession(o *Session) *Message {
 		}, initB)
 }
 
-// TODO:
-// currently support for signature authenticaiton is limited to
+// HandleAuthForSession currently supports signature authenticaiton using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
-// &
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
+// RFC 7427 - Signature Authentication in IKEv2
 // tkm.Auth always uses the hash negotiated with prf
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
-// TODO: RFC 7427 - Signature Authentication in IKEv2
-
-// authenticates peer
-func authenticate(o *Session, msg *Message) error {
+func HandleAuthForSession(o *Session, m *Message) error {
+	payloads := AuthIPayloads
+	if o.isInitiator {
+		payloads = AuthRPayloads
+	}
+	if err := m.EnsurePayloads(payloads); err != nil {
+		for _, n := range m.Payloads.GetNotifications() {
+			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
+				// TODO - for now, we should simply end the IKE_SA
+				return errors.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
+			}
+		}
+		return err
+	}
+	// authenticate peer
 	var idP *protocol.IdPayload
 	var initB []byte
 	if o.isInitiator {
 		initB = o.initRb
-		idP = msg.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
+		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	} else {
 		initB = o.initIb
-		idP = msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
+		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
-	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	authP := m.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
+		o.Logger.Info("Ike Auth: SHARED_KEY of ", string(idP.Data))
 		return o.authRemote.Verify(initB, idP, authP.Data)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		chain, err := msg.Payloads.GetCertchain()
+		chain, err := m.Payloads.GetCertchain()
 		if err != nil {
 			return err
 		}
 		cert := FormatCert(chain[0])
-		if log.V(2) {
-			log.Infof(o.Tag()+"Ike Auth: PEER CERT: %+v", cert)
-		}
+		o.Logger.Infof("Ike Auth: PEER CERT: %+v", cert)
 		// ensure key used to compute a digital signature belongs to the name in the ID payload
 		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
 			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
@@ -212,6 +220,7 @@ func authenticate(o *Session, msg *Message) error {
 			return errors.Errorf("Unable to verify certificate: %s", err)
 		}
 		// ensure that ID in cert is authorized
+		// TODO - is this reasonable?
 		if !MatchNameFromCert(&cert, certID.Name) {
 			return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
 		}
@@ -221,28 +230,4 @@ func authenticate(o *Session, msg *Message) error {
 	default:
 		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
 	}
-}
-
-func HandleAuthForSession(o *Session, m *Message) error {
-	payloads := AuthIPayloads
-	if o.isInitiator {
-		payloads = AuthRPayloads
-	}
-	if err := m.EnsurePayloads(payloads); err != nil {
-		for _, n := range m.Payloads.GetNotifications() {
-			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
-				// TODO - for now, we should simply end the IKE_SA
-				return errors.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
-			}
-		}
-		return err
-	}
-	// authenticate peer
-	if err := authenticate(o, m); err != nil {
-		log.Infof(o.Tag()+"IKE Auth Failed: %+v", err)
-		return protocol.ERR_AUTHENTICATION_FAILED
-	}
-	log.V(1).Info(o.Tag() + "IKE SA AUTHENTICATED")
-	return nil
 }

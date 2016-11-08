@@ -31,6 +31,7 @@ type OutgoingMessge struct {
 
 type Callback interface {
 	SendMessage(*Session, *OutgoingMessge) error
+	IkeAuth(*Session, error)
 	AddSa(*Session, *platform.SaParams) error
 	RemoveSa(*Session, *platform.SaParams) error
 	RekeySa(*Session) error

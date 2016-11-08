@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/msgboxio/log"
+	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 )
 
@@ -75,7 +75,7 @@ func (p *Payloads) GetNotification(nt NotificationType) *NotifyPayload {
 	return nil
 }
 
-func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
+func DecodePayloads(b []byte, nextPayload PayloadType, log *logrus.Logger) (*Payloads, error) {
 	payloads := MakePayloads()
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
@@ -83,7 +83,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
 				fmt.Sprintf("payload is too small, %d < %d", len(b), PAYLOAD_HEADER_LENGTH))
 		}
 		pHeader := &PayloadHeader{}
-		if err := pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
+		if err := pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH], log); err != nil {
 			return nil, err
 		}
 		if (len(b) < int(pHeader.PayloadLength)) ||
@@ -132,7 +132,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
 		if err := payload.Decode(pbuf); err != nil {
 			return nil, err
 		}
-		if log.V(LOG_CODEC) {
+		if log.Level == logrus.DebugLevel {
 			js, _ := json.Marshal(payload)
 			log.Infof("Payload %s: %s from:\n%s", payload.Type(), js, hex.Dump(pbuf))
 		}
@@ -151,7 +151,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
 	return payloads, nil
 }
 
-func EncodePayloads(payloads *Payloads) (b []byte) {
+func EncodePayloads(payloads *Payloads, log *logrus.Logger) (b []byte) {
 	for idx, pl := range payloads.Array {
 		body := pl.Encode()
 		hdr := pl.Header()
@@ -161,8 +161,8 @@ func EncodePayloads(payloads *Payloads) (b []byte) {
 			next = payloads.Array[idx+1].Type()
 		}
 		hdr.NextPayload = next
-		body = append(hdr.Encode(), body...)
-		if log.V(LOG_CODEC) {
+		body = append(hdr.Encode(log), body...)
+		if log.Level == logrus.DebugLevel {
 			js, _ := json.Marshal(pl)
 			log.Infof("Payload %s: %s to:\n%s", pl.Type(), js, hex.Dump(body))
 		}

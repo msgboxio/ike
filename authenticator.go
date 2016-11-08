@@ -1,8 +1,11 @@
 package ike
 
-import "github.com/msgboxio/ike/protocol"
+import (
+	"github.com/Sirupsen/logrus"
+	"github.com/msgboxio/ike/protocol"
+)
 
-// Authenticator interface is used to authenticate / create AUTH payloads
+// Authenticator is used to authenticate / create AUTH payloads
 type Authenticator interface {
 	Identity() Identity
 	AuthMethod() protocol.AuthMethod
@@ -10,13 +13,14 @@ type Authenticator interface {
 	Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error
 }
 
-func NewAuthenticator(id Identity, tkm *Tkm, authMethod protocol.AuthMethod, forInitiator bool) Authenticator {
+func NewAuthenticator(id Identity, tkm *Tkm, authMethod protocol.AuthMethod, forInitiator bool, log *logrus.Logger) Authenticator {
 	switch id.(type) {
 	case *PskIdentities:
 		return &PskAuthenticator{
 			tkm:          tkm,
 			forInitiator: forInitiator,
 			identity:     id,
+			log:          log,
 		}
 	case *CertIdentity:
 		cid := &CertAuthenticator{
@@ -24,6 +28,7 @@ func NewAuthenticator(id Identity, tkm *Tkm, authMethod protocol.AuthMethod, for
 			forInitiator: forInitiator,
 			identity:     id,
 			authMethod:   authMethod,
+			log:          log,
 		}
 		return cid
 	default:

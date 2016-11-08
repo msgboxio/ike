@@ -5,8 +5,8 @@ import (
 	"io"
 	"net"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -68,9 +68,9 @@ type Message struct {
 	Data []byte // used to carry raw bytes
 }
 
-func DecodeMessage(b []byte) (msg *Message, err error) {
+func DecodeMessage(b []byte, log *logrus.Logger) (msg *Message, err error) {
 	msg = &Message{}
-	if err = msg.DecodeHeader(b); err != nil {
+	if err = msg.DecodeHeader(b, log); err != nil {
 		return
 	}
 	if len(b) < int(msg.IkeHeader.MsgLength) {
@@ -78,7 +78,7 @@ func DecodeMessage(b []byte) (msg *Message, err error) {
 		return
 	}
 	// further decode
-	if err = msg.DecodePayloads(b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+	if err = msg.DecodePayloads(b[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload, log); err != nil {
 		return
 	}
 	// decrypt later
@@ -86,28 +86,28 @@ func DecodeMessage(b []byte) (msg *Message, err error) {
 	return
 }
 
-func (s *Message) DecodeHeader(b []byte) (err error) {
-	s.IkeHeader, err = protocol.DecodeIkeHeader(b)
+func (s *Message) DecodeHeader(b []byte, log *logrus.Logger) (err error) {
+	s.IkeHeader, err = protocol.DecodeIkeHeader(b, log)
 	return
 }
 
-func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType) (err error) {
-	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload); err != nil {
+func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log *logrus.Logger) (err error) {
+	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload, log); err != nil {
 		return
 	}
-	log.V(1).Infof("[%d]Received %s%s: payloads %s",
+	log.Debugf("[%d]Received %s%s: payloads %s",
 		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, *s.Payloads)
-	if log.V(protocol.LOG_PACKET_JS) {
+	if log.Level == logrus.DebugLevel {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Rx:\n" + string(js))
 	}
 	return
 }
 
-func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
-	log.V(1).Infof("[%d]Sending %s%s: payloads %s",
+func (s *Message) Encode(tkm *Tkm, forInitiator bool, log *logrus.Logger) (b []byte, err error) {
+	log.Debugf("[%d]Sending %s%s: payloads %s",
 		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, s.Payloads)
-	if log.V(protocol.LOG_PACKET_JS) {
+	if log.Level == logrus.DebugLevel {
 		js, _ := json.MarshalIndent(s, " ", " ")
 		log.Info("Tx:\n" + string(js))
 	}
@@ -121,24 +121,24 @@ func (s *Message) Encode(tkm *Tkm, forInitiator bool) (b []byte, err error) {
 			err = errors.New("cant encrypt, no tkm found")
 			return
 		}
-		payload := protocol.EncodePayloads(s.Payloads)
+		payload := protocol.EncodePayloads(s.Payloads, log)
 		plen := len(payload) + tkm.CryptoOverhead(payload)
 		// payload header
 		ph := protocol.PayloadHeader{
 			NextPayload:   firstPayloadType,
 			PayloadLength: uint16(plen),
-		}.Encode()
+		}.Encode(log)
 		// prepare proper ike header
 		s.IkeHeader.MsgLength = uint32(protocol.IKE_HEADER_LEN + len(ph) + plen)
 		// encode ike header, and add to protocol header
-		headers := append(s.IkeHeader.Encode(), ph...)
+		headers := append(s.IkeHeader.Encode(log), ph...)
 		// finally ask the tkm to apply secrets
 		b, err = tkm.EncryptMac(headers, payload, forInitiator)
 	} else {
-		b = protocol.EncodePayloads(s.Payloads)
+		b = protocol.EncodePayloads(s.Payloads, log)
 		s.IkeHeader.NextPayload = firstPayloadType
 		s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)
-		b = append(s.IkeHeader.Encode(), b...)
+		b = append(s.IkeHeader.Encode(log), b...)
 	}
 	return
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/msgboxio/log"
+	"github.com/Sirupsen/logrus"
 )
 
 // TODO -
@@ -46,9 +46,10 @@ type Fsm struct {
 	State
 
 	messages chan *StateEvent
+	log      *logrus.Logger
 }
 
-func NewFsm(inputs ...map[State]UserTransitions) *Fsm {
+func NewFsm(log *logrus.Logger, inputs ...map[State]UserTransitions) *Fsm {
 	trs := make(transitions)
 	for _, tr := range inputs {
 		trs.addTransitions(tr)
@@ -57,6 +58,7 @@ func NewFsm(inputs ...map[State]UserTransitions) *Fsm {
 		transitions: trs,
 		State:       STATE_IDLE,
 		messages:    make(chan *StateEvent, 10),
+		log:         log,
 	}
 }
 
@@ -66,10 +68,10 @@ func (f *Fsm) PostEvent(m *StateEvent) {
 
 func (f *Fsm) Events() <-chan *StateEvent { return f.messages }
 
-func (f *Fsm) CloseEvents() {
+func (f *Fsm) CloseFsm() {
 	close(f.messages)
 	if f.State != STATE_FINISHED {
-		// log.Warningf("Fsm Closed in State %s", f.State)
+		// f.log.Warningf("Fsm Closed in State %s", f.State)
 		// draining the queue by sleeping seems to work
 		time.Sleep(time.Millisecond)
 	}
@@ -80,7 +82,7 @@ func (f *Fsm) CloseEvents() {
 func (f *Fsm) runTransition(t Transition, m *StateEvent) (evt *StateEvent) {
 	if t.CheckEvent != nil {
 		if evt = t.CheckEvent(m); evt != nil && evt.Error != nil {
-			log.Warningf("Check Error: %s for Event %s, in State %s", evt.Error, m.Event, f.State)
+			f.log.Warningf("Check Error: %s for Event %s, in State %s", evt.Error, m.Event, f.State)
 			// dont transition, handle error in same state
 			f.PostEvent(evt)
 			return evt
@@ -88,7 +90,7 @@ func (f *Fsm) runTransition(t Transition, m *StateEvent) (evt *StateEvent) {
 	}
 	if t.Action != nil {
 		if evt = t.Action(m); evt != nil && evt.Error != nil {
-			log.Warningf("Action Error: %s for Event %s, in State %s", evt.Error, m.Event, f.State)
+			f.log.Warningf("Action Error: %s for Event %s, in State %s", evt.Error, m.Event, f.State)
 			// dont transition, handle error in same state
 			f.PostEvent(evt)
 			return evt
@@ -101,7 +103,7 @@ func (f *Fsm) runEntryEvent(t Transition, m *StateEvent) (evt *StateEvent) {
 	// execute entry action for new state, it does not directly cause state changes
 	tEntry, ok := f.transitions[key(ENTRY_EVENT, t.Dest)]
 	if ok {
-		log.V(2).Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
+		f.log.Infof("Run: Event %s, for State %s", ENTRY_EVENT, t.Dest)
 		if evt = f.runTransition(tEntry, m); evt != nil && evt.Error != nil {
 			return
 		}
@@ -132,15 +134,15 @@ func (f *Fsm) runTimer() {
 func (f *Fsm) HandleEvent(m *StateEvent) {
 	t, ok := f.transitions[key(m.Event, f.State)]
 	if !ok {
-		log.V(2).Infof("Ignoring event %s, in State %s", m.Event, f.State)
+		f.log.Infof("Ignoring event %s, in State %s", m.Event, f.State)
 		return
 	}
-	log.V(2).Infof("Run: Event %s, in State %s", m.Event, f.State)
+	f.log.Infof("Run: Event %s, in State %s", m.Event, f.State)
 	if evt := f.runTransition(t, m); evt != nil && evt.Error != nil {
 		return
 	}
 	if t.Dest == f.State {
-		log.V(2).Infof("State did not change, Current %s", f.State)
+		f.log.Infof("State did not change, Current %s", f.State)
 		return
 	}
 	// ignore STATE_IDLE, not a real state; default
@@ -151,7 +153,7 @@ func (f *Fsm) HandleEvent(m *StateEvent) {
 	if evt := f.runEntryEvent(t, m); evt != nil && evt.Error != nil {
 		return
 	}
-	log.V(2).Infof("Change: Previous %s, Current %s", f.State, t.Dest)
+	f.log.Infof("Change: Previous %s, Current %s", f.State, t.Dest)
 	f.State = t.Dest
 	f.runTimer()
 	return

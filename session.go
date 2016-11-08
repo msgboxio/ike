@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -32,6 +32,8 @@ type Session struct {
 
 	initIb, initRb  []byte
 	responderCookie []byte // TODO - remove this from session
+
+	Logger *logrus.Logger
 }
 
 // Housekeeping
@@ -41,7 +43,7 @@ func (o *Session) Tag() string {
 	if !o.isInitiator {
 		ini = "[R]"
 	}
-	return fmt.Sprintf(ini+"%#x<=>%#x: ", o.IkeSpiI, o.IkeSpiR)
+	return fmt.Sprintf(ini+"%#x", o.IkeSpiI)
 }
 
 func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
@@ -56,7 +58,7 @@ func (o *Session) Run() {
 				break
 			}
 			if err := o.handleEncryptedMessage(msg); err != nil {
-				log.Warningf(o.Tag()+"Drop message: %s", err)
+				o.Logger.Warningf("Drop message: %s", err)
 				break
 			}
 			if evt := o.handleMessage(msg); evt != nil {
@@ -68,7 +70,7 @@ func (o *Session) Run() {
 			}
 			o.HandleEvent(evt)
 		case <-o.Done():
-			log.Info(o.Tag() + "Finished IKE SA")
+			o.Logger.Infof("Finished IKE session")
 			return
 		}
 	}
@@ -76,11 +78,11 @@ func (o *Session) Run() {
 
 func (o *Session) PostMessage(m *Message) {
 	if err := o.isMessageValid(m); err != nil {
-		log.Error(o.Tag()+"Drop Message: ", err)
+		o.Logger.Error("Drop Message: ", err)
 		return
 	}
 	if o.Context.Err() != nil {
-		log.Error(o.Tag() + "Drop Message: Closing")
+		o.Logger.Error("Drop Message: Closing")
 		return
 	}
 	o.incoming <- m
@@ -113,7 +115,7 @@ func incomingAddress(incoming interface{}) net.Addr {
 }
 
 func (o *Session) encode(msg *Message, to net.Addr) (*OutgoingMessge, error) {
-	buf, err := msg.Encode(o.tkm, o.isInitiator)
+	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +129,7 @@ func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) 
 	err = ContextCallback(o).SendMessage(o, msg)
 fail:
 	if err != nil {
-		log.Error(err)
+		o.Logger.Error(err)
 		return &state.StateEvent{
 			Event: state.FAIL,
 			Error: err,
@@ -148,7 +150,7 @@ func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
 
 // Close is called to shutdown this session
 func (o *Session) Close(err error) {
-	log.Infof(o.Tag()+"Close Session, err: %s", err)
+	o.Logger.Infof("Close Session, err: %s", err)
 	if o.isClosing {
 		return
 	}
@@ -163,8 +165,8 @@ func (o *Session) Close(err error) {
 // Finished is called by state machine upon entering finished state
 func (o *Session) Finished(*state.StateEvent) (s *state.StateEvent) {
 	close(o.incoming)
-	o.CloseEvents()
-	log.Info(o.Tag() + "Finished; cancel context")
+	o.CloseFsm()
+	o.Logger.Infof("Finished; cancel context")
 	o.cancel(context.Canceled)
 	return
 }
@@ -191,7 +193,7 @@ func (o *Session) SendInit(inEvt *state.StateEvent) (s *state.StateEvent) {
 
 // SendAuth callback from state machine
 func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
-	log.V(1).Infof(o.Tag()+"SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+	o.Logger.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return &state.StateEvent{
@@ -199,8 +201,9 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
-	auth := AuthFromSession(o)
-	if auth == nil {
+	auth, err := AuthFromSession(o)
+	if err != nil {
+		o.Logger.Infof("Error Authenticating: %+v", err)
 		return &state.StateEvent{
 			Event: state.AUTH_FAIL,
 			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
@@ -241,7 +244,7 @@ func (o *Session) HandleIkeSaInit(evt *state.StateEvent) (s *state.StateEvent) {
 	// response
 	m := evt.Message.(*Message)
 	if err := HandleInitForSession(o, m); err != nil {
-		log.Error(err)
+		o.Logger.Infof("Error Initializing: %+v", err)
 		return &state.StateEvent{
 			Event: state.INIT_FAIL,
 			Error: protocol.ERR_NO_PROPOSAL_CHOSEN, // TODO - always return this?
@@ -254,8 +257,10 @@ func (o *Session) HandleIkeSaInit(evt *state.StateEvent) (s *state.StateEvent) {
 func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
 	// response
 	m := evt.Message.(*Message)
-	if err := HandleAuthForSession(o, m); err != nil {
-		log.Error(err)
+	err := HandleAuthForSession(o, m)
+	// inform user
+	ContextCallback(o).IkeAuth(o, err)
+	if err != nil {
 		return &state.StateEvent{
 			Event: state.AUTH_FAIL,
 			Error: err,
@@ -272,7 +277,7 @@ func (o *Session) CheckSa(evt *state.StateEvent) (s *state.StateEvent) {
 }
 
 func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
-	log.Infof(o.Tag() + "Peer Closed Session")
+	o.Logger.Infof("Peer Closed Session")
 	if o.isClosing {
 		return
 	}
@@ -286,9 +291,9 @@ func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEven
 	if evt.Message != nil {
 		m := evt.Message.(*Message)
 		if err := m.EnsurePayloads(InitPayloads); err == nil {
-			log.Infof(o.Tag() + "peer requests IKE rekey")
+			o.Logger.Infof("peer requests IKE rekey")
 		} else {
-			log.Infof(o.Tag() + "peer requests IPSEC rekey")
+			o.Logger.Infof("peer requests IPSEC rekey")
 		}
 		// do we need to send NO_ADDITIONAL_SAS ?
 	}
@@ -385,7 +390,7 @@ func (o *Session) handleEncryptedMessage(m *Message) (err error) {
 			return err
 		}
 		sk := m.Payloads.Get(protocol.PayloadTypeSK)
-		if err = m.DecodePayloads(b, sk.NextPayloadType()); err != nil {
+		if err = m.DecodePayloads(b, sk.NextPayloadType(), o.Logger); err != nil {
 			return err
 		}
 	}

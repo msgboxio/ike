@@ -13,10 +13,10 @@ import (
 
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 	"github.com/msgboxio/packets"
 
 	"code.google.com/p/gopacket/bytediff"
+	"github.com/Sirupsen/logrus"
 )
 
 var sa_init = `
@@ -72,17 +72,18 @@ func init() {
 }
 
 func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
+	log := logrus.StandardLogger()
 	msg := &Message{}
-	err := msg.DecodeHeader(dec)
+	err := msg.DecodeHeader(dec, log)
 	if err != nil {
 		return nil, err
 	}
 	if len(dec) < int(msg.IkeHeader.MsgLength) {
-		log.V(protocol.LOG_CODEC_ERR).Info("")
+		log.Error("")
 		err = protocol.ERR_INVALID_SYNTAX
 		return nil, err
 	}
-	if err = msg.DecodePayloads(dec[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload); err != nil {
+	if err = msg.DecodePayloads(dec[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload, log); err != nil {
 		return nil, err
 	}
 	if msg.IkeHeader.NextPayload == protocol.PayloadTypeSK {
@@ -95,7 +96,7 @@ func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
 			return nil, err
 		}
 		sk := msg.Payloads.Get(protocol.PayloadTypeSK)
-		if err = msg.DecodePayloads(b, sk.NextPayloadType()); err != nil {
+		if err = msg.DecodePayloads(b, sk.NextPayloadType(), log); err != nil {
 			return nil, err
 		}
 	}
@@ -114,7 +115,8 @@ func testDecode(dec []byte, tkm *Tkm, forInitiator bool, t *testing.T) *Message 
 	}
 	t.Logf("\n%s", string(js))
 
-	enc, err := msg.Encode(tkm, forInitiator)
+	log := logrus.StandardLogger()
+	enc, err := msg.Encode(tkm, forInitiator, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +147,8 @@ func TestDecode(t *testing.T) {
 	no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 
 	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048
-	suite, _ := crypto.NewCipherSuite(transforms)
+	log := logrus.StandardLogger()
+	suite, _ := crypto.NewCipherSuite(transforms, log)
 
 	tkm := &Tkm{
 		suite:    suite,

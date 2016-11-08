@@ -4,12 +4,12 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/msgboxio/log"
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/packets"
 	"github.com/pkg/errors"
 )
 
-func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
+func DecodeIkeHeader(b []byte, log *logrus.Logger) (h *IkeHeader, err error) {
 	h = &IkeHeader{}
 	if len(b) < IKE_HEADER_LEN {
 		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Packet Too short : %d", len(b)))
@@ -36,11 +36,11 @@ func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
 	if h.MsgLength > MAX_IKE_MESSAGE_LEN {
 		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Bad Message Length in header : %d", h.MsgLength))
 	}
-	log.V(LOG_CODEC).Infof("Ike Header: %+v from \n%s", *h, hex.Dump(b[:IKE_HEADER_LEN]))
+	log.Debugf("Ike Header: %+v from \n%s", *h, hex.Dump(b[:IKE_HEADER_LEN]))
 	return
 }
 
-func (h *IkeHeader) Encode() (b []byte) {
+func (h *IkeHeader) Encode(log *logrus.Logger) (b []byte) {
 	b = make([]byte, IKE_HEADER_LEN)
 	copy(b, h.SpiI[:])
 	copy(b[8:], h.SpiR[:])
@@ -50,6 +50,6 @@ func (h *IkeHeader) Encode() (b []byte) {
 	packets.WriteB8(b, 19, uint8(h.Flags))
 	packets.WriteB32(b, 20, h.MsgId)
 	packets.WriteB32(b, 24, h.MsgLength)
-	log.V(LOG_CODEC).Infof("Ike Header: %+v to \n%s", *h, hex.Dump(b))
+	log.Debugf("Ike Header: %+v to \n%s", *h, hex.Dump(b))
 	return
 }

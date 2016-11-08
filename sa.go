@@ -6,7 +6,6 @@ import (
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 )
 
@@ -76,7 +75,7 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 	// get peer spi
 	espSpi, err := getPeerSpi(msg, protocol.ESP)
 	if err != nil {
-		log.Error(err)
+		o.Logger.Error(err)
 		s.Error = err
 		return
 	}
@@ -95,9 +94,9 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 			if lft <= 2*time.Second {
 				reauth = 0
 			}
-			log.V(1).Infof(o.Tag()+"Lifetime: %s; reauth in %s", lft, reauth)
+			o.Logger.Infof("Lifetime: %s; reauth in %s", lft, reauth)
 			time.AfterFunc(reauth, func() {
-				log.V(1).Info(o.Tag() + "Lifetime Expired")
+				o.Logger.Info("Lifetime Expired")
 				o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
 			})
 		case protocol.USE_TRANSPORT_MODE:
@@ -105,19 +104,19 @@ func checkSaForSession(o *Session, msg *Message) (s *state.StateEvent) {
 		}
 	}
 	if wantsTransportMode && o.cfg.IsTransportMode {
-		log.V(1).Info(o.Tag() + "Using Transport Mode")
+		o.Logger.Info("Using Transport Mode")
 	} else {
 		if wantsTransportMode {
-			log.V(1).Info(o.Tag() + "Peer wanted Transport mode, forcing Tunnel mode")
+			o.Logger.Info("Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			err := errors.New("Peer Rejected Transport Mode Config")
-			log.Error(o.Tag() + err.Error())
+			o.Logger.Error(err.Error())
 			s.Error = err
 		}
 	}
 	// load additional configs
-	if err := o.cfg.CheckromAuth(msg); err != nil {
-		log.Error(err)
+	if err := o.cfg.CheckfromAuth(msg, o.Logger); err != nil {
+		o.Logger.Error(err)
 		s.Error = err
 		return
 	}

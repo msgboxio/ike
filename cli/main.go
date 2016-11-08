@@ -10,20 +10,22 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/cmd"
 	"github.com/msgboxio/ike/platform"
-	"github.com/msgboxio/log"
 )
+
+var log = logrus.StandardLogger()
 
 func waitForSignal(cancel context.CancelFunc) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	sig := <-c
 	// sig is a ^C, handle it
-	cancel(errors.New("received signal: " + sig.String()))
+	cancel(errors.New(sig.String()))
 }
 
 // var localId = &ike.PskIdentities{
@@ -97,7 +99,7 @@ func main() {
 	// this should load the xfrm modules
 	// requires root
 	cb := func(msg interface{}) {
-		log.V(3).Infof("xfrm: \n%s", spew.Sdump(msg))
+		log.Debugf("xfrm: \n%s", spew.Sdump(msg))
 	}
 	if xfrm := platform.ListenForEvents(cxt, cb); xfrm != nil {
 		go func() {
@@ -120,16 +122,10 @@ func main() {
 
 	cmd := cmd.NewCmd(pconn, cmd.IkeCallback{
 		AddSa: func(sa *platform.SaParams) error {
-			log.Infof("Installing Child SA: %#x<=>%#x; [%s]%s<=>%s[%s]",
-				sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res)
-			err := platform.InstallChildSa(sa)
-			log.Info("Installed Child SA; error:", err)
-			return err
+			return platform.InstallChildSa(sa)
 		},
 		RemoveSa: func(sa *platform.SaParams) error {
-			err := platform.RemoveChildSa(sa)
-			log.Info("Removed child SA")
-			return err
+			return platform.RemoveChildSa(sa)
 		},
 	})
 
@@ -138,7 +134,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("error resolving: %+v", err)
 		}
-		cmd.RunInitiator(remoteAddr, config)
+		cmd.RunInitiator(remoteAddr, config, log)
 	}
 
 	wg := &sync.WaitGroup{}
@@ -152,7 +148,7 @@ func main() {
 		wg.Done()
 	}()
 
-	err = cmd.Run(config)
+	err = cmd.Run(config, log)
 	// this will return when there is a socket error
 	// usually caused by the close call above
 	log.Error(err)
