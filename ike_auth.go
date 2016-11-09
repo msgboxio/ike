@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"time"
 
+	"github.com/Sirupsen/logrus"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike/protocol"
+	"github.com/msgboxio/ike/state"
 	"github.com/pkg/errors"
 )
 
@@ -221,14 +224,14 @@ func parseAuth(m *Message) (*authParams, error) {
 	return params, nil
 }
 
-// HandleAuthForSession currently supports signature authenticaiton using
+// authenticate currently supports signature authenticaiton using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
 // RFC 7427 - Signature Authentication in IKEv2
 // tkm.Auth always uses the hash negotiated with prf
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
-func HandleAuthForSession(o *Session, m *Message) error {
+func authenticate(o *Session, m *Message) error {
 	// authenticate peer
 	var idP *protocol.IdPayload
 	var initB []byte
@@ -284,4 +287,66 @@ func HandleAuthForSession(o *Session, m *Message) error {
 	default:
 		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
 	}
+}
+
+func HandleAuthForSession(o *Session, m *Message) (err error) {
+	params, err := parseAuth(m)
+	if o.Logger.Level == logrus.DebugLevel {
+		o.Logger.Debugf("params: \n%s; err %+v", spew.Sdump(params), err)
+	}
+	if err != nil {
+		return
+	}
+	if err = authenticate(o, m); err != nil {
+		return
+	}
+	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
+		return
+	}
+	// TODO - check selectors
+	o.Logger.Infof("Configured selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+	o.Logger.Infof("Offered selectors: [INI]%s<=>%s[RES]", params.tsI, params.tsR)
+	// message looks OK
+	if o.isInitiator {
+		if params.isResponse {
+			o.EspSpiR = append([]byte{}, params.spiR...)
+		}
+		if o.EspSpiR == nil {
+			err = errors.New("Missing responder SPI")
+		}
+	} else {
+		if !params.isResponse {
+			o.EspSpiI = append([]byte{}, params.spiI...)
+		}
+		if o.EspSpiI == nil {
+			err = errors.New("Missing initiator SPI")
+		}
+	}
+	if err != nil {
+		return
+	}
+	// start Lifetime timer
+	if params.lifetime != 0 {
+		reauth := params.lifetime - 2*time.Second
+		if params.lifetime <= 2*time.Second {
+			reauth = 0
+		}
+		o.Logger.Infof("Lifetime: %s; reauth in %s", params.lifetime, reauth)
+		time.AfterFunc(reauth, func() {
+			o.Logger.Info("Lifetime Expired")
+			o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
+		})
+	}
+	// transport mode
+	if params.isTransportMode && o.cfg.IsTransportMode {
+		o.Logger.Info("Using Transport Mode")
+	} else {
+		if params.isTransportMode {
+			o.Logger.Info("Peer wanted Transport mode, forcing Tunnel mode")
+		} else if o.cfg.IsTransportMode {
+			err = errors.New("Peer Rejected Transport Mode Config")
+			return
+		}
+	}
+	return
 }
