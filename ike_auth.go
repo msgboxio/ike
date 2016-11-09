@@ -11,6 +11,7 @@ import (
 )
 
 type authParams struct {
+	isResponse      bool
 	isInitiator     bool
 	isTransportMode bool
 	spiI, spiR      protocol.Spi
@@ -153,6 +154,73 @@ func AuthFromSession(o *Session) (*Message, error) {
 		}, initB)
 }
 
+func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolId) (peerSpi protocol.Spi) {
+	for _, p := range props {
+		if !p.IsSpiSizeCorrect(len(p.Spi)) {
+			return
+		}
+		if p.ProtocolId == pid {
+			peerSpi = p.Spi
+		}
+	}
+	return
+}
+
+func parseAuth(m *Message) (*authParams, error) {
+	params := &authParams{}
+	if m.IkeHeader.Flags&protocol.RESPONSE != 0 {
+		params.isResponse = true
+	}
+	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
+		params.isInitiator = true
+	}
+	payloads := AuthRPayloads
+	if params.isInitiator {
+		payloads = AuthIPayloads
+	}
+	if err := m.EnsurePayloads(payloads); err != nil {
+		for _, n := range m.Payloads.GetNotifications() {
+			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
+				// TODO - for now, we should simply end the IKE_SA
+				return params, errors.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
+			}
+		}
+		return params, err
+	}
+	espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	if espSa.Proposals == nil {
+		return params, errors.New("proposals are missing")
+	}
+	params.proposals = espSa.Proposals
+	spi := spiFromProposal(params.proposals, protocol.ESP)
+	if params.isInitiator {
+		params.spiI = spi
+	} else {
+		params.spiR = spi
+	}
+	// get selectors
+	tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
+	tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
+	if len(tsI) == 0 || len(tsR) == 0 {
+		return params, errors.New("acceptable traffic selectors are missing")
+	}
+	params.tsI = tsI
+	params.tsR = tsR
+	// notifications
+	wantsTransportMode := false
+	for _, ns := range m.Payloads.GetNotifications() {
+		switch ns.NotificationType {
+		case protocol.AUTH_LIFETIME:
+			params.lifetime = ns.NotificationMessage.(time.Duration)
+		case protocol.USE_TRANSPORT_MODE:
+			wantsTransportMode = true
+		}
+	}
+	params.isTransportMode = wantsTransportMode
+	return params, nil
+}
+
 // HandleAuthForSession currently supports signature authenticaiton using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
@@ -161,20 +229,6 @@ func AuthFromSession(o *Session) (*Message, error) {
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
 func HandleAuthForSession(o *Session, m *Message) error {
-	payloads := AuthIPayloads
-	if o.isInitiator {
-		payloads = AuthRPayloads
-	}
-	if err := m.EnsurePayloads(payloads); err != nil {
-		for _, n := range m.Payloads.GetNotifications() {
-			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
-				// TODO - for now, we should simply end the IKE_SA
-				return errors.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
-			}
-		}
-		return err
-	}
 	// authenticate peer
 	var idP *protocol.IdPayload
 	var initB []byte

@@ -4,7 +4,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -93,24 +92,6 @@ func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
 	}
 	cfg.TsR = tsR
 	return
-}
-
-// CheckfromAuth checks esp proposal & selector
-func (cfg *Config) CheckfromAuth(authI *Message, log *logrus.Logger) error {
-	espSa := authI.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	if err := cfg.CheckProposals(protocol.ESP, espSa.Proposals); err != nil {
-		return err
-	}
-	// get selectors
-	tsI := authI.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-	tsR := authI.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
-	if len(tsI) == 0 || len(tsR) == 0 {
-		return errors.New("acceptable traffic selectors are missing")
-	}
-	log.Infof("Configured selectors: [INI]%s<=>%s[RES]", cfg.TsI, cfg.TsR)
-	log.Infof("Offered selectors: [INI]%s<=>%s[RES]", tsI, tsR)
-	// TODO - check selectors
-	return nil
 }
 
 func ProposalFromTransform(prot protocol.ProtocolId, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {

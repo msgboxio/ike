@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
@@ -257,9 +259,67 @@ func (o *Session) HandleIkeSaInit(evt *state.StateEvent) (s *state.StateEvent) {
 func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
 	// response
 	m := evt.Message.(*Message)
-	err := HandleAuthForSession(o, m)
+	params, err := parseAuth(m)
+	if o.Logger.Level == logrus.DebugLevel {
+		o.Logger.Debugf("params: \n%s; err %+v", spew.Sdump(params), err)
+	}
+	if err != nil {
+		goto onError
+	}
+	if err = HandleAuthForSession(o, m); err != nil {
+		goto onError
+	}
+	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
+		goto onError
+	}
+	// TODO - check selectors
+	o.Logger.Infof("Configured selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+	o.Logger.Infof("Offered selectors: [INI]%s<=>%s[RES]", params.tsI, params.tsR)
+	// message looks OK
+	if o.isInitiator {
+		if params.isResponse {
+			o.EspSpiR = append([]byte{}, params.spiR...)
+		}
+		if o.EspSpiR == nil {
+			err = errors.New("Missing responder SPI")
+		}
+	} else {
+		if !params.isResponse {
+			o.EspSpiI = append([]byte{}, params.spiI...)
+		}
+		if o.EspSpiI == nil {
+			err = errors.New("Missing initiator SPI")
+		}
+	}
+	if err != nil {
+		goto onError
+	}
+	// start Lifetime timer
+	if params.lifetime != 0 {
+		reauth := params.lifetime - 2*time.Second
+		if params.lifetime <= 2*time.Second {
+			reauth = 0
+		}
+		o.Logger.Infof("Lifetime: %s; reauth in %s", params.lifetime, reauth)
+		time.AfterFunc(reauth, func() {
+			o.Logger.Info("Lifetime Expired")
+			o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
+		})
+	}
+	// transport mode
+	if params.isTransportMode && o.cfg.IsTransportMode {
+		o.Logger.Info("Using Transport Mode")
+	} else {
+		if params.isTransportMode {
+			o.Logger.Info("Peer wanted Transport mode, forcing Tunnel mode")
+		} else if o.cfg.IsTransportMode {
+			err = errors.New("Peer Rejected Transport Mode Config")
+			goto onError
+		}
+	}
 	// inform user
 	ContextCallback(o).IkeAuth(o, err)
+onError:
 	if err != nil {
 		return &state.StateEvent{
 			Event: state.AUTH_FAIL,
@@ -271,9 +331,7 @@ func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
 
 // CheckSa callback from state machine
 func (o *Session) CheckSa(evt *state.StateEvent) (s *state.StateEvent) {
-	// get message
-	msg := evt.Message.(*Message)
-	return checkSaForSession(o, msg)
+	return
 }
 
 func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
@@ -288,15 +346,11 @@ func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
 }
 
 func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEvent) {
-	if evt.Message != nil {
-		m := evt.Message.(*Message)
-		if err := m.EnsurePayloads(InitPayloads); err == nil {
-			o.Logger.Infof("peer requests IKE rekey")
-		} else {
-			o.Logger.Infof("peer requests IPSEC rekey")
-		}
-		// do we need to send NO_ADDITIONAL_SAS ?
+	m := evt.Message.(*Message)
+	if err := HandleSaRekey(o, m); err != nil {
+		o.Logger.Info("Rekey Error: %+v", err)
 	}
+	// do we need to send NO_ADDITIONAL_SAS ?
 	// ask user to create new SA
 	ContextCallback(o).RekeySa(o)
 	return

@@ -196,7 +196,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		}
 	}
 	states = append(states, initiator)
-	// initiator
+	// responder
 	authR, cryptR, aeadR := espTransforms(sa, false)
 	responder := &netlink.XfrmState{
 		Src:          sa.Res,

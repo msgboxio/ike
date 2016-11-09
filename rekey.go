@@ -27,10 +27,10 @@ func (o *Session) SendIkeSaRekey() {
 		return
 	}
 	newIkeSpiI := MakeSpi()
-	init := makeIkeChildSa(childSaParams{
+	init := makeChildSa(&childSaParams{
 		isInitiator:   o.isInitiator,
-		spiI:          o.IkeSpiI,
-		spiR:          o.IkeSpiR,
+		ikeSpiI:       o.IkeSpiI,
+		ikeSpiR:       o.IkeSpiR,
 		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, newIkeSpiI),
 		nonce:         newTkm.Ni,
 		dhTransformId: newTkm.suite.DhGroup.TransformId(),
@@ -51,37 +51,29 @@ func (o *Session) SendIkeSaRekey() {
 }
 
 //  SK {SA, Nr, KEr} - ike sa
-func (o *Session) HandleSaRekey(msg interface{}) {
+func HandleSaRekey(o *Session, msg interface{}) error {
 	m := msg.(*Message)
-	if err := o.handleEncryptedMessage(m); err != nil {
-		o.Logger.Error(err)
-		return
-	}
-	if m.IkeHeader.Flags != protocol.RESPONSE {
-		return // TODO handle this later
-	}
-	if tsi := m.Payloads.Get(protocol.PayloadTypeTSi); tsi != nil {
-		o.Logger.Info("received CREATE_CHILD_SA for child sa")
-		return // TODO
+	params, err := parseChildSa(m)
+	if err != nil {
+		return err
 	}
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		o.Logger.Error(err)
-		return
+		return nil
 	}
-	// TODO - currently dont support different prfs from original
-	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
-		o.Logger.Error(err)
-		return
+	if params.dhPublic != nil {
+		if err := o.tkm.DhGenerateKey(params.dhPublic); err != nil {
+			o.Logger.Error(err)
+			return nil
+		}
 	}
 	// set Nr
-	no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	o.tkm.Nr = no.Nonce
+	o.tkm.Nr = params.nonce
 	// get new IKE spi
 	peerSpi, err := getPeerSpi(m, protocol.IKE)
 	if err != nil {
 		o.Logger.Error(err)
-		return
+		return nil
 	}
 	o.IkeSpiR = append([]byte{}, peerSpi...)
 	// create rest of ike sa
@@ -92,4 +84,5 @@ func (o *Session) HandleSaRekey(msg interface{}) {
 	// save Data
 	o.initRb = m.Data
 	o.PostEvent(&state.StateEvent{})
+	return nil
 }

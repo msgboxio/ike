@@ -32,15 +32,11 @@ var (
 		protocol.PayloadTypeTSr,
 	}
 
-	NewChilSaIPayloads = []protocol.PayloadType{
+	NewChilSaPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeNonce,
 		protocol.PayloadTypeTSi,
 		protocol.PayloadTypeTSr,
-	}
-	NewChilSaRPayloads = []protocol.PayloadType{
-		protocol.PayloadTypeSA,
-		protocol.PayloadTypeNonce,
 	}
 
 	RekeyIkeSaPaylods = InitPayloads

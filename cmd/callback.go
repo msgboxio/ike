@@ -41,9 +41,9 @@ func (ret *callback) SendMessage(session *ike.Session, msg *ike.OutgoingMessge) 
 }
 func (ret *callback) IkeAuth(session *ike.Session, err error) {
 	if err == nil {
-		session.Logger.Info("IKE auth SUCCESS")
+		session.Logger.Info("New IKE SA: ", session)
 	} else {
-		session.Logger.Warningf("IKE auth FAILED: %+v", err)
+		session.Logger.Warningf("IKE SA FAILED: %+v", err)
 	}
 }
 func (ret *callback) AddSa(session *ike.Session, sa *platform.SaParams) error {

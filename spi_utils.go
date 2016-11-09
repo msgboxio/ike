@@ -29,16 +29,6 @@ func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err 
 		peerSpi = m.IkeHeader.SpiI
 		return
 	}
-	props := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload).Proposals
-	for _, p := range props {
-		if !p.IsSpiSizeCorrect(len(p.Spi)) {
-			err = errors.Errorf("weird spi size :%+v", *p)
-			return
-		}
-		if p.ProtocolId == pid {
-			peerSpi = p.Spi
-		}
-	}
 	if peerSpi == nil {
 		err = errors.New("Unknown Peer SPI")
 		return
