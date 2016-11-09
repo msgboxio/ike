@@ -6,7 +6,8 @@ import (
 	"syscall"
 
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/log"
+
+	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
@@ -29,7 +30,7 @@ const (
 	XFRMGRP_REPORT       = 10
 )
 
-func ListenForEvents(parent context.Context, cb ListenerCallback) (listener *Listener) {
+func ListenForEvents(parent context.Context, cb ListenerCallback, log *logrus.Logger) (listener *Listener) {
 	cxt, cancel := context.WithCancel(parent)
 	listener = &Listener{
 		Context:  cxt,
@@ -49,7 +50,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback) (listener *Lis
 		return
 	}
 	listener.socket = socket
-	go listener.runReader()
+	go listener.runReader(log)
 	return
 }
 
@@ -60,23 +61,23 @@ func (l *Listener) Close() {
 	l.cancel(context.Canceled) // NOTE : this will leak the goroutine
 }
 
-func (l *Listener) runReader() {
-	log.V(2).Infoln("Started listening for xfrm messages from kernel")
+func (l *Listener) runReader(log *logrus.Logger) {
+	log.Debug("Started listening for xfrm messages from kernel")
 done:
 	for {
 		select {
 		case <-l.Done():
 			break done
 		default:
-			if err := processMsg(l.socket, l.callback); err != nil {
+			if err := processMsg(l.socket, l.callback, log); err != nil {
 				l.cancel(errors.Wrap(err, "xfrm Message"))
 			}
 		}
 	}
-	log.V(2).Infoln("Stopped listening for xfrm messages from kernel")
+	log.Debug("Stopped listening for xfrm messages from kernel")
 }
 
-func processMsg(nsock *nl.NetlinkSocket, cb ListenerCallback) error {
+func processMsg(nsock *nl.NetlinkSocket, cb ListenerCallback, log *logrus.Logger) error {
 	msgs, err := nsock.Receive()
 	if err != nil {
 		return err
@@ -88,29 +89,29 @@ func processMsg(nsock *nl.NetlinkSocket, cb ListenerCallback) error {
 		var ret interface{}
 		switch msg.Header.Type {
 		case nl.XFRM_MSG_ACQUIRE:
-			log.V(3).Infof("xfrm acquire: %+v", msg.Header)
+			log.Debugf("xfrm acquire: %+v", msg.Header)
 		case nl.XFRM_MSG_EXPIRE:
-			log.V(3).Infof("xfrm expire: %+v", msg.Header)
+			log.Debugf("xfrm expire: %+v", msg.Header)
 		case nl.XFRM_MSG_NEWPOLICY:
 			policy, _ := netlink.ParseXfrmPolicy(msg.Data, netlink.FAMILY_ALL)
-			log.V(3).Infof("xfrm new policy: %+v", policy)
+			log.Debugf("xfrm new policy: %+v", policy)
 			ret = policy
 		case nl.XFRM_MSG_DELPOLICY:
 			policy, _ := netlink.ParseXfrmPolicy(msg.Data, netlink.FAMILY_ALL)
-			log.V(3).Infof("xfrm delete policy: %+v", policy)
+			log.Debugf("xfrm delete policy: %+v", policy)
 			ret = policy
 		case nl.XFRM_MSG_NEWSA:
 			sa, _ := netlink.ParseXfrmState(msg.Data, netlink.FAMILY_ALL)
-			log.V(3).Infof("xfrm new sa: %+v", sa)
+			log.Debugf("xfrm new sa: %+v", sa)
 			ret = sa
 		case nl.XFRM_MSG_DELSA:
 			sa, _ := netlink.ParseXfrmState(msg.Data, netlink.FAMILY_ALL)
-			log.V(3).Infof("xfrm del sa: %+v", sa)
+			log.Debugf("xfrm del sa: %+v", sa)
 			ret = sa
 		case nl.XFRM_MSG_REPORT:
-			log.V(3).Infof("xfrm report: %+v", msg.Header)
+			log.Debugf("xfrm report: %+v", msg.Header)
 		default:
-			log.V(3).Infof("xfrm unknown type: %+v", msg.Header)
+			log.Debugf("xfrm unknown type: %+v", msg.Header)
 		}
 		if cb != nil && ret != nil {
 			cb(ret)

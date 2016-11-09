@@ -5,13 +5,15 @@ package platform
 import (
 	"context"
 	"net"
+
+	"github.com/Sirupsen/logrus"
 )
 
-func InstallChildSa(sa *SaParams) error {
+func InstallChildSa(*SaParams, *logrus.Logger) error {
 	return nil
 }
 
-func RemoveChildSa(sa *SaParams) error {
+func RemoveChildSa(*SaParams, *logrus.Logger) error {
 	return nil
 }
 
@@ -24,6 +26,6 @@ type Listener struct {
 }
 
 func (Listener) Close() {}
-func ListenForEvents(context.Context, func(interface{})) (listener *Listener) {
+func ListenForEvents(context.Context, func(interface{}), *logrus.Logger) (listener *Listener) {
 	return
 }

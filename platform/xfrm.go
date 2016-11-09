@@ -7,8 +7,8 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/log"
 	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 )
@@ -221,9 +221,9 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	return
 }
 
-func InstallChildSa(sa *SaParams) error {
+func InstallChildSa(sa *SaParams, log *logrus.Logger) error {
 	for _, policy := range makeSaPolicies(256, 16, sa) {
-		log.V(3).Infof("adding Policy: %+v", policy)
+		log.Debugf("adding Policy: %+v", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
@@ -231,12 +231,11 @@ func InstallChildSa(sa *SaParams) error {
 			} else {
 				err = errors.Errorf("Failed to add policy %v: %v", policy, err)
 			}
-			log.Errorf("Error adding policy: %s", err)
 			return err
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
-		log.V(3).Infof("adding State: %+v", state)
+		log.Debugf("adding State: %+v", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
 			if err == syscall.EEXIST {
@@ -245,23 +244,22 @@ func InstallChildSa(sa *SaParams) error {
 				statejs, _ := json.Marshal(state)
 				err = errors.Errorf("Failed to add state %s: %v", string(statejs), err)
 			}
-			log.Errorf("%s", err)
 			return err
 		}
 	}
 	return nil
 }
 
-func RemoveChildSa(sa *SaParams) error {
+func RemoveChildSa(sa *SaParams, log *logrus.Logger) error {
 	for _, policy := range makeSaPolicies(256, 16, sa) {
-		log.V(3).Infof("removing Policy: %+v", policy)
+		log.Debugf("removing Policy: %+v", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {
 			return errors.Errorf("Failed to remove policy %v: %v", policy, err)
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
-		log.V(3).Infof("removing State: %+v", state)
+		log.Debugf("removing State: %+v", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateDel(state); err != nil {
 			return errors.Errorf("Failed to remove state %+v: %v", state, err)

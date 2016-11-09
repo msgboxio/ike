@@ -1,10 +1,10 @@
-package cmd
+package cli
 
 import (
-	cxt "context"
-
 	"context"
+	cxt "context"
 	"net"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike"
@@ -155,7 +155,9 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config, log *logr
 			// TODO - currently this is break before make
 			if initiator.Err() == cxt.DeadlineExceeded {
 				initiator.Logger.Info("ReKeying: ")
+				continue
 			}
+			time.Sleep(time.Second * 5)
 		}
 	}()
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
-	"github.com/msgboxio/ike/cmd"
+	"github.com/msgboxio/ike/cli"
 	"github.com/msgboxio/ike/platform"
 )
 
@@ -101,7 +101,7 @@ func main() {
 	cb := func(msg interface{}) {
 		log.Debugf("xfrm: \n%s", spew.Sdump(msg))
 	}
-	if xfrm := platform.ListenForEvents(cxt, cb); xfrm != nil {
+	if xfrm := platform.ListenForEvents(cxt, cb, log); xfrm != nil {
 		go func() {
 			<-xfrm.Done()
 			if err := xfrm.Err(); err != context.Canceled {
@@ -120,12 +120,12 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cmd := cmd.NewCmd(pconn, cmd.IkeCallback{
+	cmd := cli.NewCmd(pconn, cli.IkeCallback{
 		AddSa: func(sa *platform.SaParams) error {
-			return platform.InstallChildSa(sa)
+			return platform.InstallChildSa(sa, log)
 		},
 		RemoveSa: func(sa *platform.SaParams) error {
-			return platform.RemoveChildSa(sa)
+			return platform.RemoveChildSa(sa, log)
 		},
 	})
 
