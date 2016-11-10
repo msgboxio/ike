@@ -71,6 +71,7 @@ func (c *cb) AddSa(s *Session, sa *platform.SaParams) error {
 func (c *cb) RemoveSa(*Session, *platform.SaParams) error { return nil }
 func (c *cb) RekeySa(*Session) error                      { return nil }
 func (c *cb) IkeAuth(*Session, error)                     {}
+func (c *cb) Error(*Session, error)                     {}
 
 func runInitiator(t testing.TB, readFrom, writeTo chan []byte, saTo chan *platform.SaParams) {
 	withCb := WithCallback(context.Background(), &cb{writeTo, saTo})

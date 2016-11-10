@@ -177,39 +177,27 @@ func parseAuth(m *Message) (*authParams, error) {
 	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	payloads := AuthRPayloads
-	if params.isInitiator {
-		payloads = AuthIPayloads
-	}
-	if err := m.EnsurePayloads(payloads); err != nil {
-		for _, n := range m.Payloads.GetNotifications() {
-			if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-				// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
-				// TODO - for now, we should simply end the IKE_SA
-				return params, errors.Errorf("peer notifying : auth succeeded, but child sa was not created: %s", nErr)
-			}
+	if err := m.EnsurePayloads(SaPayloads); err == nil {
+		espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+		if espSa.Proposals == nil {
+			return params, errors.New("proposals are missing")
 		}
-		return params, err
+		params.proposals = espSa.Proposals
+		spi := spiFromProposal(params.proposals, protocol.ESP)
+		if params.isInitiator {
+			params.spiI = spi
+		} else {
+			params.spiR = spi
+		}
+		// get selectors
+		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
+		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
+		if len(tsI) == 0 || len(tsR) == 0 {
+			return params, errors.New("acceptable traffic selectors are missing")
+		}
+		params.tsI = tsI
+		params.tsR = tsR
 	}
-	espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	if espSa.Proposals == nil {
-		return params, errors.New("proposals are missing")
-	}
-	params.proposals = espSa.Proposals
-	spi := spiFromProposal(params.proposals, protocol.ESP)
-	if params.isInitiator {
-		params.spiI = spi
-	} else {
-		params.spiR = spi
-	}
-	// get selectors
-	tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-	tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
-	if len(tsI) == 0 || len(tsR) == 0 {
-		return params, errors.New("acceptable traffic selectors are missing")
-	}
-	params.tsI = tsI
-	params.tsR = tsR
 	// notifications
 	wantsTransportMode := false
 	for _, ns := range m.Payloads.GetNotifications() {
@@ -224,14 +212,21 @@ func parseAuth(m *Message) (*authParams, error) {
 	return params, nil
 }
 
-// authenticate currently supports signature authenticaiton using
+// HandleAuthForSession currently supports signature authenticaiton using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
 // RFC 7427 - Signature Authentication in IKEv2
 // tkm.Auth always uses the hash negotiated with prf
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
-func authenticate(o *Session, m *Message) error {
+func HandleAuthForSession(o *Session, m *Message) (err error) {
+	payloads := AuthIPayloads
+	if o.isInitiator {
+		payloads = AuthRPayloads
+	}
+	if err := m.EnsurePayloads(payloads); err != nil {
+		return err
+	}
 	// authenticate peer
 	var idP *protocol.IdPayload
 	var initB []byte
@@ -274,7 +269,7 @@ func authenticate(o *Session, m *Message) error {
 			Roots: certID.Roots,
 		}
 		if _, err := chain[0].Verify(opts); err != nil {
-			return errors.Errorf("Unable to verify certificate: %s", err)
+			return errors.Wrap(err, "Unable to verify certificate")
 		}
 		// ensure that ID in cert is authorized
 		// TODO - is this reasonable?
@@ -289,15 +284,19 @@ func authenticate(o *Session, m *Message) error {
 	}
 }
 
-func HandleAuthForSession(o *Session, m *Message) (err error) {
+func HandleSaForSession(o *Session, m *Message) (err error) {
+	for _, n := range m.Payloads.GetNotifications() {
+		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
+			// TODO - for now, we should simply end the IKE_SA
+			return errors.Errorf("peer notified: %s;", nErr)
+		}
+	}
 	params, err := parseAuth(m)
 	if o.Logger.Level == logrus.DebugLevel {
 		o.Logger.Debugf("params: \n%s; err %+v", spew.Sdump(params), err)
 	}
 	if err != nil {
-		return
-	}
-	if err = authenticate(o, m); err != nil {
 		return
 	}
 	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {

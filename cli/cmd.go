@@ -39,9 +39,13 @@ func (i *IkeCmd) RemoveSa(sa *platform.SaParams) error {
 	return i.cb.RemoveSa(sa)
 }
 
-func (i *IkeCmd) RekeySa(session *ike.Session) {
+func (i *IkeCmd) onError(session *ike.Session, err error) {
 	// break before make
-	session.Close(cxt.DeadlineExceeded)
+	if err == ike.ErrorRekeyRequired {
+		session.Close(cxt.DeadlineExceeded)
+	} else {
+		session.Close(cxt.Canceled)
+	}
 }
 
 // runs on main goroutine
@@ -85,12 +89,12 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 		}
 		// create and run session
 		cb := &callback{
-			conn:       i.conn,
-			local:      msg.LocalAddr,
-			remote:     msg.RemoteAddr,
-			forAdd:     i.AddSa,
-			forRemove:  i.RemoveSa,
-			forRekeySa: i.RekeySa,
+			conn:      i.conn,
+			local:     msg.LocalAddr,
+			remote:    msg.RemoteAddr,
+			forAdd:    i.AddSa,
+			forRemove: i.RemoveSa,
+			forError:  i.onError,
 		}
 		cxt := ike.WithCallback(context.Background(), cb)
 		var err error
@@ -136,11 +140,11 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config, log *logr
 	go func() {
 		for { // restart conn
 			cb := &callback{
-				conn:       i.conn,
-				remote:     remoteAddr,
-				forAdd:     i.cb.AddSa,
-				forRemove:  i.cb.RemoveSa,
-				forRekeySa: i.RekeySa,
+				conn:      i.conn,
+				remote:    remoteAddr,
+				forAdd:    i.cb.AddSa,
+				forRemove: i.cb.RemoveSa,
+				forError:  i.onError,
 			}
 			withCb := ike.WithCallback(context.Background(), cb)
 			initiator, err := ike.NewInitiator(withCb, config, log)
@@ -153,9 +157,11 @@ func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config, log *logr
 			// wait for initiator to finish
 			<-initiator.Done()
 			// TODO - currently this is break before make
-			if initiator.Err() == cxt.DeadlineExceeded {
+			if err = initiator.Err(); err == cxt.DeadlineExceeded {
 				initiator.Logger.Info("ReKeying: ")
 				continue
+			} else if err == cxt.Canceled {
+				break
 			}
 			time.Sleep(time.Second * 5)
 		}

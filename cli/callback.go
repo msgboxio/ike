@@ -14,7 +14,7 @@ type callback struct {
 	conn              ike.Conn
 	local, remote     net.Addr
 	forAdd, forRemove func(*platform.SaParams) error
-	forRekeySa        func(session *ike.Session)
+	forError          func(*ike.Session, error)
 }
 
 func (c *callback) setAddresses(local, remote net.Addr) {
@@ -60,7 +60,6 @@ func (ret *callback) RemoveSa(session *ike.Session, sa *platform.SaParams) error
 		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
 	return err
 }
-func (ret *callback) RekeySa(session *ike.Session) error {
-	ret.forRekeySa(session)
-	return nil
+func (ret *callback) Error(session *ike.Session, err error) {
+	ret.forError(session, err)
 }

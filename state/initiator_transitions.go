@@ -21,6 +21,10 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 			DELETE_IKE_SA: Transition{
 				Dest: STATE_FINISHED,
 			},
+			FAIL: Transition{
+				Action: h.CheckError,
+				Dest:   STATE_FINISHED,
+			},
 			TIMEOUT: Transition{
 				Action: h.SendInit,
 			},
@@ -35,12 +39,10 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 			},
 			AUTH_FAIL: Transition{
 				CheckEvent: h.CheckError,
-				Action:     h.RemoveSa,
 				Dest:       STATE_FINISHED,
 			},
 			FAIL: Transition{
-				Action: h.RemoveSa,
-				Dest:   STATE_FINISHED,
+				CheckEvent: h.CheckError,
 			},
 			DELETE_IKE_SA: Transition{
 				Dest: STATE_FINISHED,

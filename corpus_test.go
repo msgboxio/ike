@@ -72,7 +72,7 @@ func TestIkeMsgGen(t *testing.T) {
 	ids := &PskIdentities{}
 	// auth
 	authI, err := makeAuth(&authParams{
-		true,
+		false,true,
 		cfg.IsTransportMode,
 		params.IkeSpiI, params.IkeSpiR,
 		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),

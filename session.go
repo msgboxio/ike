@@ -81,7 +81,7 @@ func (o *Session) PostMessage(m *Message) {
 		o.Logger.Error("Drop Message: ", err)
 		return
 	}
-	if o.Context.Err() != nil {
+	if o.Context.Err() != nil || o.isClosing {
 		o.Logger.Error("Drop Message: Closing")
 		return
 	}
@@ -197,7 +197,7 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return &state.StateEvent{
-			Event: state.AUTH_FAIL,
+			Event: state.FAIL,
 			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
@@ -208,7 +208,7 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 	if err != nil {
 		o.Logger.Infof("Error Authenticating: %+v", err)
 		return &state.StateEvent{
-			Event: state.AUTH_FAIL,
+			Event: state.FAIL,
 			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
 		}
 	}
@@ -262,10 +262,10 @@ func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
 	m := evt.Message.(*Message)
 	err := HandleAuthForSession(o, m)
 	if err != nil {
-		o.Logger.Infof("Auth Error: %+v", err)
+		// send notification to peer & end IKE SA
 		s = &state.StateEvent{
-			Event: state.INIT_FAIL,
-			Error: err,
+			Event: state.AUTH_FAIL,
+			Error: errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err),
 		}
 	}
 	// inform user
@@ -277,6 +277,15 @@ func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
 
 // CheckSa callback from state machine
 func (o *Session) CheckSa(evt *state.StateEvent) (s *state.StateEvent) {
+	m := evt.Message.(*Message)
+	err := HandleSaForSession(o, m)
+	if err != nil {
+		// dont notify peer
+		s = &state.StateEvent{
+			Event: state.FAIL,
+			Error: err,
+		}
+	}
 	return
 }
 
@@ -298,17 +307,18 @@ func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEven
 	}
 	// do we need to send NO_ADDITIONAL_SAS ?
 	// ask user to create new SA
-	ContextCallback(o).RekeySa(o)
+	ContextCallback(o).Error(o, ErrorRekeyRequired)
 	return
 }
 
 // CheckError callback from fsm
-// if there is a notification, then log and ignore
 // if there is an error, then send to peer
 func (o *Session) CheckError(evt *state.StateEvent) (s *state.StateEvent) {
-	if iErr, ok := evt.Error.(protocol.IkeErrorCode); ok {
+	if iErr, ok := errors.Cause(evt.Error).(protocol.IkeErrorCode); ok {
 		o.Notify(iErr)
 		return
+	} else if evt.Error != nil {
+		ContextCallback(o).Error(o, evt.Error)
 	}
 	return
 }

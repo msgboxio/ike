@@ -66,10 +66,8 @@ func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 	}
 	// check if specified signature algorithm is available
 	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
-		if cert.SignatureAlgorithm != method {
-			log.Infof("Checking SignatureAlgorithm %v, chosen SignatureAlgorithm %v",
-				cert.SignatureAlgorithm, method)
-		}
+		log.Infof("Verifying using SignatureAlgorithm %v, cert SignatureAlgorithm %v",
+			method, cert.SignatureAlgorithm)
 		if err := checkSignature(signed, sigAuth.Signature, method, cert); err != nil {
 			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
 		}
@@ -84,12 +82,11 @@ func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm,
 }
 
 func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.PrivateKey, log *logrus.Logger) ([]byte, error) {
-	log.Infof("Signing Using SignatureAlgorithm: %v", authMethod)
 	// if using a plain old signature, this is all we need
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
-		return sign(x509.SHA1WithRSA, signed, private)
+		return sign(x509.SHA1WithRSA, signed, private, log)
 	}
-	signature, err := sign(algo, signed, private)
+	signature, err := sign(algo, signed, private, log)
 	if err != nil {
 		return nil, err
 	}
@@ -101,9 +98,10 @@ func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed [
 	return sigAuth.Encode(), nil
 }
 
-func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey) (signature []byte, err error) {
-	var hashType crypto.Hash
+func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey, log *logrus.Logger) (signature []byte, err error) {
+	log.Infof("Signing Using SignatureAlgorithm: %v", algo)
 
+	var hashType crypto.Hash
 	switch algo {
 	case x509.SHA1WithRSA, x509.DSAWithSHA1, x509.ECDSAWithSHA1:
 		hashType = crypto.SHA1

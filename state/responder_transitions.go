@@ -23,7 +23,6 @@ func ResponderTransitions(h FsmHandler) map[State]UserTransitions {
 		STATE_INIT: UserTransitions{
 			MSG_AUTH: Transition{
 				CheckEvent: h.HandleIkeAuth,
-				Action:     h.SendAuth,
 				Dest:       STATE_AUTH,
 			},
 			AUTH_FAIL: Transition{
@@ -33,14 +32,21 @@ func ResponderTransitions(h FsmHandler) map[State]UserTransitions {
 			DELETE_IKE_SA: Transition{
 				Dest: STATE_FINISHED,
 			},
+			MSG_DELETE_IKE_SA: Transition{
+				Dest: STATE_FINISHED,
+			},
+			FAIL: Transition{
+				Dest: STATE_FINISHED,
+			},
 		},
 		STATE_AUTH: UserTransitions{
 			ENTRY_EVENT: Transition{
 				CheckEvent: h.CheckSa,
-				Action:     h.InstallSa,
+				Action:     h.SendAuth,
 			},
 			SUCCESS: Transition{
-				Dest: STATE_MATURE,
+				Action: h.InstallSa,
+				Dest:   STATE_MATURE,
 			},
 			DELETE_IKE_SA: Transition{
 				Dest: STATE_FINISHED,

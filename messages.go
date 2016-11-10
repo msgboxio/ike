@@ -20,18 +20,16 @@ var (
 	AuthIPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeIDi,
 		protocol.PayloadTypeAUTH,
-		protocol.PayloadTypeSA,
-		protocol.PayloadTypeTSi,
-		protocol.PayloadTypeTSr,
 	}
 	AuthRPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeIDr,
 		protocol.PayloadTypeAUTH,
+	}
+	SaPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeTSi,
 		protocol.PayloadTypeTSr,
 	}
-
 	NewChilSaPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeNonce,
@@ -91,7 +89,7 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log
 	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload, log); err != nil {
 		return
 	}
-	log.Debugf("[%d]Received %s%s: payloads %s",
+	log.Infof("[%d]Received %s%s: payloads %s",
 		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, *s.Payloads)
 	if log.Level == logrus.DebugLevel {
 		js, _ := json.MarshalIndent(s, " ", " ")
@@ -101,7 +99,7 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log
 }
 
 func (s *Message) Encode(tkm *Tkm, forInitiator bool, log *logrus.Logger) (b []byte, err error) {
-	log.Debugf("[%d]Sending %s%s: payloads %s",
+	log.Infof("[%d]Sending %s%s: payloads %s",
 		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, s.Payloads)
 	if log.Level == logrus.DebugLevel {
 		js, _ := json.MarshalIndent(s, " ", " ")

@@ -1,10 +1,14 @@
 package ike
 
 import (
+	"errors"
+
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 )
+
+var ErrorRekeyRequired = errors.New("Rekey Required")
 
 //  SK {SA, Ni, KEi} - ike sa
 func (o *Session) SendIkeSaRekey() {
