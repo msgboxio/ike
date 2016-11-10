@@ -45,8 +45,7 @@ func ResponderTransitions(h FsmHandler) map[State]UserTransitions {
 				Action:     h.SendAuth,
 			},
 			SUCCESS: Transition{
-				Action: h.InstallSa,
-				Dest:   STATE_MATURE,
+				Dest: STATE_MATURE,
 			},
 			DELETE_IKE_SA: Transition{
 				Dest: STATE_FINISHED,

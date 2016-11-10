@@ -224,8 +224,6 @@ func (o *Session) InstallSa(*state.StateEvent) (s *state.StateEvent) {
 		&o.cfg,
 		o.isInitiator)
 	ContextCallback(o).AddSa(o, sa)
-	// move to STATE_MATURE state
-	o.PostEvent(&state.StateEvent{Event: state.SUCCESS})
 	return
 }
 
@@ -278,8 +276,9 @@ func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
 // CheckSa callback from state machine
 func (o *Session) CheckSa(evt *state.StateEvent) (s *state.StateEvent) {
 	m := evt.Message.(*Message)
-	err := HandleSaForSession(o, m)
-	if err != nil {
+	if err := HandleSaForSession(o, m); err == nil {
+		o.PostEvent(&state.StateEvent{Event: state.SUCCESS})
+	} else {
 		// dont notify peer
 		s = &state.StateEvent{
 			Event: state.FAIL,

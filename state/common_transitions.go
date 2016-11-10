@@ -3,6 +3,9 @@ package state
 func CommonTransitions(h FsmHandler) map[State]UserTransitions {
 	return map[State]UserTransitions{
 		STATE_MATURE: UserTransitions{
+			ENTRY_EVENT: Transition{
+				Action: h.InstallSa,
+			},
 			MSG_DELETE_IKE_SA: Transition{
 				CheckEvent: h.HandleClose,
 				Dest:       STATE_FINISHED,

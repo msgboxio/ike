@@ -54,7 +54,6 @@ func InitiatorTransitions(h FsmHandler) map[State]UserTransitions {
 		STATE_AUTH: UserTransitions{
 			ENTRY_EVENT: Transition{
 				CheckEvent: h.CheckSa,
-				Action:     h.InstallSa,
 			},
 			SUCCESS: Transition{
 				Dest: STATE_MATURE,
