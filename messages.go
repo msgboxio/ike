@@ -1,11 +1,11 @@
 package ike
 
 import (
-	"encoding/json"
 	"io"
 	"net"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -89,21 +89,21 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log
 	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload, log); err != nil {
 		return
 	}
-	log.Infof("[%d]Received %s%s: payloads %s",
-		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, *s.Payloads)
 	if log.Level == logrus.DebugLevel {
-		js, _ := json.MarshalIndent(s, " ", " ")
-		log.Info("Rx:\n" + string(js))
+		log.Debug("Rx:\n" + spew.Sdump(s))
+	} else {
+		log.Infof("[%d]Received %s%s: payloads %s",
+			s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, *s.Payloads)
 	}
 	return
 }
 
 func (s *Message) Encode(tkm *Tkm, forInitiator bool, log *logrus.Logger) (b []byte, err error) {
-	log.Infof("[%d]Sending %s%s: payloads %s",
-		s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, s.Payloads)
 	if log.Level == logrus.DebugLevel {
-		js, _ := json.MarshalIndent(s, " ", " ")
-		log.Info("Tx:\n" + string(js))
+		log.Debug("Tx:\n" + spew.Sdump(s))
+	} else {
+		log.Infof("[%d]Sending %s%s: payloads %s",
+			s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags, s.Payloads)
 	}
 	firstPayloadType := protocol.PayloadTypeNone // no payloads are one possibility
 	if len(s.Payloads.Array) > 0 {

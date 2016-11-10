@@ -8,7 +8,6 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
-var cfg = DefaultConfig()
 var localAddr, remoteAddr net.Addr
 var log = logrus.StandardLogger()
 
@@ -17,7 +16,6 @@ func TestIntPsk(t *testing.T) {
 }
 
 func TestIntCert(t *testing.T) {
-	logrus.SetLevel(logrus.WarnLevel)
 	localID, remoteID := certTestIds(t)
 	testWithIdentity(t, localID, remoteID, log)
 }
@@ -31,6 +29,7 @@ func BenchmarkIntCert(bt *testing.B) {
 }
 
 func testWithIdentity(t testing.TB, locid, remid Identity, log *logrus.Logger) {
+	var cfg = DefaultConfig()
 	cfg.LocalID = locid
 	cfg.RemoteID = remid
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
@@ -40,14 +39,10 @@ func testWithIdentity(t testing.TB, locid, remid Identity, log *logrus.Logger) {
 	sa := make(chan *platform.SaParams, 1)
 	cerr := make(chan error, 1)
 
-	go runInitiator(cfg, &cb{chr, sa, cerr}, chi, log)
-	go runResponder(cfg, &cb{chi, sa, cerr}, chr, log)
+	go runTestInitiator(cfg, &testcb{chr, sa, cerr}, chi, log)
+	go runTestResponder(cfg, &testcb{chi, sa, cerr}, chr, log)
 
-	// receive the 2 sa
-	sa1 := <-sa
-	sa2 := <-sa
-	t.Logf("sa1I: %v", sa1.SpiI)
-	t.Logf("sa2R: %+v", sa2.SpiR)
+	waitFor2Sa(t, sa, cerr)
 }
 
 // server, serverIP := test.SetupContainer(t, "min", 5000, 100, func() (string, error) {

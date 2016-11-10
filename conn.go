@@ -156,6 +156,7 @@ func (p *pconnV4) WritePacket(reply []byte, remoteAddr net.Addr) error {
 
 // ReadMessage reads an IKE message from connection
 // Connection errors are returned, protocol errors are simply logged
+// TODO - defrag logic seems wrong; revisit
 func ReadMessage(conn Conn, log *logrus.Logger) (*Message, error) {
 	var buf []byte
 	for {

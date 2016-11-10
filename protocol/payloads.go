@@ -3,10 +3,10 @@ package protocol
 import (
 	"crypto/x509"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 )
 
@@ -133,8 +133,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log *logrus.Logger) (*Pay
 			return nil, err
 		}
 		if log.Level == logrus.DebugLevel {
-			js, _ := json.Marshal(payload)
-			log.Infof("Payload %s: %s from:\n%s", payload.Type(), js, hex.Dump(pbuf))
+			log.Infof("Payload %s: %s from:\n%s", payload.Type(), spew.Sdump(payload), hex.Dump(pbuf))
 		}
 		payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
@@ -163,8 +162,7 @@ func EncodePayloads(payloads *Payloads, log *logrus.Logger) (b []byte) {
 		hdr.NextPayload = next
 		body = append(hdr.Encode(log), body...)
 		if log.Level == logrus.DebugLevel {
-			js, _ := json.Marshal(pl)
-			log.Infof("Payload %s: %s to:\n%s", pl.Type(), js, hex.Dump(body))
+			log.Infof("Payload %s: %s to:\n%s", pl.Type(), spew.Sdump(pl), hex.Dump(body))
 		}
 		b = append(b, body...)
 	}

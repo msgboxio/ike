@@ -121,32 +121,32 @@ func CheckInitRequest(cfg *Config, m *Message) error {
 	} else if cfg.ThrottleInitRequests {
 		return errors.Wrap(MissingCookieError, "requesting cookie")
 	}
-	// get SA payload
-	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	// check ike proposal
-	if err := cfg.CheckProposals(protocol.IKE, ikeSa.Proposals); err != nil {
-		return err
-	}
 	// check if transforms are usable
 	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	// make sure dh tranform id is the one that was accepted
+	// make sure dh tranform id is the one that was configured
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
 	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
 		return errors.Wrapf(protocol.ERR_INVALID_KE_PAYLOAD,
 			"Using different DH transform [%s] vs the one configured [%s]",
 			keI.DhTransformId, dh)
 	}
+	// get SA payload
+	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	// check ike proposal
+	if err := cfg.CheckProposals(protocol.IKE, ikeSa.Proposals); err != nil {
+		return err
+	}
 	return nil
 }
 
 func InitErrorNeedsReply(initI *Message, config *Config, err error) *Message {
-	cause := errors.Cause(err)
-	if cause == protocol.ERR_INVALID_KE_PAYLOAD {
+	switch cause := errors.Cause(err); cause {
+	case protocol.ERR_INVALID_KE_PAYLOAD:
 		// ask PEER for correct DH type
 		buf := []byte{0, 0}
 		packets.WriteB16(buf, 0, config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId)
 		return notificationResponse(initI.IkeHeader.SpiI, protocol.INVALID_KE_PAYLOAD, buf)
-	} else if cause == MissingCookieError {
+	case MissingCookieError:
 		// ask peer to send cookie
 		return notificationResponse(initI.IkeHeader.SpiI, protocol.COOKIE, getCookie(initI))
 	}
@@ -162,16 +162,23 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 	}
 	// make sure responder spi is not the same as initiator spi
 	if bytes.Equal(m.IkeHeader.SpiR, m.IkeHeader.SpiI) {
-		return protocol.ERR_INVALID_SYNTAX
+		return errors.WithStack(protocol.ERR_INVALID_SYNTAX)
 	}
-	// peer needs a cookie
-	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
-		return CookieError{cookie}
+	// handle INVALID_KE_PAYLOAD, NO_PROPOSAL_CHOSEN, or COOKIE
+	for _, notif := range m.Payloads.GetNotifications() {
+		switch notif.NotificationType {
+		case protocol.COOKIE:
+			return CookieError{notif}
+		case protocol.INVALID_KE_PAYLOAD:
+			return protocol.ERR_INVALID_KE_PAYLOAD
+		case protocol.NO_PROPOSAL_CHOSEN:
+			return protocol.ERR_NO_PROPOSAL_CHOSEN
+		}
 	}
 	// make sure responder spi is set
 	// in case messages are being reflected - TODO
 	if SpiToInt64(m.IkeHeader.SpiR) == 0 {
-		return protocol.ERR_INVALID_SYNTAX
+		return errors.WithStack(protocol.ERR_INVALID_SYNTAX)
 	}
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
 		return err
@@ -189,6 +196,7 @@ func checkSignatureAlgo(o *Session, isEnabled bool) error {
 	return nil
 }
 
+// HandleInitForSession expects the message given to it to be well formatted
 func HandleInitForSession(o *Session, m *Message) error {
 	// process notifications
 	var rfc7427Signatures = false
@@ -233,7 +241,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 	}
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	o.Logger.Infof("IKE SA INITIALISED")
+	o.Logger.Info("IKE SA INITIALISED", o)
 	// save Data
 	if o.isInitiator {
 		o.initRb = m.Data

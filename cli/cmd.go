@@ -68,6 +68,13 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 		// close the initiator session if we do
 		// check if incoming message is an acceptable Init Response
 		if err := ike.CheckInitResponseForSession(session, msg); err != nil {
+			if ce, ok := err.(ike.CookieError); ok {
+				// let retransmission take care to sending init with cookie
+				// session is always returned for CookieError
+				session.SetCookie(ce.Cookie)
+			} else {
+				log.Warning("drop packet: ", err)
+			}
 			return session, err
 		}
 		// rewrite LocalAddr
@@ -79,7 +86,7 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 		if err := ike.CheckInitRequest(config, msg); err != nil {
 			// handle errors that need reply: COOKIE or DH
 			if reply := ike.InitErrorNeedsReply(msg, config, err); reply != nil {
-				data, err := msg.Encode(nil, false, log)
+				data, err := reply.Encode(nil, false, log)
 				if err != nil {
 					log.Errorf("error encoding init reply %+v", err)
 				}
@@ -117,13 +124,6 @@ func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config, log *logrus
 		var err error
 		session, err = i.newSession(msg, i.conn, config, log)
 		if err != nil {
-			if ce, ok := err.(ike.CookieError); ok {
-				// let retransmission take care to sending init with cookie
-				// session is always returned for CookieError
-				session.SetCookie(ce.Cookie)
-			} else {
-				log.Warning("drop packet: ", err)
-			}
 			return
 		}
 		// host based selectors can be added directly since both addresses are available
