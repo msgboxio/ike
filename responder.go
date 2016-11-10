@@ -1,8 +1,6 @@
 package ike
 
 import (
-	"os"
-
 	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/crypto"
@@ -45,10 +43,10 @@ func NewResponder(parent context.Context, cfg *Config, initI *Message, log *logr
 		incoming: make(chan *Message, 10),
 	}
 	o.Logger = &logrus.Logger{
-		Out:       os.Stderr,
+		Out:       log.Out,
 		Formatter: &PrefixFormatter{Prefix: o.Tag()},
-		Hooks:     make(logrus.LevelHooks),
-		Level:     logrus.InfoLevel,
+		Hooks:     log.Hooks,
+		Level:     log.Level,
 	}
 
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
