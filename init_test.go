@@ -27,7 +27,7 @@ func TestInit1(t *testing.T) {
 	waitFor2Sa(t, sa, cerr)
 }
 
-// Initiator cannot handle INVALID_KE_PAYLOAD
+// Initiator cannot handle INVALID_KE_PAYLOAD, responder can generate one
 func TestInit2(t *testing.T) {
 	var cfg1 = DefaultConfig()
 	cfg1.LocalID = pskTestId

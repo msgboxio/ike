@@ -17,7 +17,7 @@ const (
 	ERR_INTERNAL_ADDRESS_FAILURE     IkeErrorCode = 36
 	ERR_FAILED_CP_REQUIRED           IkeErrorCode = 37
 	ERR_TS_UNACCEPTABLE              IkeErrorCode = 38
-	ERR_INVALID_SELECTORS            IkeErrorCode = 39
+	ERR_INVALID_SELECTORS            IkeErrorCode = 39 // appears in INFORMATIONAL
 	ERR_TEMPORARY_FAILURE            IkeErrorCode = 43
 	ERR_CHILD_SA_NOT_FOUND           IkeErrorCode = 44
 )

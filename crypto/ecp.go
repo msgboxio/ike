@@ -27,6 +27,7 @@ func addEcpGroups(kexAlgoMap map[protocol.DhTransformId]dhGroup) {
 	}
 }
 
+// implements dhGroup interface
 type ecpGroup struct {
 	curve elliptic.Curve
 	protocol.DhTransformId
@@ -41,8 +42,8 @@ func (group *ecpGroup) TransformId() protocol.DhTransformId {
 }
 
 func (group *ecpGroup) DiffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
-	//  The Diffie-Hellman shared secret value consists of the x value of the
-	//  Diffie-Hellman common value.
+	// The Diffie-Hellman shared secret value consists of the x value of the
+	// Diffie-Hellman common value.
 	// stdlib marshal expects b[0] = 4
 	x, y := elliptic.Unmarshal(group.curve, append([]byte{4}, theirPublic.Bytes()...))
 	if x == nil {
@@ -60,8 +61,8 @@ func (group *ecpGroup) DiffieHellman(theirPublic, myPrivate *big.Int) (*big.Int,
 }
 
 func (group *ecpGroup) Generate(randSource io.Reader) (private, public *big.Int, err error) {
-	//  The Diffie-Hellman public value is obtained by concatenating the x
-	//  and y values.
+	// The Diffie-Hellman public value is obtained by concatenating the x
+	// and y values.
 	var x, y *big.Int
 	// private
 	privateKey, x, y, err := elliptic.GenerateKey(group.curve, randSource)

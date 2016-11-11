@@ -186,6 +186,7 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 	return nil
 }
 
+// return error secure signatures are configured, but not proposed by peer
 func checkSignatureAlgo(o *Session, isEnabled bool) error {
 	if !isEnabled {
 		o.Logger.Warningf("Not using secure signatures")
@@ -199,6 +200,7 @@ func checkSignatureAlgo(o *Session, isEnabled bool) error {
 // HandleInitForSession expects the message given to it to be well formatted
 func HandleInitForSession(o *Session, m *Message) error {
 	// process notifications
+	// check NAT-T payload to determine if there is a NAT between the two peers
 	var rfc7427Signatures = false
 	for _, ns := range m.Payloads.GetNotifications() {
 		switch ns.NotificationType {
@@ -215,10 +217,11 @@ func HandleInitForSession(o *Session, m *Message) error {
 			}
 		}
 	}
+	// returns error if secure signatures are configured, but not proposed by peer
 	if err := checkSignatureAlgo(o, rfc7427Signatures); err != nil {
 		return err
 	}
-
+	// get nonce & spi from responder's response
 	if o.isInitiator {
 		// peer responders nonce
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
@@ -226,14 +229,12 @@ func HandleInitForSession(o *Session, m *Message) error {
 		// peer responders spi
 		o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
 	}
+	// TODO
+	// If there is NAT , then all the further communication is perfomed over port 4500 instead of the default port 500
+	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
+	//
 	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
-	// check NAT-T payload to determine if there is a NAT between the two peers
-	// If there is, then all the further communication is perfomed over port 4500 instead of the default port 500
-	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
-	// find traffic selectors
-	// send IKE_AUTH req
-
 	// initialize dh shared with their public key
 	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {

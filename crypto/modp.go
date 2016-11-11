@@ -40,6 +40,7 @@ func addModpGroups(kexAlgoMap map[protocol.DhTransformId]dhGroup) {
 }
 
 // modpGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
+// implements dhGroup interface
 type modpGroup struct {
 	g, p     *big.Int
 	strength int
