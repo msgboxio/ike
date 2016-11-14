@@ -1,7 +1,7 @@
 package ike
 
 import (
-	"crypto/rsa"
+	"crypto"
 	"crypto/x509"
 
 	"github.com/msgboxio/ike/protocol"
@@ -38,7 +38,7 @@ func (psk *PskIdentities) AuthData(id []byte, method protocol.AuthMethod) []byte
 
 type CertIdentity struct {
 	Certificate *x509.Certificate
-	PrivateKey  *rsa.PrivateKey
+	PrivateKey  crypto.Signer
 	Roots       *x509.CertPool
 	Name        string
 }

@@ -20,6 +20,19 @@ func TestIntCert(t *testing.T) {
 	testWithIdentity(t, localID, remoteID, log)
 }
 
+func TestIntEcCert(t *testing.T) {
+	localID, remoteID := eccertTestIds(t)
+	testWithIdentity(t, localID, remoteID, log)
+}
+
+func BenchmarkEcCert(bt *testing.B) {
+	logrus.SetLevel(logrus.WarnLevel)
+	localID, remoteID := eccertTestIds(bt)
+	for n := 0; n < bt.N; n++ {
+		testWithIdentity(bt, localID, remoteID, log)
+	}
+}
+
 func BenchmarkIntCert(bt *testing.B) {
 	logrus.SetLevel(logrus.WarnLevel)
 	localID, remoteID := certTestIds(bt)

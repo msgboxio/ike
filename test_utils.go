@@ -2,6 +2,10 @@ package ike
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"sync"
 	"testing"
 
@@ -32,6 +36,37 @@ func certTestIds(t testing.TB) (localID, remoteID Identity) {
 		Certificate: certs[0],
 		PrivateKey:  key,
 	}
+	remoteID = &CertIdentity{
+		Roots: roots,
+		Name:  "172.17.0.1",
+	}
+	return
+}
+
+func eccertTestIds(t testing.TB) (localID, remoteID Identity) {
+	cacert, cakey, err := NewECCA("TEST CA")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert, err := NewSignedCert(CertID{
+		CommonName: "172.17.0.1",
+	}, key.Public(), cacert, cakey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	localID = &CertIdentity{
+		Certificate: cert,
+		PrivateKey:  key,
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(cacert)
 	remoteID = &CertIdentity{
 		Roots: roots,
 		Name:  "172.17.0.1",

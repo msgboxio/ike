@@ -81,7 +81,7 @@ func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm,
 	return cert.CheckSignature(algorithm, signed, signature)
 }
 
-func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.PrivateKey, log *logrus.Logger) ([]byte, error) {
+func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.Signer, log *logrus.Logger) ([]byte, error) {
 	// if using a plain old signature, this is all we need
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 		return sign(x509.SHA1WithRSA, signed, private, log)
@@ -98,7 +98,7 @@ func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed [
 	return sigAuth.Encode(), nil
 }
 
-func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey, log *logrus.Logger) (signature []byte, err error) {
+func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log *logrus.Logger) (signature []byte, err error) {
 	log.Infof("Signing Using SignatureAlgorithm: %v", algo)
 
 	var hashType crypto.Hash
@@ -122,11 +122,6 @@ func sign(algo x509.SignatureAlgorithm, signed []byte, private crypto.PrivateKey
 
 	h.Write(signed)
 	digest := h.Sum(nil)
-
-	priv, ok := private.(crypto.Signer)
-	if !ok {
-		return nil, errors.New("certificate private key does not implement crypto.Signer")
-	}
 	// TODO - should we check if the key & cert match ??
 	return priv.Sign(rand.Reader, digest, hashType)
 }
