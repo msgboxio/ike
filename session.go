@@ -81,7 +81,8 @@ func (o *Session) PostMessage(m *Message) {
 		o.Logger.Error("Drop Message: ", err)
 		return
 	}
-	if o.Context.Err() != nil || o.isClosing {
+	// Dont check for closing flag here, causes a hang on shutdown
+	if o.Context.Err() != nil {
 		o.Logger.Error("Drop Message: Closing")
 		return
 	}
