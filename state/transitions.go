@@ -82,7 +82,7 @@ func (f *Fsm) CloseFsm() {
 func (f *Fsm) runTransition(t Transition, m *StateEvent) (evt *StateEvent) {
 	if t.CheckEvent != nil {
 		if evt = t.CheckEvent(m); evt != nil && evt.Error != nil {
-			f.log.Warningf("Check Error: %s for Event %s, in State %s", evt.Error, m.Event, f.State)
+			f.log.Warningf("Check Error: %+v for Event %s, in State %s", evt.Error, m.Event, f.State)
 			// dont transition, handle error in same state
 			f.PostEvent(evt)
 			return evt
@@ -90,7 +90,7 @@ func (f *Fsm) runTransition(t Transition, m *StateEvent) (evt *StateEvent) {
 	}
 	if t.Action != nil {
 		if evt = t.Action(m); evt != nil && evt.Error != nil {
-			f.log.Warningf("Action Error: %s for Event %s, in State %s", evt.Error, m.Event, f.State)
+			f.log.Warningf("Action Error: %+v for Event %s, in State %s", evt.Error, m.Event, f.State)
 			// dont transition, handle error in same state
 			f.PostEvent(evt)
 			return evt

@@ -199,7 +199,7 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return &state.StateEvent{
 			Event: state.FAIL,
-			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
+			Error: errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN),
 		}
 	}
 	auth, err := AuthFromSession(o)
@@ -210,7 +210,7 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 		o.Logger.Infof("Error Authenticating: %+v", err)
 		return &state.StateEvent{
 			Event: state.FAIL,
-			Error: protocol.ERR_NO_PROPOSAL_CHOSEN,
+			Error: errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN),
 		}
 	}
 	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
@@ -246,10 +246,10 @@ func (o *Session) HandleIkeSaInit(evt *state.StateEvent) (s *state.StateEvent) {
 	// response
 	m := evt.Message.(*Message)
 	if err := HandleInitForSession(o, m); err != nil {
-		o.Logger.Infof("Error Initializing: %+v", err)
+		o.Logger.Errorf("Error Initializing: %+v", err)
 		return &state.StateEvent{
 			Event: state.INIT_FAIL,
-			Error: protocol.ERR_NO_PROPOSAL_CHOSEN, // TODO - always return this?
+			Error: errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN), // TODO - always return this?
 		}
 	}
 	return
