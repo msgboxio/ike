@@ -7,7 +7,8 @@ var (
 	T_ENCR_CAMELLIA_CTR = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_CAMELLIA_CTR)}
 	T_ENCR_NULL         = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(ENCR_NULL)}
 
-	T_AEAD_AES_GCM_16 = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(AEAD_AES_GCM_16)}
+	T_AEAD_AES_GCM_16        = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(AEAD_AES_GCM_16)}
+	T_AEAD_CHACHA20_POLY1305 = Transform{Type: TRANSFORM_TYPE_ENCR, TransformId: uint16(AEAD_CHACHA20_POLY1305)}
 
 	T_PRF_AES128_XCBC   = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_AES128_XCBC)}
 	T_PRF_HMAC_SHA1     = Transform{Type: TRANSFORM_TYPE_PRF, TransformId: uint16(PRF_HMAC_SHA1)}
@@ -92,6 +93,12 @@ var (
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_384, IsLast: true},
 	}
 
+	IKE_CHACHA20POLY1305_PRFSHA256_ECP256 = Transforms{
+		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_CHACHA20_POLY1305, KeyLength: 256},
+		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
+		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_256, IsLast: true},
+	}
+
 	IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_ENCR_CAMELLIA_CBC, KeyLength: 128},
 		TRANSFORM_TYPE_PRF:   &SaTransform{Transform: T_PRF_HMAC_SHA2_256},
@@ -116,6 +123,11 @@ var (
 	// This is due to lack of support for 256b keys in older kernels (Jessie)
 	ESP_AES_GCM_16 = Transforms{
 		TRANSFORM_TYPE_ENCR: &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 128},
+		TRANSFORM_TYPE_ESN:  &SaTransform{Transform: T_NO_ESN, IsLast: true},
+	}
+
+	ESP_CHACHA20POLY1305 = Transforms{
+		TRANSFORM_TYPE_ENCR: &SaTransform{Transform: T_AEAD_CHACHA20_POLY1305, KeyLength: 256},
 		TRANSFORM_TYPE_ESN:  &SaTransform{Transform: T_NO_ESN, IsLast: true},
 	}
 

@@ -122,6 +122,11 @@ func encrTransform(tr *protocol.SaTransform) (crypt, aead *netlink.XfrmStateAlgo
 			Name:   "rfc4106(gcm(aes))",
 			ICVLen: int(tr.KeyLength),
 		}
+	case protocol.AEAD_CHACHA20_POLY1305:
+		return nil, &netlink.XfrmStateAlgo{
+			Name:   "rfc7539esp(chacha20,poly1305)",
+			ICVLen: 128,
+		}
 	case protocol.ENCR_AES_CBC:
 		return &netlink.XfrmStateAlgo{
 			Name: "cbc(aes)",

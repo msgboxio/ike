@@ -53,7 +53,9 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
 	flag.StringVar(&peerID, "peerid", "", "Peer ID")
 
-	flag.Set("logtostderr", "true")
+	var isDebug bool
+	flag.BoolVar(&isDebug, "debug", isDebug, "debug logs")
+
 	flag.Parse()
 
 	// crypto keys & names
@@ -86,6 +88,10 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	}
 	config.LocalID = localId
 	config.RemoteID = remoteId
+
+	if isDebug {
+		logrus.SetLevel(logrus.DebugLevel)
+	}
 	return
 }
 

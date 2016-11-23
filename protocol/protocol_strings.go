@@ -45,14 +45,14 @@ const (
 	_EncrTransformId_name_0 = "ENCR_DES_IV64ENCR_DESENCR_3DESENCR_RC5ENCR_IDEAENCR_CASTENCR_BLOWFISHENCR_3IDEAENCR_DES_IV32"
 	_EncrTransformId_name_1 = "ENCR_NULLENCR_AES_CBCENCR_AES_CTRAEAD_AES_CCM_SHORT_8AEAD_AES_CCM_SHORT_12AEAD_AES_CCM_SHORT_16"
 	_EncrTransformId_name_2 = "AEAD_AES_GCM_8AEAD_AES_GCM_12AEAD_AES_GCM_16ENCR_NULL_AUTH_AES_GMAC"
-	_EncrTransformId_name_3 = "ENCR_CAMELLIA_CBCENCR_CAMELLIA_CTRENCR_CAMELLIA_CCM_8_ICVENCR_CAMELLIA_CCM_12_ICVENCR_CAMELLIA_CCM_16_ICV"
+	_EncrTransformId_name_3 = "ENCR_CAMELLIA_CBCENCR_CAMELLIA_CTRENCR_CAMELLIA_CCM_8_ICVENCR_CAMELLIA_CCM_12_ICVENCR_CAMELLIA_CCM_16_ICVAEAD_CHACHA20_POLY1305"
 )
 
 var (
 	_EncrTransformId_index_0 = [...]uint8{0, 13, 21, 30, 38, 47, 56, 69, 79, 92}
 	_EncrTransformId_index_1 = [...]uint8{0, 9, 21, 33, 53, 74, 95}
 	_EncrTransformId_index_2 = [...]uint8{0, 14, 29, 44, 67}
-	_EncrTransformId_index_3 = [...]uint8{0, 17, 34, 57, 81, 105}
+	_EncrTransformId_index_3 = [...]uint8{0, 17, 34, 57, 81, 105, 127}
 )
 
 func (i EncrTransformId) String() string {
@@ -66,7 +66,7 @@ func (i EncrTransformId) String() string {
 	case 18 <= i && i <= 21:
 		i -= 18
 		return _EncrTransformId_name_2[_EncrTransformId_index_2[i]:_EncrTransformId_index_2[i+1]]
-	case 23 <= i && i <= 27:
+	case 23 <= i && i <= 28:
 		i -= 23
 		return _EncrTransformId_name_3[_EncrTransformId_index_3[i]:_EncrTransformId_index_3[i+1]]
 	default:

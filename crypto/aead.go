@@ -9,6 +9,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
+	"golang.org/x/crypto/chacha20poly1305"
 )
 
 /*
@@ -86,6 +87,11 @@ func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen, icvLen int, aead
 				return nil, err
 			}
 			return cipher.NewGCM(block)
+		}
+	case protocol.AEAD_CHACHA20_POLY1305:
+		return 16, 4, 8, 16, func(key []byte) (cipher.AEAD, error) {
+			// TODO - make sure key length is same as configured
+			return chacha20poly1305.New(key)
 		}
 	default:
 	}

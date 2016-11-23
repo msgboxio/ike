@@ -148,6 +148,7 @@ const (
 	ENCR_CAMELLIA_CCM_8_ICV  EncrTransformId = 25 //[RFC5529]	-
 	ENCR_CAMELLIA_CCM_12_ICV EncrTransformId = 26 //[RFC5529]	-
 	ENCR_CAMELLIA_CCM_16_ICV EncrTransformId = 27 //[RFC5529]	-
+	AEAD_CHACHA20_POLY1305   EncrTransformId = 28 //[RFC7634]	-
 	// 28-1023	Unassigned
 	// 1024-65535	Private use	                  //[RFC7296]	[RFC7296]
 )
