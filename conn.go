@@ -115,7 +115,7 @@ func (p *pconnV4) ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, e
 		b = b[:n]
 		localIP = cm.Dst
 	}
-	logrus.Debugf("%d from %v", n, remoteAddr)
+	logrus.Infof("%d from %v", n, remoteAddr)
 	return
 }
 
@@ -128,7 +128,7 @@ func (p *pconnV6) ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, e
 			localIP = cm.Dst
 		}
 	}
-	logrus.Debugf("%d from %v", n, remoteAddr)
+	logrus.Infof("%d from %v", n, remoteAddr)
 	return
 }
 
@@ -139,7 +139,7 @@ func (p *pconnV6) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	} else if n != len(reply) {
 		return io.ErrShortWrite
 	}
-	logrus.Debugf("%d to %v", n, remoteAddr)
+	logrus.Infof("%d to %v", n, remoteAddr)
 	return nil
 }
 
@@ -150,7 +150,7 @@ func (p *pconnV4) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	} else if n != len(reply) {
 		return io.ErrShortWrite
 	}
-	logrus.Debugf("%d to %v", n, remoteAddr)
+	logrus.Infof("%d to %v", n, remoteAddr)
 	return nil
 }
 

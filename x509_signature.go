@@ -45,7 +45,7 @@ func init() {
 		AsnECDSAWithSHA512: x509.ECDSAWithSHA512,
 		// AsnRsaSsaPss:       nil,
 		// AsnRsaSsaPssDefault:        nil,
-		// AsnRsaSsaPssSha256: x509.SHA256WithRSAPSS, // go 1.8
+		AsnSHA256WithRSAPSS: x509.SHA256WithRSAPSS, // go 1.8
 	}
 	for k, v := range _asnCertAuthTypes {
 		d, _ := hex.DecodeString(k)
@@ -105,7 +105,7 @@ func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log *
 	switch algo {
 	case x509.SHA1WithRSA, x509.DSAWithSHA1, x509.ECDSAWithSHA1:
 		hashType = crypto.SHA1
-	case x509.SHA256WithRSA /*x509.SHA256WithRSAPSS*/, x509.DSAWithSHA256, x509.ECDSAWithSHA256:
+	case x509.SHA256WithRSA, x509.SHA256WithRSAPSS, x509.DSAWithSHA256, x509.ECDSAWithSHA256:
 		hashType = crypto.SHA256
 	case x509.SHA384WithRSA /*x509.SHA384WithRSAPSS,*/, x509.ECDSAWithSHA384:
 		hashType = crypto.SHA384

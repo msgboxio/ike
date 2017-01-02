@@ -30,12 +30,12 @@ func DefaultConfig() *Config {
 	return &Config{
 		// ProposalIke: protocol.IKE_AES_CBC_SHA256_MODP3072,
 		// ProposalIke: protocol.IKE_AES_GCM_16_MODP3072,
-		ProposalIke: protocol.IKE_AES128GCM16_PRFSHA256_ECP256,
-		// ProposalIke: protocol.IKE_CHACHA20POLY1305_PRFSHA256_ECP256,
+		// ProposalIke: protocol.IKE_AES128GCM16_PRFSHA256_ECP256,
+		ProposalIke: protocol.IKE_CHACHA20POLY1305_PRFSHA256_ECP256,
 		// ProposalEsp: protocol.ESP_AES_CBC_SHA2_256,
-		ProposalEsp: protocol.ESP_AES_GCM_16,
-		// ProposalEsp: protocol.ESP_CHACHA20POLY1305,
-		AuthMethod: protocol.AUTH_DIGITAL_SIGNATURE,
+		// ProposalEsp: protocol.ESP_AES_GCM_16,
+		ProposalEsp: protocol.ESP_CHACHA20POLY1305,
+		AuthMethod:  protocol.AUTH_DIGITAL_SIGNATURE,
 		// ThrottleInitRequests: true,
 		Lifetime: time.Hour,
 	}
