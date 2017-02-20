@@ -3,22 +3,12 @@ package ike
 import (
 	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/state"
 )
 
 // NewInitiator creates an initiator session
 func NewInitiator(parent context.Context, cfg *Config, log *logrus.Logger) (*Session, error) {
-	suite, err := crypto.NewCipherSuite(cfg.ProposalIke, log)
-	if err != nil {
-		return nil, err
-	}
-	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp, log)
-	if err != nil {
-		return nil, err
-	}
-
-	tkm, err := NewTkmInitiator(suite, espSuite)
+	tkm, err := NewTkm(cfg, log, nil)
 	if err != nil {
 		return nil, err
 	}

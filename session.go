@@ -302,7 +302,8 @@ func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
 
 func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEvent) {
 	m := evt.Message.(*Message)
-	if err := HandleSaRekey(o, m); err != nil {
+	newTkm, _ := NewTkm(&o.cfg, o.Logger, nil) // ignore error
+	if err := HandleSaRekey(o, newTkm, m); err != nil {
 		o.Logger.Info("Rekey Error: %+v", err)
 	}
 	// do we need to send NO_ADDITIONAL_SAS ?

@@ -3,29 +3,21 @@ package ike
 import (
 	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/context"
-	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
 func NewResponder(parent context.Context, cfg *Config, initI *Message, log *logrus.Logger) (*Session, error) {
-	cs, err := crypto.NewCipherSuite(cfg.ProposalIke, log)
-	if err != nil {
-		return nil, err
-	}
-	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp, log)
-	if err != nil {
-		return nil, err
-	}
-	// cast is safe since we already checked for presence of payloads
-	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		return nil, err
 	}
+	// cast is safe since we already checked for presence of payloads
+	// assert ?
+	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	// creating tkm is expensive, should come after checks are positive
-	tkm, err := NewTkmResponder(cs, espSuite, noI.Nonce)
+	tkm, err := NewTkm(cfg, log, noI.Nonce)
 	if err != nil {
 		return nil, err
 	}

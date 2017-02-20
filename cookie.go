@@ -8,6 +8,9 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
+// An implementation of COOKIE as specified in
+// 2.6. IKE SA SPIs and Cookies
+
 type CookieError struct {
 	Cookie *protocol.NotifyPayload
 }

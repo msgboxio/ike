@@ -5,7 +5,7 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
-// Authenticator is used to authenticate / create AUTH payloads
+// Authenticator is used to authenticate & create AUTH payloads
 type Authenticator interface {
 	Identity() Identity
 	AuthMethod() protocol.AuthMethod

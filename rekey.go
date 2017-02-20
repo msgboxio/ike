@@ -3,7 +3,6 @@ package ike
 import (
 	"errors"
 
-	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/ike/state"
 )
@@ -11,25 +10,7 @@ import (
 var ErrorRekeyRequired = errors.New("Rekey Required")
 
 //  SK {SA, Ni, KEi} - ike sa
-func (o *Session) SendIkeSaRekey() {
-	suite, err := crypto.NewCipherSuite(o.cfg.ProposalIke, o.Logger)
-	if err != nil {
-		o.Logger.Error(err)
-		o.cancel(err)
-		return
-	}
-	espSuite, err := crypto.NewCipherSuite(o.cfg.ProposalIke, o.Logger)
-	if err != nil {
-		o.Logger.Error(err)
-		o.cancel(err)
-		return
-	}
-	newTkm, err := NewTkmInitiator(suite, espSuite)
-	if err != nil {
-		o.Logger.Error(err)
-		o.cancel(err)
-		return
-	}
+func (o *Session) SendIkeSaRekey(newTkm *Tkm) {
 	newIkeSpiI := MakeSpi()
 	init := makeChildSa(&childSaParams{
 		isInitiator:   o.isInitiator,
@@ -46,7 +27,7 @@ func (o *Session) SendIkeSaRekey() {
 	}
 	init.IkeHeader.MsgId = msgId
 	// encode & send
-	_, err = init.Encode(o.tkm, o.isInitiator, o.Logger)
+	_, err := init.Encode(o.tkm, o.isInitiator, o.Logger)
 	if err != nil {
 		o.Logger.Error(err)
 		return
@@ -55,7 +36,7 @@ func (o *Session) SendIkeSaRekey() {
 }
 
 //  SK {SA, Nr, KEr} - ike sa
-func HandleSaRekey(o *Session, msg interface{}) error {
+func HandleSaRekey(o *Session, newTkm *Tkm, msg interface{}) error {
 	m := msg.(*Message)
 	params, err := parseChildSa(m)
 	if err != nil {
@@ -66,13 +47,13 @@ func HandleSaRekey(o *Session, msg interface{}) error {
 		return nil
 	}
 	if params.dhPublic != nil {
-		if err := o.tkm.DhGenerateKey(params.dhPublic); err != nil {
+		if err := newTkm.DhGenerateKey(params.dhPublic); err != nil {
 			o.Logger.Error(err)
 			return nil
 		}
 	}
 	// set Nr
-	o.tkm.Nr = params.nonce
+	newTkm.Nr = params.nonce
 	// get new IKE spi
 	peerSpi, err := getPeerSpi(m, protocol.IKE)
 	if err != nil {
@@ -81,7 +62,7 @@ func HandleSaRekey(o *Session, msg interface{}) error {
 	}
 	o.IkeSpiR = append([]byte{}, peerSpi...)
 	// create rest of ike sa
-	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, o.tkm.skD)
+	newTkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, o.tkm.skD)
 	o.Logger.Infof("NEW IKE SA Established: %#x<=>%#x",
 		o.IkeSpiI,
 		o.IkeSpiR)
