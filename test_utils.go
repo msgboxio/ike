@@ -6,6 +6,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
+	"net"
 	"sync"
 	"testing"
 
@@ -94,6 +95,7 @@ func (c *testcb) IkeAuth(*Session, error)                     {}
 func (c *testcb) Error(s *Session, err error) {
 	c.errTo <- err
 }
+func (c *testcb) SetAddresses(local, remote net.Addr) {}
 
 func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.Logger) {
 	withCb := WithCallback(context.Background(), c)

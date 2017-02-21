@@ -33,7 +33,8 @@ func (c *pconnV6) Close() error {
 
 var ErrorUdpOnly = errors.New("only udp is supported for now")
 
-// On Mac, dual stack bind for v4 addresses does not give us source IP addresses
+// normally, if we bind on dual stack address
+// on mac, receiving from v4 addresses does not give remote address
 func checkV4onX(address string) (bool, error) {
 	if runtime.GOOS != "darwin" {
 		return false, nil
@@ -43,7 +44,7 @@ func checkV4onX(address string) (bool, error) {
 	if err != nil {
 		return v4Only, err
 	}
-	if ip6 := addr.IP.To16(); ip6 == nil {
+	if ip4 := addr.IP.To4(); ip4 != nil {
 		v4Only = true
 	}
 	return v4Only, nil
@@ -83,7 +84,7 @@ func listenUDP4(localString string) (p4 *pconnV4, err error) {
 			return nil, err
 		}
 	}
-	logrus.Infof("socket listening: %s", udp.LocalAddr())
+	logrus.Infof("socket listening 4: %s", udp.LocalAddr())
 	return (*pconnV4)(p), nil
 }
 
@@ -104,7 +105,7 @@ func listenUDP6(localString string) (p6 *pconnV6, err error) {
 			return nil, err
 		}
 	}
-	logrus.Infof("socket listening: %s", udp.LocalAddr())
+	logrus.Infof("socket listening 6: %s", udp.LocalAddr())
 	return (*pconnV6)(p), nil
 }
 

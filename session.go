@@ -115,12 +115,12 @@ func incomingAddress(incoming interface{}) net.Addr {
 	return msg.RemoteAddr
 }
 
-func (o *Session) encode(msg *Message, to net.Addr) (*OutgoingMessge, error) {
+func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
 	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
 	if err != nil {
 		return nil, err
 	}
-	return &OutgoingMessge{buf, to}, nil
+	return &OutgoingMessge{buf}, nil
 }
 
 func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) {
@@ -178,7 +178,7 @@ func (o *Session) SendInit(inEvt *state.StateEvent) (s *state.StateEvent) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgId = msgId
 		// encode
-		initB, err := o.encode(init, incomingAddress(inEvt.Message))
+		initB, err := o.encode(init)
 		if err != nil {
 			return nil, err
 		}
@@ -214,7 +214,7 @@ func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
 		}
 	}
 	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
-	return o.sendMsg(o.encode(auth, incomingAddress(inEvt.Message)))
+	return o.sendMsg(o.encode(auth))
 }
 
 // InstallSa callback from state machine
@@ -330,14 +330,14 @@ func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	info := NotifyFromSession(o, ie)
 	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
-	o.sendMsg(o.encode(info, nil))
+	o.sendMsg(o.encode(info))
 }
 
 func (o *Session) sendIkeSaDelete() {
 	info := DeleteFromSession(o)
 	info.IkeHeader.MsgId = o.msgIdInc(false)
 	// encode & send
-	o.sendMsg(o.encode(info, nil))
+	o.sendMsg(o.encode(info))
 }
 
 // SendEmptyInformational can be used for periodic keepalive
@@ -345,7 +345,7 @@ func (o *Session) SendEmptyInformational(isResponse bool) {
 	info := EmptyFromSession(o, isResponse)
 	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
 	// encode & send
-	o.sendMsg(o.encode(info, nil))
+	o.sendMsg(o.encode(info))
 }
 
 func (o *Session) AddHostBasedSelectors(local, remote net.IP) error {

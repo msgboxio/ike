@@ -11,19 +11,14 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
-type IkeCallback struct {
-	AddSa    func(*platform.SaParams) error
-	RemoveSa func(*platform.SaParams) error
-}
-
 type IkeCmd struct {
 	// map of initiator spi -> session
 	sessions, initiators ike.Sessions
 	conn                 ike.Conn
-	cb                   IkeCallback
+	cb                   ike.SessionCallback
 }
 
-func NewCmd(conn ike.Conn, cb IkeCallback) *IkeCmd {
+func NewCmd(conn ike.Conn, cb ike.SessionCallback) *IkeCmd {
 	return &IkeCmd{
 		sessions:   ike.NewSessions(),
 		initiators: ike.NewSessions(),
@@ -33,12 +28,13 @@ func NewCmd(conn ike.Conn, cb IkeCallback) *IkeCmd {
 }
 
 func (i *IkeCmd) AddSa(sa *platform.SaParams) error {
-	return i.cb.AddSa(sa)
+	return i.cb.AddSa(nil, sa)
 }
 func (i *IkeCmd) RemoveSa(sa *platform.SaParams) error {
-	return i.cb.RemoveSa(sa)
+	return i.cb.RemoveSa(nil, sa)
 }
 
+// dont call cb.onError
 func (i *IkeCmd) onError(session *ike.Session, err error) {
 	// break before make
 	if err == ike.ErrorRekeyRequired {
@@ -59,9 +55,10 @@ func (i *IkeCmd) watchSession(spi uint64, session *ike.Session) {
 	}()
 }
 
+// newSession handles IKE_SA_INIT requests & replies
 func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config, log *logrus.Logger) (*ike.Session, error) {
 	spi := ike.SpiToInt64(msg.IkeHeader.SpiI)
-	// check if this is a response to our INIT request
+	// check if this is a IKE_SA_INIT response
 	session, found := i.initiators.Get(spi)
 	if found {
 		// TODO - check if we already have a connection to this host
@@ -78,7 +75,7 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 			return session, err
 		}
 		// rewrite LocalAddr
-		ike.ContextCallback(session).(*callback).setAddresses(msg.LocalAddr, msg.RemoteAddr)
+		ike.ContextCallback(session).SetAddresses(msg.LocalAddr, msg.RemoteAddr)
 		// remove from initiators map
 		i.initiators.Remove(spi)
 	} else {
@@ -95,13 +92,11 @@ func (i *IkeCmd) newSession(msg *ike.Message, pconn ike.Conn, config *ike.Config
 			return nil, err
 		}
 		// create and run session
-		cb := &callback{
-			conn:      i.conn,
-			local:     msg.LocalAddr,
-			remote:    msg.RemoteAddr,
-			forAdd:    i.AddSa,
-			forRemove: i.RemoveSa,
-			forError:  i.onError,
+		cb := &ike.SessionData{
+			Conn:   i.conn,
+			Local:  msg.LocalAddr,
+			Remote: msg.RemoteAddr,
+			Cb:     i.cb,
 		}
 		cxt := ike.WithCallback(context.Background(), cb)
 		var err error
@@ -127,8 +122,11 @@ func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config, log *logrus
 			return
 		}
 		// host based selectors can be added directly since both addresses are available
-		if err := session.AddHostBasedSelectors(ike.AddrToIp(msg.LocalAddr), ike.AddrToIp(msg.RemoteAddr)); err != nil {
-			log.Warningf("could not add selectors: ", err)
+		loc := ike.AddrToIp(msg.LocalAddr)
+		rem := ike.AddrToIp(msg.RemoteAddr)
+		if err := session.AddHostBasedSelectors(loc, rem); err != nil {
+			log.Warningf("could not add selectors for %s=>%s", loc, rem)
+			log.Warn(err)
 		}
 		i.watchSession(spi, session)
 	}
@@ -139,12 +137,10 @@ func (i *IkeCmd) processPacket(msg *ike.Message, config *ike.Config, log *logrus
 func (i *IkeCmd) RunInitiator(remoteAddr net.Addr, config *ike.Config, log *logrus.Logger) {
 	go func() {
 		for { // restart conn
-			cb := &callback{
-				conn:      i.conn,
-				remote:    remoteAddr,
-				forAdd:    i.cb.AddSa,
-				forRemove: i.cb.RemoveSa,
-				forError:  i.onError,
+			cb := &ike.SessionData{
+				Conn:   i.conn,
+				Remote: remoteAddr,
+				Cb:     i.cb,
 			}
 			withCb := ike.WithCallback(context.Background(), cb)
 			initiator, err := ike.NewInitiator(withCb, config, log)

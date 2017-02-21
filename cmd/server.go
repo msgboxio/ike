@@ -126,11 +126,11 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cmd := cli.NewCmd(pconn, cli.IkeCallback{
-		AddSa: func(sa *platform.SaParams) error {
+	cmd := cli.NewCmd(pconn, ike.SessionCallback{
+		AddSa: func(session *ike.Session, sa *platform.SaParams) error {
 			return platform.InstallChildSa(sa, log)
 		},
-		RemoveSa: func(sa *platform.SaParams) error {
+		RemoveSa: func(session *ike.Session, sa *platform.SaParams) error {
 			return platform.RemoveChildSa(sa, log)
 		},
 	})
