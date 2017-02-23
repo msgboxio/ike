@@ -2,13 +2,11 @@ package ike
 
 import (
 	"github.com/Sirupsen/logrus"
-	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
 )
 
 // NewResponder creates a Responder session if incoming message looks OK
-func NewResponder(parent context.Context, cfg *Config, initI *Message, log *logrus.Logger) (*Session, error) {
+func NewResponder(cfg *Config, sd *SessionData, initI *Message, log *logrus.Logger) (*Session, error) {
 	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
 	if err != nil {
 		return nil, err
@@ -22,17 +20,14 @@ func NewResponder(parent context.Context, cfg *Config, initI *Message, log *logr
 		return nil, err
 	}
 
-	cxt, cancel := context.WithCancel(parent)
-
 	o := &Session{
-		Context:  cxt,
-		cancel:   cancel,
-		tkm:      tkm,
-		cfg:      *cfg,
-		IkeSpiI:  ikeSpiI,
-		IkeSpiR:  MakeSpi(),
-		EspSpiR:  MakeSpi()[:4],
-		incoming: make(chan *Message, 10),
+		tkm:         tkm,
+		cfg:         *cfg,
+		IkeSpiI:     ikeSpiI,
+		IkeSpiR:     MakeSpi(),
+		EspSpiR:     MakeSpi()[:4],
+		incoming:    make(chan *Message, 10),
+		SessionData: sd,
 	}
 	o.Logger = &logrus.Logger{
 		Out:       log.Out,
@@ -43,7 +38,5 @@ func NewResponder(parent context.Context, cfg *Config, initI *Message, log *logr
 
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
 	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
-	o.Fsm = state.NewFsm(o.Logger, state.ResponderTransitions(o), state.CommonTransitions(o))
-	o.PostEvent(&state.StateEvent{Event: state.SMI_START})
 	return o, nil
 }

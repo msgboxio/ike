@@ -6,16 +6,28 @@ import (
 	"net"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/msgboxio/context"
+	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
 	"github.com/pkg/errors"
 )
 
+type OutgoingMessge struct {
+	Data []byte
+}
+
+type SessionCallback struct {
+	AddSa    func(*Session, *platform.SaParams) error
+	RemoveSa func(*Session, *platform.SaParams) error
+}
+
+type SessionData struct {
+	Conn          Conn
+	Local, Remote net.Addr
+	Cb            SessionCallback
+}
+
+// Session stores IKE session's local state
 type Session struct {
-	context.Context
-	cancel context.CancelFunc
-	*state.Fsm
 	isClosing bool
 
 	cfg Config // copy of Config given to us
@@ -32,6 +44,8 @@ type Session struct {
 
 	initIb, initRb  []byte
 	responderCookie []byte // TODO - remove this from session
+
+	*SessionData
 
 	Logger *logrus.Logger
 }
@@ -50,70 +64,25 @@ func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
 	o.responderCookie = cn.NotificationMessage.([]byte)
 }
 
-func (o *Session) Run() {
-	for {
-		select {
-		case msg, ok := <-o.incoming:
-			if !ok {
-				break
-			}
-			if err := o.handleEncryptedMessage(msg); err != nil {
-				o.Logger.Warningf("Drop message: %s", err)
-				break
-			}
-			if evt := o.handleMessage(msg); evt != nil {
-				o.PostEvent(evt)
-			}
-		case evt, ok := <-o.Events():
-			if !ok {
-				break
-			}
-			o.HandleEvent(evt)
-		case <-o.Done():
-			o.Logger.Infof("Finished IKE session")
-			return
-		}
-	}
-}
-
 func (o *Session) PostMessage(m *Message) {
 	if err := o.isMessageValid(m); err != nil {
 		o.Logger.Error("Drop Message: ", err)
 		return
 	}
-	// Dont check for closing flag here, causes a hang on shutdown
-	if o.Context.Err() != nil {
+	if err := o.handleEncryptedMessage(m); err != nil {
+		o.Logger.Warningf("Drop message: %s", err)
+		return
+	}
+	if o.isClosing {
 		o.Logger.Error("Drop Message: Closing")
 		return
 	}
 	o.incoming <- m
 }
 
-func (o *Session) handleMessage(msg *Message) (evt *state.StateEvent) {
-	evt = &state.StateEvent{Message: msg}
-	switch msg.IkeHeader.ExchangeType {
-	case protocol.IKE_SA_INIT:
-		evt.Event = state.MSG_INIT
-		return
-	case protocol.IKE_AUTH:
-		evt.Event = state.MSG_AUTH
-		return
-	case protocol.CREATE_CHILD_SA:
-		evt.Event = state.MSG_CHILD_SA
-		return
-	case protocol.INFORMATIONAL:
-		return HandleInformationalForSession(o, msg)
-	}
-	return nil
-}
-
-func incomingAddress(incoming interface{}) net.Addr {
-	msg, ok := incoming.(*Message)
-	if !ok {
-		return nil
-	}
-	return msg.RemoteAddr
-}
+// case protocol.INFORMATIONAL:
+// 	return HandleInformationalForSession(o, msg)
+// }
 
 func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
 	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
@@ -123,20 +92,15 @@ func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
 	return &OutgoingMessge{buf}, nil
 }
 
-func (o *Session) sendMsg(msg *OutgoingMessge, err error) (s *state.StateEvent) {
+func (o *Session) sendMsg(msg *OutgoingMessge, err error) error {
 	if err != nil {
-		goto fail
+		return err
 	}
-	err = ContextCallback(o).SendMessage(o, msg)
-fail:
+	err = o.SendMessage(msg)
 	if err != nil {
 		o.Logger.Error(err)
-		return &state.StateEvent{
-			Event: state.FAIL,
-			Error: err,
-		}
 	}
-	return
+	return err
 }
 
 func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
@@ -157,23 +121,10 @@ func (o *Session) Close(err error) {
 	}
 	o.isClosing = true
 	o.sendIkeSaDelete()
-	// TODO - start timeout to delete sa if peers does not reply
-	o.PostEvent(&state.StateEvent{Event: state.DELETE_IKE_SA, Error: err})
 }
 
-// actions from FSM
-
-// Finished is called by state machine upon entering finished state
-func (o *Session) Finished(*state.StateEvent) (s *state.StateEvent) {
-	close(o.incoming)
-	o.CloseFsm()
-	o.Logger.Infof("Finished; cancel context")
-	o.cancel(context.Canceled)
-	return
-}
-
-// SendInit callback from state machine
-func (o *Session) SendInit(inEvt *state.StateEvent) (s *state.StateEvent) {
+// SendInit sends IKE_SA_INIT
+func (o *Session) SendInit() error {
 	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgId = msgId
@@ -192,136 +143,78 @@ func (o *Session) SendInit(inEvt *state.StateEvent) (s *state.StateEvent) {
 	return o.sendMsg(initMsg(o.msgIdInc(!o.isInitiator)))
 }
 
-// SendAuth callback from state machine
-func (o *Session) SendAuth(inEvt *state.StateEvent) (s *state.StateEvent) {
+// SendAuth sends IKE_AUTH
+func (o *Session) SendAuth() error {
 	o.Logger.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
-		return &state.StateEvent{
-			Event: state.FAIL,
-			Error: errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN),
-		}
+		return errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth, err := AuthFromSession(o)
 	if !o.isInitiator {
-		ContextCallback(o).IkeAuth(o, err)
+		o.IkeAuth(err)
 	}
 	if err != nil {
 		o.Logger.Infof("Error Authenticating: %+v", err)
-		return &state.StateEvent{
-			Event: state.FAIL,
-			Error: errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN),
-		}
+		return errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
 	return o.sendMsg(o.encode(auth))
 }
 
-// InstallSa callback from state machine
-func (o *Session) InstallSa(*state.StateEvent) (s *state.StateEvent) {
+// InstallSa
+func (o *Session) InstallSa() error {
 	sa := addSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
-	ContextCallback(o).AddSa(o, sa)
-	return
+	return o.AddSa(sa)
 }
 
-// RemoveSa callback from state machine
-func (o *Session) RemoveSa(*state.StateEvent) (s *state.StateEvent) {
+// RemoveSa
+func (o *Session) UnInstallSa() {
 	sa := removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
-	ContextCallback(o).RemoveSa(o, sa)
+	o.RemoveSa(sa)
 	return
 }
 
 // handlers
 
-// HandleIkeSaInit callback from state machine
-func (o *Session) HandleIkeSaInit(evt *state.StateEvent) (s *state.StateEvent) {
-	// response
-	m := evt.Message.(*Message)
-	if err := HandleInitForSession(o, m); err != nil {
-		o.Logger.Errorf("Error Initializing: %+v", err)
-		return &state.StateEvent{
-			Event: state.INIT_FAIL,
-			Error: errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN), // TODO - always return this?
-		}
-	}
-	return
-}
-
-// HandleIkeAuth callback from state machine
-func (o *Session) HandleIkeAuth(evt *state.StateEvent) (s *state.StateEvent) {
-	// response
-	m := evt.Message.(*Message)
-	err := HandleAuthForSession(o, m)
-	if err != nil {
-		// send notification to peer & end IKE SA
-		s = &state.StateEvent{
-			Event: state.AUTH_FAIL,
-			Error: errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err),
-		}
-	}
-	// inform user
-	if o.isInitiator {
-		ContextCallback(o).IkeAuth(o, err)
-	}
-	return
-}
-
-// CheckSa callback from state machine
-func (o *Session) CheckSa(evt *state.StateEvent) (s *state.StateEvent) {
-	m := evt.Message.(*Message)
-	if err := HandleSaForSession(o, m); err == nil {
-		o.PostEvent(&state.StateEvent{Event: state.SUCCESS})
-	} else {
-		// dont notify peer
-		s = &state.StateEvent{
-			Event: state.FAIL,
-			Error: err,
-		}
-	}
-	return
-}
-
-func (o *Session) HandleClose(evt *state.StateEvent) (s *state.StateEvent) {
+func (o *Session) HandleClose() error {
 	o.Logger.Infof("Peer Closed Session")
 	if o.isClosing {
-		return
+		return nil
 	}
 	o.isClosing = true
 	o.SendEmptyInformational(true)
-	o.RemoveSa(evt)
-	return
+	o.UnInstallSa()
+	return nil
 }
 
-func (o *Session) HandleCreateChildSa(evt *state.StateEvent) (s *state.StateEvent) {
-	m := evt.Message.(*Message)
+func (o *Session) HandleCreateChildSa(m *Message) error {
 	newTkm, _ := NewTkm(&o.cfg, o.Logger, nil) // ignore error
-	if err := HandleSaRekey(o, newTkm, m); err != nil {
+	err := HandleSaRekey(o, newTkm, m)
+	if err != nil {
 		o.Logger.Info("Rekey Error: %+v", err)
 	}
 	// do we need to send NO_ADDITIONAL_SAS ?
 	// ask user to create new SA
-	ContextCallback(o).Error(o, ErrorRekeyRequired)
-	return
+	return err
 }
 
-// CheckError callback from fsm
+// CheckError
 // if there is an error, then send to peer
-func (o *Session) CheckError(evt *state.StateEvent) (s *state.StateEvent) {
-	if iErr, ok := errors.Cause(evt.Error).(protocol.IkeErrorCode); ok {
+func (o *Session) CheckError(err error) error {
+	if iErr, ok := errors.Cause(err).(protocol.IkeErrorCode); ok {
 		o.Notify(iErr)
-		return
-	} else if evt.Error != nil {
-		ContextCallback(o).Error(o, evt.Error)
+		return nil
 	}
-	return
+	return err
 }
 
 // utilities
@@ -368,10 +261,7 @@ func (o *Session) isMessageValid(m *Message) error {
 	// Dont check Responder SPI. initiator IKE_SA_INIT does not have it
 	// for un-encrypted payloads, make sure that the state is correct
 	if m.IkeHeader.NextPayload != protocol.PayloadTypeSK {
-		// TODO - remove IDLE
-		if o.Fsm.State != state.STATE_IDLE && o.Fsm.State != state.STATE_START {
-			return errors.Errorf("unexpected unencrypted message in state: %s", o.Fsm.State)
-		}
+		// TODO -
 	}
 	// check sequence numbers
 	seq := m.IkeHeader.MsgId
@@ -406,4 +296,44 @@ func (o *Session) handleEncryptedMessage(m *Message) (err error) {
 		}
 	}
 	return
+}
+
+func (c *Session) SetAddresses(local, remote net.Addr) {
+	c.Local = local
+	c.Remote = remote
+}
+
+func saAddr(sa *platform.SaParams, local, remote net.Addr) {
+	remoteIP := AddrToIp(remote)
+	localIP := AddrToIp(local)
+	sa.Ini = remoteIP
+	sa.Res = localIP
+	if sa.IsInitiator {
+		sa.Ini = localIP
+		sa.Res = remoteIP
+	}
+}
+func (o *Session) SendMessage(msg *OutgoingMessge) error {
+	return o.Conn.WritePacket(msg.Data, o.Remote)
+}
+func (o *Session) IkeAuth(err error) {
+	if err == nil {
+		o.Logger.Info("New IKE SA: ", o)
+	} else {
+		o.Logger.Warningf("IKE SA FAILED: %+v", err)
+	}
+}
+func (o *Session) AddSa(sa *platform.SaParams) error {
+	saAddr(sa, o.Local, o.Remote)
+	err := o.Cb.AddSa(o, sa)
+	o.Logger.Infof("Installed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
+		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
+	return err
+}
+func (o *Session) RemoveSa(sa *platform.SaParams) error {
+	saAddr(sa, o.Local, o.Remote)
+	err := o.Cb.RemoveSa(o, sa)
+	o.Logger.Infof("Removed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
+		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
+	return err
 }

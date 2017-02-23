@@ -9,7 +9,6 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
 	"github.com/pkg/errors"
 )
 
@@ -331,10 +330,11 @@ func HandleSaForSession(o *Session, m *Message) (err error) {
 			reauth = 0
 		}
 		o.Logger.Infof("Lifetime: %s; reauth in %s", params.lifetime, reauth)
-		time.AfterFunc(reauth, func() {
-			o.Logger.Info("Lifetime Expired")
-			o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
-		})
+		// TODO - start alarm for reauth
+		// time.AfterFunc(reauth, func() {
+		// 	o.Logger.Info("Lifetime Expired")
+		// 	o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
+		// })
 	}
 	// transport mode
 	if params.isTransportMode && o.cfg.IsTransportMode {

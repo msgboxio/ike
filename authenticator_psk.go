@@ -47,7 +47,7 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte
 func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error {
 	secret := psk.identity.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
-		return errors.Errorf("Ike PSK Auth of %s failed: No Secret is available", string(idP.Data))
+		return errors.Errorf("Ike PSK Auth for %s failed: No Secret is available", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), !psk.forInitiator)
 	// TODO : tkm.Auth always uses the hash negotiated with prf

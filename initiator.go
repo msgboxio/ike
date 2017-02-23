@@ -1,28 +1,22 @@
 package ike
 
-import (
-	"github.com/Sirupsen/logrus"
-	"github.com/msgboxio/context"
-	"github.com/msgboxio/ike/state"
-)
+import "github.com/Sirupsen/logrus"
 
 // NewInitiator creates an initiator session
-func NewInitiator(parent context.Context, cfg *Config, log *logrus.Logger) (*Session, error) {
+func NewInitiator(cfg *Config, sd *SessionData, log *logrus.Logger) (*Session, error) {
 	tkm, err := NewTkm(cfg, log, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	cxt, cancel := context.WithCancel(parent)
 	o := &Session{
-		Context:     cxt,
-		cancel:      cancel,
 		isInitiator: true,
 		tkm:         tkm,
 		cfg:         *cfg,
 		IkeSpiI:     MakeSpi(),
 		EspSpiI:     MakeSpi()[:4],
 		incoming:    make(chan *Message, 10),
+		SessionData: sd,
 	}
 	o.Logger = &logrus.Logger{
 		Out:       log.Out,
@@ -33,8 +27,5 @@ func NewInitiator(parent context.Context, cfg *Config, log *logrus.Logger) (*Ses
 
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
 	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
-	o.Fsm = state.NewFsm(o.Logger, state.InitiatorTransitions(o), state.CommonTransitions(o))
-	o.PostEvent(&state.StateEvent{Event: state.SMI_START})
-
 	return o, nil
 }

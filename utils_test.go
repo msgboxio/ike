@@ -98,13 +98,12 @@ func (c *testcb) Error(s *Session, err error) {
 func (c *testcb) SetAddresses(local, remote net.Addr) {}
 
 func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.Logger) {
-	withCb := WithCallback(context.Background(), c)
-	initiator, err := NewInitiator(withCb, cfg, log)
+	initiator, err := NewInitiator(cfg, c log)
 	if err != nil {
 		c.errTo <- err
 	}
 	// run state machine, will send initI on given channel
-	go initiator.Run()
+	go RunSession(initiator)
 
 	// wait for initR
 	waitForInitR := func() *Message {
@@ -172,7 +171,7 @@ func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.
 	if err != nil {
 		c.errTo <- err
 	}
-	go responder.Run()
+	go RunSession(responder)
 	// initI to responder, will send initR
 	responder.PostMessage(initI)
 	// wait for authI

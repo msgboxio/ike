@@ -4,7 +4,6 @@ import (
 	"errors"
 
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
 )
 
 var ErrorRekeyRequired = errors.New("Rekey Required")
@@ -68,6 +67,5 @@ func HandleSaRekey(o *Session, newTkm *Tkm, msg interface{}) error {
 		o.IkeSpiR)
 	// save Data
 	o.initRb = m.Data
-	o.PostEvent(&state.StateEvent{})
 	return nil
 }
