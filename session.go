@@ -172,7 +172,7 @@ func (o *Session) InstallSa() error {
 	return o.AddSa(sa)
 }
 
-// RemoveSa
+// UnInstallSa
 func (o *Session) UnInstallSa() {
 	sa := removeSa(o.tkm,
 		o.IkeSpiI, o.IkeSpiR,

@@ -14,7 +14,6 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
-	"github.com/msgboxio/ike/cli"
 	"github.com/msgboxio/ike/platform"
 )
 
@@ -28,17 +27,19 @@ func waitForSignal(cancel context.CancelFunc) {
 	cancel(errors.New(sig.String()))
 }
 
-// var localId = &ike.PskIdentities{
-// Primary: "ak@msgbox.io",
-// Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-// }
-var localId = &ike.CertIdentity{}
+var localID = &ike.PskIdentities{
+	Primary: "ak@msgbox.io",
+	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+}
 
-// var remoteId = &ike.PskIdentities{
-// Primary: "bk@msgbox.io",
-// Ids:     map[string][]byte{"bk@msgbox.io": []byte("foo")},
-// }
-var remoteId = &ike.CertIdentity{}
+// var localID = &ike.CertIdentity{}
+
+var remoteID = &ike.PskIdentities{
+	Primary: "ak@msgbox.io",
+	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+}
+
+// var remoteID = &ike.CertIdentity{}
 
 func loadConfig() (config *ike.Config, localString string, remoteString string) {
 	flag.StringVar(&localString, "local", "0.0.0.0:4500", "address to bind to")
@@ -58,36 +59,40 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 
 	flag.Parse()
 
-	// crypto keys & names
-	if caFile != "" {
-		roots, err := ike.LoadRoot(caFile)
-		if err != nil {
-			log.Fatal(err)
+	/*
+		// crypto keys & names
+		if caFile != "" {
+			roots, err := ike.LoadRoot(caFile)
+			if err != nil {
+				log.Fatal(err)
+			}
+			remoteId.Roots = roots
 		}
-		remoteId.Roots = roots
-	}
-	if certFile != "" {
-		certs, err := ike.LoadCerts(certFile)
-		if err != nil {
-			log.Warningf("Cert: %s", err)
+		if certFile != "" {
+			certs, err := ike.LoadCerts(certFile)
+			if err != nil {
+				log.Warningf("Cert: %s", err)
+			}
+			localId.Certificate = certs[0]
 		}
-		localId.Certificate = certs[0]
-	}
-	if keyFile != "" {
-		key, err := ike.LoadKey(keyFile)
-		if err != nil {
-			log.Warningf("Key: %s", err)
+		if keyFile != "" {
+			key, err := ike.LoadKey(keyFile)
+			if err != nil {
+				log.Warningf("Key: %s", err)
+			}
+			localId.PrivateKey = key
 		}
-		localId.PrivateKey = key
-	}
-	remoteId.Name = peerID
+		if peerID != "" {
+			remoteId.Name = peerID
+		}
+	*/
 
 	config = ike.DefaultConfig()
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
-	config.LocalID = localId
-	config.RemoteID = remoteId
+	config.LocalID = localID
+	config.RemoteID = remoteID
 
 	if isDebug {
 		logrus.SetLevel(logrus.DebugLevel)
@@ -126,7 +131,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	cmd := cli.NewCmd(pconn, ike.SessionCallback{
+	cmd := ike.NewCmd(pconn, ike.SessionCallback{
 		AddSa: func(session *ike.Session, sa *platform.SaParams) error {
 			return platform.InstallChildSa(sa, log)
 		},

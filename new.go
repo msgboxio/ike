@@ -78,6 +78,9 @@ func runResponder(s *Session) error {
 }
 
 func monitorSa() {
+	for {
+
+	}
 	// check for duplicate SA, if found remove one with smaller nonce
 	// setup REKEY timeout (jittered) & monitoring
 	// if INFORMATIONAL, send INFORMATIONAL_reply
@@ -98,6 +101,9 @@ func RunSession(s *Session) error {
 		err = runInitiator(s)
 	} else {
 		err = runResponder(s)
+	}
+	if err == nil {
+		monitorSa()
 	}
 	return err
 }
