@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/platform"
@@ -24,6 +25,34 @@ type SessionData struct {
 	Conn          Conn
 	Local, Remote net.Addr
 	Cb            SessionCallback
+}
+
+var ReplyTimeout error = replyTimeout{}
+
+type replyTimeout struct{}
+
+func (r replyTimeout) Error() string {
+	return "Timed Out"
+}
+
+var SessionClosed error = sessionClosed{}
+
+type sessionClosed struct{}
+
+func (s sessionClosed) Error() string {
+	return "Session Closed"
+}
+
+func packetOrTimeOut(incoming <-chan *Message) (*Message, error) {
+	select {
+	case msg, ok := <-incoming:
+		if ok {
+			return msg, nil
+		}
+		return nil, SessionClosed
+	case <-time.After(10 * time.Second):
+		return nil, ReplyTimeout
+	}
 }
 
 // Session stores IKE session's local state
@@ -123,8 +152,7 @@ func (o *Session) Close(err error) {
 	o.sendIkeSaDelete()
 }
 
-// SendInit sends IKE_SA_INIT
-func (o *Session) SendInit() error {
+func (o *Session) InitMsg() (*OutgoingMessge, error) {
 	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgId = msgId
@@ -140,15 +168,15 @@ func (o *Session) SendInit() error {
 		}
 		return initB, nil
 	}
-	return o.sendMsg(initMsg(o.msgIdInc(!o.isInitiator)))
+	return initMsg(o.msgIdInc(!o.isInitiator))
 }
 
-// SendAuth sends IKE_AUTH
-func (o *Session) SendAuth() error {
+// AuthMsg generates IKE_AUTH
+func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 	o.Logger.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
-		return errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
+		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth, err := AuthFromSession(o)
 	if !o.isInitiator {
@@ -156,10 +184,35 @@ func (o *Session) SendAuth() error {
 	}
 	if err != nil {
 		o.Logger.Infof("Error Authenticating: %+v", err)
-		return errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
+		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
-	return o.sendMsg(o.encode(auth))
+	return o.encode(auth)
+}
+
+// SendMsgGetReply takes a message generator
+func (o *Session) SendMsgGetReply(genMsg func() (*OutgoingMessge, error)) (*Message, error) {
+	for {
+		// send initiator INIT after jittered wait
+		if err := o.sendMsg(genMsg()); err != nil {
+			return nil, err
+		}
+		// wait for reply, or timeout
+		msg, err := packetOrTimeOut(o.incoming)
+		if err != nil {
+			// on timeout, send INIT again, and loop
+			if err == ReplyTimeout {
+				continue
+			}
+			return nil, err
+		}
+		return msg, err
+	}
+}
+
+// SendAuth sends IKE_AUTH
+func (o *Session) SendAuth() error {
+	return o.sendMsg(o.AuthMsg())
 }
 
 // InstallSa
@@ -234,11 +287,11 @@ func (o *Session) sendIkeSaDelete() {
 }
 
 // SendEmptyInformational can be used for periodic keepalive
-func (o *Session) SendEmptyInformational(isResponse bool) {
+func (o *Session) SendEmptyInformational(isResponse bool) error {
 	info := EmptyFromSession(o, isResponse)
 	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
 	// encode & send
-	o.sendMsg(o.encode(info))
+	return o.sendMsg(o.encode(info))
 }
 
 func (o *Session) AddHostBasedSelectors(local, remote net.IP) error {

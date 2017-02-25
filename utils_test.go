@@ -98,7 +98,7 @@ func (c *testcb) Error(s *Session, err error) {
 func (c *testcb) SetAddresses(local, remote net.Addr) {}
 
 func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.Logger) {
-	initiator, err := NewInitiator(cfg, c log)
+	initiator, err := NewInitiator(cfg, nil, log)
 	if err != nil {
 		c.errTo <- err
 	}
@@ -166,8 +166,7 @@ func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.
 	// wait for initI
 	initI := waitForInitI()
 	// create responder
-	withCb := WithCallback(context.Background(), c)
-	responder, err := NewResponder(withCb, cfg, initI, log)
+	responder, err := NewResponder(cfg, nil, initI, log)
 	if err != nil {
 		c.errTo <- err
 	}

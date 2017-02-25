@@ -11,11 +11,11 @@ import (
 
 	"math/big"
 
+	"github.com/google/gopacket/bytediff"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
 
-	"code.google.com/p/gopacket/bytediff"
 	"github.com/Sirupsen/logrus"
 )
 

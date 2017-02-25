@@ -53,7 +53,7 @@ func onInitResponse(session *Session, msg *Message) error {
 			// session is always returned for CookieError
 			session.SetCookie(ce.Cookie)
 			// send packet with Cookie
-			session.SendInit()
+			session.SendMsgGetReply(session.InitMsg)
 			return errors.Wrap(err, "Sent INIT with COOKIE")
 		}
 		// return error

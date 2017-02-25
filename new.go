@@ -6,37 +6,32 @@ import (
 )
 
 func runInitiator(s *Session) error {
-	// send initiator INIT after jittered wait
-	if err := s.SendInit(); err != nil {
+	// send initiator INIT after jittered wait and wait for reply
+	msg, err := s.SendMsgGetReply(s.InitMsg)
+	if err != nil {
 		return err
 	}
-	// wait for reply, or timeout
-	msg := <-s.incoming
-	// on timeout, send INIT again, and loop
 	// COOKIE is handled within cmd.newSession
 	if err := HandleInitForSession(s, msg); err != nil {
 		s.Logger.Errorf("Error Initializing: %+v", err)
 		return err
 	}
-	// on INIT reply send AUTH
-	if err := s.SendAuth(); err != nil {
+	// on send AUTH and wait for reply
+	if msg, err = s.SendMsgGetReply(s.AuthMsg); err != nil {
 		return err
 	}
-	// wait for AUTH reply or timeout
-	msg = <-s.incoming
-	// on timeout, send again, and loop
-	if err := HandleAuthForSession(s, msg); err != nil {
+	if err = HandleAuthForSession(s, msg); err != nil {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
-	err := HandleSaForSession(s, msg)
+	err = HandleSaForSession(s, msg)
 	if err != nil {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
 	// inform user
-	s.InstallSa()
 	// install SA
+	s.InstallSa()
 	// monitorSa
 	return nil
 }
@@ -52,10 +47,10 @@ func runResponder(s *Session) error {
 		return err
 	}
 	// send INIT_reply & wait for AUTH
-	if err := s.SendInit(); err != nil {
+	msg, err := s.SendMsgGetReply(s.InitMsg)
+	if err != nil {
 		return err
 	}
-	msg = <-s.incoming
 	if err := HandleAuthForSession(s, msg); err != nil {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
@@ -66,7 +61,6 @@ func runResponder(s *Session) error {
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
 	// send AUTH_reply
-	// on timeout, send again, and loop
 	if err := s.SendAuth(); err != nil {
 		return err
 	}
@@ -74,12 +68,24 @@ func runResponder(s *Session) error {
 	// if timeout, send AUTH_reply again
 	// monitor SA
 	s.InstallSa()
+	if err := s.SendEmptyInformational(false); err != nil {
+		return err
+	}
 	return nil
 }
 
-func monitorSa() {
+func monitorSa(s *Session) error {
 	for {
-
+		msg := <-s.incoming
+		switch msg.IkeHeader.ExchangeType {
+		case protocol.INFORMATIONAL:
+			evt := HandleInformationalForSession(s, msg)
+			if evt.NotificationType == MSG_EMPTY_REQUEST {
+				if err := s.SendEmptyInformational(true); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	// check for duplicate SA, if found remove one with smaller nonce
 	// setup REKEY timeout (jittered) & monitoring
@@ -103,7 +109,7 @@ func RunSession(s *Session) error {
 		err = runResponder(s)
 	}
 	if err == nil {
-		monitorSa()
+		err = monitorSa(s)
 	}
 	return err
 }

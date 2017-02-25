@@ -1,15 +1,27 @@
 package ike
 
-import (
-	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/ike/state"
-)
+import "github.com/msgboxio/ike/protocol"
 
 type InfoParams struct {
 	IsInitiator bool
 	IsResponse  bool
 	SpiI, SpiR  protocol.Spi
 	Payload     protocol.Payload
+}
+
+type NotificationType int
+
+const (
+	MSG_DELETE_IKE_SA NotificationType = iota
+	MSG_DELETE_ESP_SA
+	MSG_EMPTY_REQUEST
+	MSG_EMPTY_RESPONSE
+	ERROR
+)
+
+type InformationalEvent struct {
+	NotificationType
+	Message interface{}
 }
 
 // INFORMATIONAL
@@ -92,16 +104,16 @@ func EmptyFromSession(o *Session, isResponse bool) *Message {
 	})
 }
 
-func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
+func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent {
 	plds := msg.Payloads
 	// Empty
 	if len(plds.Array) == 0 {
-		evt := state.MSG_EMPTY_REQUEST
+		evt := MSG_EMPTY_REQUEST
 		if msg.IkeHeader.Flags.IsResponse() {
-			evt = state.MSG_EMPTY_RESPONSE
+			evt = MSG_EMPTY_RESPONSE
 		}
-		return &state.StateEvent{
-			Event: evt,
+		return &InformationalEvent{
+			NotificationType: evt,
 		}
 	}
 	// Delete
@@ -109,17 +121,17 @@ func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 		dp := del.(*protocol.DeletePayload)
 		if dp.ProtocolId == protocol.IKE {
 			o.Logger.Infof("Peer remove IKE SA")
-			return &state.StateEvent{
-				Event:   state.MSG_DELETE_IKE_SA,
-				Message: msg.IkeHeader.SpiI,
+			return &InformationalEvent{
+				NotificationType: MSG_DELETE_IKE_SA,
+				Message:          msg.IkeHeader.SpiI,
 			}
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
 				o.Logger.Infof("Peer remove ESP SA : %#x", spi)
-				return &state.StateEvent{
-					Event:   state.MSG_DELETE_ESP_SA,
-					Message: spi,
+				return &InformationalEvent{
+					NotificationType: MSG_DELETE_ESP_SA,
+					Message:          spi,
 				}
 			}
 		}
@@ -131,10 +143,9 @@ func HandleInformationalForSession(o *Session, msg *Message) *state.StateEvent {
 		np := note.(*protocol.NotifyPayload)
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
 			o.Logger.Infof("Received Informational Error: %v", err)
-			return &state.StateEvent{
-				Event:   state.FAIL,
-				Error:   err,
-				Message: msg,
+			return &InformationalEvent{
+				NotificationType: ERROR,
+				Message:          err,
 			}
 		}
 	}
