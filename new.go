@@ -11,9 +11,34 @@ func runInitiator(s *Session) error {
 	if err != nil {
 		return err
 	}
+	// TODO - check if we already have a connection to this host
+	// check if incoming message is an acceptable Init Response
+	for {
+		if err = CheckInitResponseForSession(s, msg); err != nil {
+			if ce, ok := err.(CookieError); ok {
+				// session is always returned for CookieError
+				s.SetCookie(ce.Cookie)
+				// send packet with Cookie
+				if msg, err = s.SendMsgGetReply(s.InitMsg); err != nil {
+					return err
+				}
+				// This will keep going if peer keeps sendign COOKIE
+				// TODO -fix
+				continue
+			}
+			// return error
+			return err
+		}
+		break
+	}
+	// rewrite LocalAddr
+	s.SetAddresses(msg.LocalAddr, msg.RemoteAddr)
 	// COOKIE is handled within cmd.newSession
-	if err := HandleInitForSession(s, msg); err != nil {
+	if err = HandleInitForSession(s, msg); err != nil {
 		s.Logger.Errorf("Error Initializing: %+v", err)
+		return err
+	}
+	if err = s.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
 		return err
 	}
 	// on send AUTH and wait for reply
@@ -37,17 +62,19 @@ func runInitiator(s *Session) error {
 }
 
 // got new INIT
-func runResponder(s *Session) error {
+func runResponder(s *Session) (err error) {
 	// wait for INIT
 	// send COOKIE, wait - handled by cmd:newSession
 	// get INIT
 	msg := <-s.incoming
-	if err := HandleInitForSession(s, msg); err != nil {
-		s.Logger.Errorf("Error Initializing: %+v", err)
+	if err = HandleInitForSession(s, msg); err != nil {
+		return err
+	}
+	if err = s.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
 		return err
 	}
 	// send INIT_reply & wait for AUTH
-	msg, err := s.SendMsgGetReply(s.InitMsg)
+	msg, err = s.SendMsgGetReply(s.InitMsg)
 	if err != nil {
 		return err
 	}

@@ -302,9 +302,13 @@ func (o *Session) AddHostBasedSelectors(local, remote net.IP) error {
 		ini = local
 		res = remote
 	}
-	return o.cfg.AddSelector(
+	err := o.cfg.AddSelector(
 		&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
 		&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
+	if err != nil {
+		return errors.Wrapf(err, "could not add selectors for %s=>%s", ini, res)
+	}
+	return nil
 }
 
 func (o *Session) isMessageValid(m *Message) error {
