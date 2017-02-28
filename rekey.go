@@ -9,7 +9,7 @@ import (
 var ErrorRekeyRequired = errors.New("Rekey Required")
 
 //  SK {SA, Ni, KEi} - ike sa
-func (o *Session) SendIkeSaRekey(newTkm *Tkm) {
+func (o *Session) IkeSaRekey(newTkm *Tkm) (*OutgoingMessge, error) {
 	newIkeSpiI := MakeSpi()
 	init := makeChildSa(&childSaParams{
 		isInitiator:   o.isInitiator,
@@ -26,12 +26,7 @@ func (o *Session) SendIkeSaRekey(newTkm *Tkm) {
 	}
 	init.IkeHeader.MsgId = msgId
 	// encode & send
-	_, err := init.Encode(o.tkm, o.isInitiator, o.Logger)
-	if err != nil {
-		o.Logger.Error(err)
-		return
-	}
-	// TODO - send
+	return o.encode(init)
 }
 
 //  SK {SA, Nr, KEr} - ike sa

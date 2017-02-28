@@ -71,11 +71,13 @@ func makeChildSa(params *childSaParams) *Message {
 		PayloadHeader: &protocol.PayloadHeader{},
 		Nonce:         params.nonce,
 	})
-	child.Payloads.Add(&protocol.KePayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: params.dhTransformId,
-		KeyData:       params.dhPublic,
-	})
+	if params.dhPublic != nil { // optional
+		child.Payloads.Add(&protocol.KePayload{
+			PayloadHeader: &protocol.PayloadHeader{},
+			DhTransformId: params.dhTransformId,
+			KeyData:       params.dhPublic,
+		})
+	}
 	if params.tsI != nil && params.tsR != nil {
 		child.Payloads.Add(&protocol.TrafficSelectorPayload{
 			PayloadHeader:              &protocol.PayloadHeader{},

@@ -12,6 +12,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const REPLY_WAIT_TIMEOUT = 5 * time.Second
+
 type OutgoingMessge struct {
 	Data []byte
 }
@@ -27,7 +29,7 @@ type SessionData struct {
 	Cb            SessionCallback
 }
 
-var ReplyTimeout error = replyTimeout{}
+var ReplyTimedoutError error = replyTimeout{}
 
 type replyTimeout struct{}
 
@@ -35,7 +37,7 @@ func (r replyTimeout) Error() string {
 	return "Timed Out"
 }
 
-var SessionClosed error = sessionClosed{}
+var SessionClosedError error = sessionClosed{}
 
 type sessionClosed struct{}
 
@@ -49,9 +51,9 @@ func packetOrTimeOut(incoming <-chan *Message) (*Message, error) {
 		if ok {
 			return msg, nil
 		}
-		return nil, SessionClosed
-	case <-time.After(10 * time.Second):
-		return nil, ReplyTimeout
+		return nil, SessionClosedError
+	case <-time.After(Jitter(REPLY_WAIT_TIMEOUT, 0.2)):
+		return nil, ReplyTimedoutError
 	}
 }
 
@@ -201,7 +203,7 @@ func (o *Session) SendMsgGetReply(genMsg func() (*OutgoingMessge, error)) (*Mess
 		msg, err := packetOrTimeOut(o.incoming)
 		if err != nil {
 			// on timeout, send INIT again, and loop
-			if err == ReplyTimeout {
+			if err == ReplyTimedoutError {
 				continue
 			}
 			return nil, err
@@ -227,7 +229,7 @@ func (o *Session) InstallSa() error {
 
 // UnInstallSa
 func (o *Session) UnInstallSa() {
-	sa := removeSa(o.tkm,
+	sa := removeSa(
 		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,

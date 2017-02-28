@@ -1,12 +1,15 @@
 package ike
 
 import (
+	"time"
+
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
 
 func runInitiator(s *Session) error {
 	// send initiator INIT after jittered wait and wait for reply
+	time.Sleep(Jitter(4*time.Second, 1))
 	msg, err := s.SendMsgGetReply(s.InitMsg)
 	if err != nil {
 		return err
@@ -102,25 +105,46 @@ func runResponder(s *Session) (err error) {
 }
 
 func monitorSa(s *Session) error {
-	for {
-		msg := <-s.incoming
-		switch msg.IkeHeader.ExchangeType {
-		case protocol.INFORMATIONAL:
-			evt := HandleInformationalForSession(s, msg)
-			if evt.NotificationType == MSG_EMPTY_REQUEST {
-				if err := s.SendEmptyInformational(true); err != nil {
-					return err
-				}
-			}
-		}
-	}
 	// check for duplicate SA, if found remove one with smaller nonce
 	// setup REKEY timeout (jittered) & monitoring
-	// if INFORMATIONAL, send INFORMATIONAL_reply
-	// if REKEY timeout
-	//  create new tkm, send REKEY, wait for REKEY_reply,
-	//  retry on timeout
-	//  use new tkm to verify REKEY_reply and configure new SA
+	rekeyTimer := time.NewTimer(Jitter(5*time.Second, 1.0))
+	for {
+		select {
+		case msg := <-s.incoming:
+			switch msg.IkeHeader.ExchangeType {
+			// if INFORMATIONAL, send INFORMATIONAL_reply
+			case protocol.INFORMATIONAL:
+				evt := HandleInformationalForSession(s, msg)
+				if evt.NotificationType == MSG_EMPTY_REQUEST {
+					if err := s.SendEmptyInformational(true); err != nil {
+						return err
+					}
+				}
+			}
+		case <-rekeyTimer.C:
+			// if REKEY timeout
+			//  create new tkm, send REKEY, wait for REKEY_reply,
+			//  retry on timeout
+			newTkm, err := NewTkm(&s.cfg, s.Logger, nil)
+			if err != nil {
+				return err
+			}
+			// closure with tkm for the generator
+			rekeyFn := func() (*OutgoingMessge, error) { return s.IkeSaRekey(newTkm) }
+			msg, err := s.SendMsgGetReply(rekeyFn)
+			if err != nil {
+				return err
+			}
+			//  use new tkm to verify REKEY_reply and configure new SA
+			if err = HandleSaRekey(s, newTkm, msg); err != nil {
+				return err
+			}
+			// replace tkm
+			s.tkm = newTkm
+			// remove old sa
+			s.InstallSa()
+		}
+	}
 	// if REKEY rx :
 	//  send REKEY_reply
 	//  install SA

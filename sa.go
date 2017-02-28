@@ -36,8 +36,7 @@ func addSa(tkm *Tkm,
 	return sa
 }
 
-func removeSa(tkm *Tkm,
-	ikeSpiI, ikeSpiR []byte,
+func removeSa(ikeSpiI, ikeSpiR []byte,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
 	forInitiator bool) *platform.SaParams {
