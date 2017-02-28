@@ -54,6 +54,7 @@ func makeChildSa(params *childSaParams) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
+	// presence of traffic selectors means that CHILD SA is being rekeyed
 	if params.tsI != nil && params.tsR != nil && params.isInitiator {
 		child.Payloads.Add(&protocol.NotifyPayload{
 			ProtocolId:       protocol.ESP,
@@ -112,28 +113,40 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	if err := m.EnsurePayloads(NewChilSaPayloads); err == nil {
-		if !params.isResponse {
-			// must have NotifyPayload
-			rekeySA := m.Payloads.GetNotification(protocol.REKEY_SA)
-			if rekeySA == nil {
-				return nil, errors.New("Missing REKEY_SA in Child SA request")
-			}
-			params.espSpi = rekeySA.Spi
+	// what kind of rekey request
+	rekeySA := m.Payloads.GetNotification(protocol.REKEY_SA)
+	if rekeySA == nil {
+		// rekeying IKE SA
+		if err := m.EnsurePayloads(RekeyIkeSaPaylods); err == nil {
+			return nil, err
 		}
-		espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-		params.proposals = espSa.Proposals
+		// get sa & nonce
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		params.nonce = no.Nonce
+		ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+		params.proposals = ikeSa.Proposals
+		keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+		params.dhPublic = keR.KeyData
+		params.dhTransformId = keR.DhTransformId
+	} else {
+		// rekeying IPSEC SA
+		if err := m.EnsurePayloads(RekeyChildSaPaylods); err == nil {
+			return nil, err
+		}
+		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+		params.nonce = no.Nonce
+		ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+		params.proposals = ikeSa.Proposals
 		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
 		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
 		if len(tsI) == 0 || len(tsR) == 0 {
-			return nil, errors.New("acceptable traffic selectors are missing")
+			return nil, errors.New("REKEY child SA request: acceptable traffic selectors are missing")
 		}
 		params.tsI = tsI
 		params.tsR = tsR
-		if m.Payloads.Get(protocol.PayloadTypeKE) != nil { // optional
-			keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+		params.espSpi = rekeySA.Spi
+		if kep := m.Payloads.Get(protocol.PayloadTypeKE); kep != nil { // optional
+			keR := kep.(*protocol.KePayload)
 			params.dhPublic = keR.KeyData
 			params.dhTransformId = keR.DhTransformId
 		}

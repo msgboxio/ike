@@ -30,23 +30,14 @@ var (
 		protocol.PayloadTypeTSi,
 		protocol.PayloadTypeTSr,
 	}
-	NewChilSaPayloads = []protocol.PayloadType{
+
+	RekeyIkeSaPaylods = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
+		protocol.PayloadTypeKE,
 		protocol.PayloadTypeNonce,
-		protocol.PayloadTypeTSi,
-		protocol.PayloadTypeTSr,
 	}
 
-	RekeyIkeSaPaylods = InitPayloads
-
-	RekeyChildSaIPaylods = []protocol.PayloadType{
-		protocol.PayloadTypeN,
-		protocol.PayloadTypeSA,
-		protocol.PayloadTypeNonce,
-		protocol.PayloadTypeTSi,
-		protocol.PayloadTypeTSr,
-	}
-	RekeyChildSaRPaylods = []protocol.PayloadType{
+	RekeyChildSaPaylods = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeNonce,
 		protocol.PayloadTypeTSi,
@@ -141,7 +132,8 @@ func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
 	mp := msg.Payloads
 	for _, pt := range payloadTypes {
 		if mp.Get(pt) == nil {
-			return errors.Errorf("essential payload is missing from %s message", msg.IkeHeader.ExchangeType)
+			return errors.Errorf("essential payload %s is missing from %s message",
+				pt, msg.IkeHeader.ExchangeType)
 		}
 	}
 	return nil
