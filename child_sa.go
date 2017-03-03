@@ -27,11 +27,10 @@ type childSaParams struct {
 	proposals        []*protocol.SaProposal
 	tsI, tsR         []*protocol.Selector
 	lifetime         time.Duration
-
-	espSpi        protocol.Spi
-	nonce         *big.Int
-	dhTransformId protocol.DhTransformId
-	dhPublic      *big.Int
+	targetEspSpi     protocol.Spi // esp sa that is being replaced
+	nonce            *big.Int
+	dhTransformId    protocol.DhTransformId
+	dhPublic         *big.Int
 }
 
 func makeChildSa(params *childSaParams) *Message {
@@ -60,7 +59,7 @@ func makeChildSa(params *childSaParams) *Message {
 			ProtocolId:       protocol.ESP,
 			PayloadHeader:    &protocol.PayloadHeader{},
 			NotificationType: protocol.REKEY_SA,
-			Spi:              params.espSpi, // our inbound spi
+			Spi:              params.targetEspSpi, // target esp
 		})
 	}
 	child.Payloads.Add(&protocol.SaPayload{
@@ -115,13 +114,37 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	// what kind of rekey request
 	rekeySA := m.Payloads.GetNotification(protocol.REKEY_SA)
-	if rekeySA == nil {
-		// rekeying IKE SA
-		if err := m.EnsurePayloads(RekeyIkeSaPaylods); err == nil {
-			return nil, err
+	if rekeySA != nil {
+		// received CREATE_CHILD_SA request
+		// make sure protocol id is correct
+		if rekeySA.ProtocolId != protocol.ESP {
+			return nil, errors.New("REKEY child SA: Wrong protocol")
 		}
+		params.targetEspSpi = rekeySA.Spi
+	}
+	if err := m.EnsurePayloads(RekeyChildSaPaylods); err == nil {
+		// rekeying IPSEC SA
+		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+		params.nonce = no.Nonce
+		ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+		params.proposals = ikeSa.Proposals
+		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
+		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
+		if len(tsI) == 0 || len(tsR) == 0 {
+			return nil,
+				errors.New("REKEY child SA: acceptable traffic selectors are missing")
+		}
+		params.tsI = tsI
+		params.tsR = tsR
+		// check for optional KE payload
+		if kep := m.Payloads.Get(protocol.PayloadTypeKE); kep != nil {
+			keR := kep.(*protocol.KePayload)
+			params.dhPublic = keR.KeyData
+			params.dhTransformId = keR.DhTransformId
+		}
+	} else if err := m.EnsurePayloads(RekeyIkeSaPaylods); err == nil {
+		// rekeying IKE SA
 		// get sa & nonce
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		params.nonce = no.Nonce
@@ -131,27 +154,7 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 		params.dhPublic = keR.KeyData
 		params.dhTransformId = keR.DhTransformId
 	} else {
-		// rekeying IPSEC SA
-		if err := m.EnsurePayloads(RekeyChildSaPaylods); err == nil {
-			return nil, err
-		}
-		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-		params.nonce = no.Nonce
-		ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-		params.proposals = ikeSa.Proposals
-		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
-		if len(tsI) == 0 || len(tsR) == 0 {
-			return nil, errors.New("REKEY child SA request: acceptable traffic selectors are missing")
-		}
-		params.tsI = tsI
-		params.tsR = tsR
-		params.espSpi = rekeySA.Spi
-		if kep := m.Payloads.Get(protocol.PayloadTypeKE); kep != nil { // optional
-			keR := kep.(*protocol.KePayload)
-			params.dhPublic = keR.KeyData
-			params.dhTransformId = keR.DhTransformId
-		}
+		return nil, errors.New("REKEY packet is invalid")
 	}
 	// notifications
 	wantsTransportMode := false

@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const SaRekeyTimeout = 5 * time.Second
+
 func runInitiator(s *Session) error {
 	// send initiator INIT after jittered wait and wait for reply
 	time.Sleep(Jitter(4*time.Second, 1))
@@ -57,10 +59,6 @@ func runInitiator(s *Session) error {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
-	// inform user
-	// install SA
-	s.InstallSa()
-	// monitorSa
 	return nil
 }
 
@@ -94,55 +92,86 @@ func runResponder(s *Session) (err error) {
 	if err := s.SendAuth(); err != nil {
 		return err
 	}
-	// send INFORMATIONAL, wait for INFORMATIONAL_reply
-	// if timeout, send AUTH_reply again
-	// monitor SA
-	s.InstallSa()
-	if err := s.SendEmptyInformational(false); err != nil {
-		return err
-	}
 	return nil
 }
 
-func monitorSa(s *Session) error {
+func monitorSa(o *Session) error {
+	// inform user
+	if err := o.InstallSa(); err != nil {
+		return err
+	}
+	if o.isInitiator {
+		// send INFORMATIONAL, wait for INFORMATIONAL_reply
+		// if timeout, send AUTH_reply again
+		// monitor SA
+		if err := o.SendEmptyInformational(false); err != nil {
+			return err
+		}
+	}
 	// check for duplicate SA, if found remove one with smaller nonce
-	// setup REKEY timeout (jittered) & monitoring
-	rekeyTimer := time.NewTimer(Jitter(5*time.Second, 1.0))
+	// setup SA REKEY timeout (jittered) & monitoring
+	saRekeyTimer := time.NewTimer(Jitter(SaRekeyTimeout, -0.2))
+	saRekeyDeadline := time.NewTimer(SaRekeyTimeout)
 	for {
 		select {
-		case msg := <-s.incoming:
+		case msg := <-o.incoming:
 			switch msg.IkeHeader.ExchangeType {
 			// if INFORMATIONAL, send INFORMATIONAL_reply
 			case protocol.INFORMATIONAL:
-				evt := HandleInformationalForSession(s, msg)
+				evt := HandleInformationalForSession(o, msg)
 				if evt.NotificationType == MSG_EMPTY_REQUEST {
-					if err := s.SendEmptyInformational(true); err != nil {
+					if err := o.SendEmptyInformational(true); err != nil {
 						return err
 					}
 				}
 			}
-		case <-rekeyTimer.C:
+		case <-saRekeyDeadline.C:
+			return ErrorRekeyDeadlineExceeded
+		case <-saRekeyTimer.C:
+			// ONLY :
+			// SA rekey from original initiator
+			if !o.isInitiator {
+				o.Logger.Info("Rekey Timeout: Currently only supported for initiator")
+				continue
+			}
+			o.Logger.Info("Rekey Timeout")
 			// if REKEY timeout
 			//  create new tkm, send REKEY, wait for REKEY_reply,
 			//  retry on timeout
-			newTkm, err := NewTkm(&s.cfg, s.Logger, nil)
+			newTkm, err := NewTkm(&o.cfg, o.Logger, nil)
 			if err != nil {
 				return err
 			}
-			// closure with tkm for the generator
-			rekeyFn := func() (*OutgoingMessge, error) { return s.IkeSaRekey(newTkm) }
-			msg, err := s.SendMsgGetReply(rekeyFn)
+			espSpiI := MakeSpi()[:4]
+			// closure with parameters for new SA
+			rekeyFn := func() (*OutgoingMessge, error) {
+				return o.SaRekey(newTkm, true, espSpiI)
+			}
+			msg, err := o.SendMsgGetReply(rekeyFn)
 			if err != nil {
 				return err
 			}
 			//  use new tkm to verify REKEY_reply and configure new SA
-			if err = HandleSaRekey(s, newTkm, msg); err != nil {
+			espSpiR, err := HandleSaRekey(o, newTkm, true, msg)
+			if err != nil {
 				return err
 			}
-			// replace tkm
-			s.tkm = newTkm
+			// install new SA - [espSpiI, espSpiR, nI, nR & dhShared]
+			err = o.AddSa(addSa(o.tkm,
+				newTkm.Ni, newTkm.Nr, newTkm.DhShared,
+				espSpiI, espSpiR,
+				&o.cfg, true))
+			if err != nil {
+				return err
+			}
 			// remove old sa
-			s.InstallSa()
+			o.UnInstallSa()
+			// replace espSpiI & espSpiR
+			o.EspSpiI = espSpiI
+			o.EspSpiR = espSpiR
+			// reset timers
+			saRekeyDeadline.Reset(SaRekeyTimeout)
+			saRekeyTimer.Reset(Jitter(SaRekeyTimeout, -0.2))
 		}
 	}
 	// if REKEY rx :

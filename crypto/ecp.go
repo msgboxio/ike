@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 func addEcpGroups(kexAlgoMap map[protocol.DhTransformId]dhGroup) {
@@ -47,10 +48,10 @@ func (group *ecpGroup) DiffieHellman(theirPublic, myPrivate *big.Int) (*big.Int,
 	// stdlib marshal expects b[0] = 4
 	x, y := elliptic.Unmarshal(group.curve, append([]byte{4}, theirPublic.Bytes()...))
 	if x == nil {
-		return nil, errKeyExchange
+		return nil, errors.Wrap(errKeyExchange, "Bad Curve")
 	}
 	if !group.curve.IsOnCurve(x, y) {
-		return nil, errKeyExchange
+		return nil, errors.Wrap(errKeyExchange, "Curve Mismatch")
 	}
 	x, _ = group.curve.ScalarMult(x, y, myPrivate.Bytes())
 	sharedSecret := make([]byte, (group.curve.Params().BitSize+7)>>3)

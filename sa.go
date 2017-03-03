@@ -1,14 +1,18 @@
 package ike
 
-import "github.com/msgboxio/ike/platform"
+import (
+	"math/big"
+
+	"github.com/msgboxio/ike/platform"
+)
 
 func addSa(tkm *Tkm,
-	ikeSpiI, ikeSpiR []byte,
+	ni, nr, dhShared *big.Int,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
-	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ikeSpiI, ikeSpiR)
+	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ni, nr, dhShared)
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
 	tsI := cfg.TsI[0]
@@ -36,8 +40,7 @@ func addSa(tkm *Tkm,
 	return sa
 }
 
-func removeSa(ikeSpiI, ikeSpiR []byte,
-	espSpiI, espSpiR []byte,
+func removeSa(espSpiI, espSpiR []byte,
 	cfg *Config,
 	forInitiator bool) *platform.SaParams {
 	// sa processing

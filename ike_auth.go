@@ -156,16 +156,16 @@ func AuthFromSession(o *Session) (*Message, error) {
 		}, initB)
 }
 
-func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolId) (peerSpi protocol.Spi) {
+func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolId) (protocol.Spi, error) {
 	for _, p := range props {
 		if !p.IsSpiSizeCorrect(len(p.Spi)) {
-			return
+			return nil, errors.New("Bad SPI size ")
 		}
 		if p.ProtocolId == pid {
-			peerSpi = p.Spi
+			return p.Spi, nil
 		}
 	}
-	return
+	return nil, errors.New("Missing SPI")
 }
 
 func parseAuth(m *Message) (*authParams, error) {
@@ -182,7 +182,10 @@ func parseAuth(m *Message) (*authParams, error) {
 			return params, errors.New("proposals are missing")
 		}
 		params.proposals = espSa.Proposals
-		spi := spiFromProposal(params.proposals, protocol.ESP)
+		spi, err := spiFromProposal(params.proposals, protocol.ESP)
+		if err != nil {
+			return nil, err
+		}
 		if params.isInitiator {
 			params.spiI = spi
 		} else {

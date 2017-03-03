@@ -36,7 +36,7 @@ func (i *IkeCmd) RemoveSa(sa *platform.SaParams) error {
 // dont call cb.onError
 func (i *IkeCmd) onError(session *Session, err error) {
 	// break before make
-	if err == ErrorRekeyRequired {
+	if err == ErrorRekeyDeadlineExceeded {
 		session.Close(context.DeadlineExceeded)
 	} else {
 		session.Close(context.Canceled)
@@ -48,7 +48,7 @@ func (i *IkeCmd) runSession(spi uint64, s *Session) (err error) {
 	err = RunSession(s)
 	// wait for session to finish
 	i.sessions.Remove(spi)
-	s.Logger.Infof("Removed IKE SA: %s", err)
+	s.Logger.Infof("Removed IKE SA: %V", err)
 	return
 }
 

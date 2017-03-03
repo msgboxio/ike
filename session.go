@@ -217,10 +217,10 @@ func (o *Session) SendAuth() error {
 	return o.sendMsg(o.AuthMsg())
 }
 
-// InstallSa
+// InstallSa - is used to create a new sa using the original IKE sa
 func (o *Session) InstallSa() error {
 	sa := addSa(o.tkm,
-		o.IkeSpiI, o.IkeSpiR,
+		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : we use the original SA
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
@@ -230,7 +230,6 @@ func (o *Session) InstallSa() error {
 // UnInstallSa
 func (o *Session) UnInstallSa() {
 	sa := removeSa(
-		o.IkeSpiI, o.IkeSpiR,
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
@@ -249,17 +248,6 @@ func (o *Session) HandleClose() error {
 	o.SendEmptyInformational(true)
 	o.UnInstallSa()
 	return nil
-}
-
-func (o *Session) HandleCreateChildSa(m *Message) error {
-	newTkm, _ := NewTkm(&o.cfg, o.Logger, nil) // ignore error
-	err := HandleSaRekey(o, newTkm, m)
-	if err != nil {
-		o.Logger.Info("Rekey Error: %+v", err)
-	}
-	// do we need to send NO_ADDITIONAL_SAS ?
-	// ask user to create new SA
-	return err
 }
 
 // CheckError

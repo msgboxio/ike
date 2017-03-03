@@ -1,22 +1,35 @@
 package ike
 
 import (
+	"bytes"
 	"errors"
 
 	"github.com/msgboxio/ike/protocol"
 )
 
-var ErrorRekeyRequired = errors.New("Rekey Required")
+var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
 
-//  SK {SA, Ni, KEi} - ike sa
-func (o *Session) IkeSaRekey(newTkm *Tkm) (*OutgoingMessge, error) {
-	newIkeSpiI := MakeSpi()
-	init := makeChildSa(&childSaParams{
-		isInitiator:   o.isInitiator,
+// HDR, SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr}   -->
+// <--  HDR, SK {SA, Nr, [KEr,] TSi, TSr}
+
+func (o *Session) SaRekey(newTkm *Tkm, isInitiator bool, espSpi []byte) (*OutgoingMessge, error) {
+	no := newTkm.Nr
+	targetEspSpi := o.EspSpiR
+	if isInitiator {
+		no = newTkm.Ni
+		targetEspSpi = o.EspSpiI
+	}
+	prop := ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, espSpi)
+	child := makeChildSa(&childSaParams{
+		isInitiator:   isInitiator,
 		ikeSpiI:       o.IkeSpiI,
 		ikeSpiR:       o.IkeSpiR,
-		proposals:     ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, newIkeSpiI),
-		nonce:         newTkm.Ni,
+		proposals:     prop,
+		tsI:           o.cfg.TsI,
+		tsR:           o.cfg.TsR,
+		lifetime:      o.cfg.Lifetime,
+		targetEspSpi:  targetEspSpi,
+		nonce:         no,
 		dhTransformId: newTkm.suite.DhGroup.TransformId(),
 		dhPublic:      newTkm.DhPublic,
 	})
@@ -24,30 +37,46 @@ func (o *Session) IkeSaRekey(newTkm *Tkm) (*OutgoingMessge, error) {
 	if o.isInitiator {
 		msgId = o.msgIdReq
 	}
-	init.IkeHeader.MsgId = msgId
+	child.IkeHeader.MsgId = msgId
 	// encode & send
-	return o.encode(init)
+	return o.encode(child)
 }
 
-//  SK {SA, Nr, KEr} - ike sa
-func HandleSaRekey(o *Session, newTkm *Tkm, msg interface{}) error {
+func HandleSaRekey(o *Session, newTkm *Tkm, asInitiator bool, msg interface{}) (protocol.Spi, error) {
 	m := msg.(*Message)
 	params, err := parseChildSa(m)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		o.Logger.Error(err)
-		return nil
-	}
-	if params.dhPublic != nil {
-		if err := newTkm.DhGenerateKey(params.dhPublic); err != nil {
-			o.Logger.Error(err)
-			return nil
+	// check spi if CREATE_CHILD_SA request received as responder
+	if !asInitiator {
+		spi := o.EspSpiR
+		if !bytes.Equal(params.targetEspSpi, spi) {
+			return nil, errors.New("REKEY child SA request: incorrect target ESP Spi")
 		}
 	}
+	if params.dhPublic == nil {
+		// return nil, errors.New("REKEY child SA: missing DH parameters")
+	} else {
+		if err := newTkm.DhGenerateKey(params.dhPublic); err != nil {
+			return nil, err
+		}
+	}
+	// proposal should be identical
+	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
+		return nil, err
+	}
 	// set Nr
-	newTkm.Nr = params.nonce
+	if asInitiator {
+		newTkm.Nr = params.nonce
+	} else {
+		newTkm.Ni = params.nonce
+	}
+	// get new esp from proposal
+	return spiFromProposal(params.proposals, protocol.ESP)
+}
+
+/*
 	// get new IKE spi
 	peerSpi, err := getPeerSpi(m, protocol.IKE)
 	if err != nil {
@@ -62,5 +91,4 @@ func HandleSaRekey(o *Session, newTkm *Tkm, msg interface{}) error {
 		o.IkeSpiR)
 	// save Data
 	o.initRb = m.Data
-	return nil
-}
+*/
