@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
+
 const SaRekeyTimeout = 5 * time.Second
 
 func runInitiator(o *Session) error {
@@ -18,8 +20,13 @@ func runInitiator(o *Session) error {
 	}
 	// TODO - check if we already have a connection to this host
 	// check if incoming message is an acceptable Init Response
+	var init *initParams
 	for {
-		if err = CheckInitResponseForSession(o, msg); err != nil {
+		init, err = parseInit(msg)
+		if err != nil {
+			return err
+		}
+		if err = CheckInitResponseForSession(o, init); err != nil {
 			if ce, ok := err.(CookieError); ok {
 				// session is always returned for CookieError
 				o.SetCookie(ce.Cookie)
@@ -39,7 +46,7 @@ func runInitiator(o *Session) error {
 	// rewrite LocalAddr
 	o.SetAddresses(msg.LocalAddr, msg.RemoteAddr)
 	// COOKIE is handled within cmd.newSession
-	if err = HandleInitForSession(o, msg); err != nil {
+	if err = HandleInitForSession(o, init, msg); err != nil {
 		o.Logger.Errorf("Error Initializing: %+v", err)
 		return err
 	}
@@ -54,8 +61,7 @@ func runInitiator(o *Session) error {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
-	err = HandleSaForSession(o, msg)
-	if err != nil {
+	if err = HandleSaForSession(o, msg); err != nil {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
@@ -63,12 +69,16 @@ func runInitiator(o *Session) error {
 }
 
 // got new INIT
-func runResponder(o *Session) (err error) {
+func runResponder(o *Session) error {
 	// wait for INIT
 	// send COOKIE, wait - handled by cmd:newSession
 	// get INIT
 	msg := <-o.incoming
-	if err = HandleInitForSession(o, msg); err != nil {
+	init, err := parseInit(msg)
+	if err != nil {
+		return err
+	}
+	if err = HandleInitForSession(o, init, msg); err != nil {
 		return err
 	}
 	if err = o.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
@@ -106,7 +116,7 @@ func runIpsecRekey(o *Session) (err error) {
 	espSpiI := MakeSpi()[:4]
 	// closure with parameters for new SA
 	rekeyFn := func() (*OutgoingMessge, error) {
-		return o.RekeyMsg(o.SaRekey(newTkm, true, espSpiI))
+		return o.RekeyMsg(ChildSaFromSession(o, newTkm, true, espSpiI))
 	}
 	msg, err := o.SendMsgGetReply(rekeyFn)
 	if err != nil {
@@ -117,7 +127,7 @@ func runIpsecRekey(o *Session) (err error) {
 		return
 	}
 	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiR, err := HandleSaRekey(o, newTkm, true, params)
+	espSpiR, err := HandleChildSaForSession(o, newTkm, true, params)
 	if err != nil {
 		return
 	}
@@ -147,13 +157,13 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 		return
 	}
 	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiI, err := HandleSaRekey(o, newTkm, false, params)
+	espSpiI, err := HandleChildSaForSession(o, newTkm, false, params)
 	if err != nil {
 		return
 	}
 	espSpiR := MakeSpi()[:4]
 	// closure with parameters for new SA
-	err = o.sendMsg(o.RekeyMsg(o.SaRekey(newTkm, false, espSpiR)))
+	err = o.sendMsg(o.RekeyMsg(ChildSaFromSession(o, newTkm, false, espSpiR)))
 	if err != nil {
 		return
 	}

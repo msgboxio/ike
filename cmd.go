@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// IkeCmd provides utilities that help in managing sessions
+// IkeCmd provides utilities for managing sessions
 type IkeCmd struct {
 	// map of initiator spi -> session
 	sessions Sessions
@@ -35,7 +35,6 @@ func (i *IkeCmd) RemoveSa(sa *platform.SaParams) error {
 
 // dont call cb.onError
 func (i *IkeCmd) onError(session *Session, err error) {
-	// break before make
 	if err == ErrorRekeyDeadlineExceeded {
 		session.Close(context.DeadlineExceeded)
 	} else {
@@ -56,9 +55,13 @@ func (i *IkeCmd) runSession(spi uint64, s *Session) (err error) {
 func (i *IkeCmd) newResponder(spi uint64, msg *Message, config *Config, log *logrus.Logger) (session *Session, err error) {
 	// consider creating a new session
 	// is it a IKE_SA_INIT req ?
-	if err := CheckInitRequest(config, msg); err != nil {
+	init, err := parseInit(msg)
+	if err != nil {
+		return nil, err
+	}
+	if err := CheckInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
-		if reply := InitErrorNeedsReply(msg, config, err); reply != nil {
+		if reply := InitErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
 			data, err := reply.Encode(nil, false, log)
 			if err != nil {
 				return nil, errors.Wrap(err, "error encoding init reply")
@@ -81,23 +84,6 @@ func (i *IkeCmd) newResponder(spi uint64, msg *Message, config *Config, log *log
 	}
 	go i.runSession(spi, session)
 	return
-}
-
-// runs on main goroutine
-func (i *IkeCmd) processPacket(msg *Message, config *Config, log *logrus.Logger) {
-	// convert for map lookup
-	spi := SpiToInt64(msg.IkeHeader.SpiI)
-	// check if a session exists
-	session, found := i.sessions.Get(spi)
-	if !found {
-		var err error
-		session, err = i.newResponder(spi, msg, config, log)
-		if err != nil {
-			log.Warning("drop packet: ", err)
-			return
-		}
-	}
-	session.PostMessage(msg)
 }
 
 // RunInitiator starts & watches over on initiator session in a separate goroutine
@@ -144,6 +130,18 @@ func (i *IkeCmd) Run(config *Config, log *logrus.Logger) error {
 		if err != nil {
 			return err
 		}
-		i.processPacket(msg, config, log)
+		// convert for map lookup
+		spi := SpiToInt64(msg.IkeHeader.SpiI)
+		// check if a session exists
+		session, found := i.sessions.Get(spi)
+		if !found {
+			var err error
+			session, err = i.newResponder(spi, msg, config, log)
+			if err != nil {
+				log.Warning("drop packet: ", err)
+				continue
+			}
+		}
+		session.PostMessage(msg)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"crypto/sha1"
 	"errors"
+	"math/big"
+	"net"
 
 	"github.com/msgboxio/ike/protocol"
 )
@@ -32,13 +34,12 @@ func init() {
 	rand.Read(cookieSecret[:])
 }
 
-func getCookie(initI *Message) []byte {
+func getCookie(no *big.Int, spiI []byte, remote net.Addr) []byte {
 	// Cookie = <VersionIDofSecret> | Hash(Ni | IPi | SPIi | <secret>)
 	digest := sha1.New()
-	no := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	digest.Write(no.Nonce.Bytes())
-	digest.Write(initI.IkeHeader.SpiI)
-	digest.Write(AddrToIp(initI.RemoteAddr))
+	digest.Write(no.Bytes())
+	digest.Write(spiI)
+	digest.Write(AddrToIp(remote))
 	digest.Write(cookieSecret[:])
 	return append(cookieVersion, digest.Sum(nil)...)
 }

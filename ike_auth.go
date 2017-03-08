@@ -33,7 +33,6 @@ type authParams struct {
 // signed1 : init[i/r]B | N[r/i]
 
 func makeAuth(params *authParams, initB []byte) (*Message, error) {
-	// spiI, spiR protocol.Spi, proposals []*protocol.SaProposal, tsI, tsR []*protocol.Selector, signed1 []byte, tkm *Tkm, isTransportMode bool) *Message {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
 	if params.isInitiator {
@@ -156,19 +155,7 @@ func AuthFromSession(o *Session) (*Message, error) {
 		}, initB)
 }
 
-func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolId) (protocol.Spi, error) {
-	for _, p := range props {
-		if !p.IsSpiSizeCorrect(len(p.Spi)) {
-			return nil, errors.New("Bad SPI size ")
-		}
-		if p.ProtocolId == pid {
-			return p.Spi, nil
-		}
-	}
-	return nil, errors.New("Missing SPI")
-}
-
-func parseAuth(m *Message) (*authParams, error) {
+func parseSa(m *Message) (*authParams, error) {
 	params := &authParams{}
 	if m.IkeHeader.Flags&protocol.RESPONSE != 0 {
 		params.isResponse = true
@@ -179,7 +166,7 @@ func parseAuth(m *Message) (*authParams, error) {
 	if err := m.EnsurePayloads(SaPayloads); err == nil {
 		espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 		if espSa.Proposals == nil {
-			return params, errors.New("proposals are missing")
+			return nil, errors.New("proposals are missing")
 		}
 		params.proposals = espSa.Proposals
 		spi, err := spiFromProposal(params.proposals, protocol.ESP)
@@ -195,7 +182,7 @@ func parseAuth(m *Message) (*authParams, error) {
 		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
 		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
 		if len(tsI) == 0 || len(tsR) == 0 {
-			return params, errors.New("acceptable traffic selectors are missing")
+			return nil, errors.New("acceptable traffic selectors are missing")
 		}
 		params.tsI = tsI
 		params.tsR = tsR
@@ -222,6 +209,9 @@ func parseAuth(m *Message) (*authParams, error) {
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
 func HandleAuthForSession(o *Session, m *Message) (err error) {
+	if m.IkeHeader.ExchangeType != protocol.IKE_AUTH {
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
+	}
 	payloads := AuthIPayloads
 	if o.isInitiator {
 		payloads = AuthRPayloads
@@ -286,7 +276,11 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 	}
 }
 
-func HandleSaForSession(o *Session, m *Message) (err error) {
+func HandleSaForSession(o *Session, m *Message) error {
+	params, err := parseSa(m)
+	if err != nil {
+		return err
+	}
 	for _, n := range m.Payloads.GetNotifications() {
 		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
 			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
@@ -294,17 +288,16 @@ func HandleSaForSession(o *Session, m *Message) (err error) {
 			return errors.Errorf("peer notified: %s;", nErr)
 		}
 	}
-	params, err := parseAuth(m)
 	if o.Logger.Level == logrus.DebugLevel {
 		o.Logger.Debugf("params: \n%s; err %+v", spew.Sdump(params), err)
 	}
 	if err != nil {
-		return
+		return err
 	}
 	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		return
+		return err
 	}
-	// TODO - check selectors
+	// TODO - check selector
 	o.Logger.Infof("Configured selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	o.Logger.Infof("Offered selectors: [INI]%s<=>%s[RES]", params.tsI, params.tsR)
 	// message looks OK
@@ -324,7 +317,7 @@ func HandleSaForSession(o *Session, m *Message) (err error) {
 		}
 	}
 	if err != nil {
-		return
+		return err
 	}
 	// start Lifetime timer
 	if params.lifetime != 0 {
@@ -347,8 +340,8 @@ func HandleSaForSession(o *Session, m *Message) (err error) {
 			o.Logger.Info("Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			err = errors.New("Peer Rejected Transport Mode Config")
-			return
+			return err
 		}
 	}
-	return
+	return nil
 }

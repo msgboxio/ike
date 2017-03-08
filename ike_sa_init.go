@@ -2,6 +2,8 @@ package ike
 
 import (
 	"bytes"
+	"math/big"
+	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
@@ -15,47 +17,60 @@ import (
 // b->a
 //	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
 // 	SAr1, KEr, Nr, [CERTREQ]
-func InitFromSession(o *Session) *Message {
+type initParams struct {
+	isInitiator bool
+	spiI, spiR  protocol.Spi
+
+	nonce         *big.Int
+	proposals     []*protocol.SaProposal
+	dhTransformId protocol.DhTransformId
+	dhPublic      *big.Int
+
+	ns                []*protocol.NotifyPayload
+	cookie            []byte
+	rfc7427Signatures bool
+}
+
+func makeInit(params *initParams) *Message {
+	// response & initiator are mutually exclusive
 	flags := protocol.RESPONSE
-	nonce := o.tkm.Nr
-	if o.isInitiator {
+	if params.isInitiator {
 		flags = protocol.INITIATOR
-		nonce = o.tkm.Ni
 	}
-	proposals := ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI)
 	init := &Message{
 		IkeHeader: &protocol.IkeHeader{
-			SpiI:         o.IkeSpiI,
-			SpiR:         o.IkeSpiR,
+			SpiI:         params.spiI,
+			SpiR:         params.spiR,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        flags,
+			MsgId:        0, // ALWAYS
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	if o.responderCookie != nil {
+	if params.cookie != nil {
 		init.Payloads.Add(&protocol.NotifyPayload{
 			PayloadHeader:       &protocol.PayloadHeader{},
 			NotificationType:    protocol.COOKIE,
-			NotificationMessage: o.responderCookie,
+			NotificationMessage: params.cookie,
 		})
 	}
 	init.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		Proposals:     proposals,
+		Proposals:     params.proposals,
 	})
 	init.Payloads.Add(&protocol.KePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: o.tkm.suite.DhGroup.TransformId(),
-		KeyData:       o.tkm.DhPublic,
+		DhTransformId: params.dhTransformId,
+		KeyData:       params.dhPublic,
 	})
 	init.Payloads.Add(&protocol.NoncePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		Nonce:         nonce,
+		Nonce:         params.nonce,
 	})
 	// HashAlgorithmId has been set
-	if o.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE {
+	if params.rfc7427Signatures {
 		init.Payloads.Add(&protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			NotificationType: protocol.SIGNATURE_HASH_ALGORITHMS,
@@ -80,6 +95,25 @@ func InitFromSession(o *Session) *Message {
 	return init
 }
 
+// InitFromSession creates IKE_SA_INIT messages
+func InitFromSession(o *Session) *Message {
+	nonce := o.tkm.Nr
+	if o.isInitiator {
+		nonce = o.tkm.Ni
+	}
+	return makeInit(&initParams{
+		isInitiator:       o.isInitiator,
+		spiI:              o.IkeSpiI,
+		spiR:              o.IkeSpiR,
+		proposals:         ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
+		cookie:            o.responderCookie,
+		dhTransformId:     o.tkm.suite.DhGroup.TransformId(),
+		dhPublic:          o.tkm.DhPublic,
+		nonce:             nonce,
+		rfc7427Signatures: o.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE,
+	})
+}
+
 func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf []byte) *Message {
 	msg := &Message{
 		IkeHeader: &protocol.IkeHeader{
@@ -88,7 +122,7 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf [
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        protocol.RESPONSE,
-			MsgId:        0,
+			MsgId:        0, // ALWAYS
 		},
 		Payloads: protocol.MakePayloads(),
 	}
@@ -101,71 +135,99 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf [
 	return msg
 }
 
-// CheckInitRequest checks IKE_SA_INIT requests
-func CheckInitRequest(cfg *Config, m *Message) error {
-	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT ||
-		m.IkeHeader.Flags.IsResponse() ||
-		!m.IkeHeader.Flags.IsInitiator() ||
-		m.IkeHeader.MsgId != 0 {
-		return protocol.ERR_INVALID_SYNTAX
+func parseInit(m *Message) (*initParams, error) {
+	params := &initParams{}
+	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT {
+		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: incorrect type")
+	}
+	//
+	if m.IkeHeader.MsgId != 0 {
+		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid Message Id")
+	}
+	if m.IkeHeader.Flags.IsInitiator() {
+		if m.IkeHeader.Flags.IsResponse() {
+			return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
+		}
+		params.isInitiator = true
+	} else if !m.IkeHeader.Flags.IsResponse() {
+		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
 	}
 	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		return err
+		return nil, err
 	}
+	params.spiI = m.IkeHeader.SpiI
+	params.spiR = m.IkeHeader.SpiR
+	params.ns = m.Payloads.GetNotifications()
 	// did we get a COOKIE ?
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
+		params.cookie = cookie.NotificationMessage.([]byte)
+	}
+	// check if transforms are usable
+	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	params.dhTransformId = keI.DhTransformId
+	params.dhPublic = keI.KeyData
+	// get SA payload
+	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	params.proposals = ikeSa.Proposals
+	// nonce payload
+	nonce := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	params.nonce = nonce.Nonce
+	return params, nil
+}
+
+// CheckInitRequest checks IKE_SA_INIT requests
+func CheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
+	if !init.isInitiator {
+		return protocol.ERR_INVALID_SYNTAX
+	}
+	// did we get a COOKIE ?
+	if cookie := init.cookie; cookie != nil {
 		// is COOKIE correct ?
-		if !bytes.Equal(cookie.NotificationMessage.([]byte), getCookie(m)) {
+		if !bytes.Equal(cookie, getCookie(init.nonce, init.spiI, remote)) {
 			return errors.Wrap(MissingCookieError, "invalid cookie")
 		}
 	} else if cfg.ThrottleInitRequests {
 		return errors.Wrap(MissingCookieError, "requesting cookie")
 	}
 	// check if transforms are usable
-	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	// make sure dh tranform id is the one that was configured
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-	if dh := protocol.DhTransformId(tr); dh != keI.DhTransformId {
+	if dh := protocol.DhTransformId(tr); dh != init.dhTransformId {
 		return errors.Wrapf(protocol.ERR_INVALID_KE_PAYLOAD,
 			"Using different DH transform [%s] vs the one configured [%s]",
-			keI.DhTransformId, dh)
+			init.dhTransformId, dh)
 	}
-	// get SA payload
-	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 	// check ike proposal
-	if err := cfg.CheckProposals(protocol.IKE, ikeSa.Proposals); err != nil {
+	if err := cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {
 		return err
 	}
 	return nil
 }
 
-func InitErrorNeedsReply(initI *Message, config *Config, err error) *Message {
+func InitErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err error) *Message {
 	switch cause := errors.Cause(err); cause {
 	case protocol.ERR_INVALID_KE_PAYLOAD:
 		// ask PEER for correct DH type
 		buf := []byte{0, 0}
 		packets.WriteB16(buf, 0, config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId)
-		return notificationResponse(initI.IkeHeader.SpiI, protocol.INVALID_KE_PAYLOAD, buf)
+		return notificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, buf)
 	case MissingCookieError:
 		// ask peer to send cookie
-		return notificationResponse(initI.IkeHeader.SpiI, protocol.COOKIE, getCookie(initI))
+		return notificationResponse(init.spiI, protocol.COOKIE, getCookie(init.nonce, init.spiI, remote))
 	}
 	return nil
 }
 
-func CheckInitResponseForSession(o *Session, m *Message) error {
-	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT || // message must be init
-		!m.IkeHeader.Flags.IsResponse() || // must be response
-		m.IkeHeader.Flags.IsInitiator() || // must be a responder
-		m.IkeHeader.MsgId != 0 { // id must be zero
+func CheckInitResponseForSession(o *Session, init *initParams) error {
+	if init.isInitiator { // id must be zero
 		return protocol.ERR_INVALID_SYNTAX
 	}
 	// make sure responder spi is not the same as initiator spi
-	if bytes.Equal(m.IkeHeader.SpiR, m.IkeHeader.SpiI) {
+	if bytes.Equal(init.spiR, init.spiI) {
 		return errors.WithStack(protocol.ERR_INVALID_SYNTAX)
 	}
 	// handle INVALID_KE_PAYLOAD, NO_PROPOSAL_CHOSEN, or COOKIE
-	for _, notif := range m.Payloads.GetNotifications() {
+	for _, notif := range init.ns {
 		switch notif.NotificationType {
 		case protocol.COOKIE:
 			return CookieError{notif}
@@ -177,11 +239,8 @@ func CheckInitResponseForSession(o *Session, m *Message) error {
 	}
 	// make sure responder spi is set
 	// in case messages are being reflected - TODO
-	if SpiToInt64(m.IkeHeader.SpiR) == 0 {
+	if SpiToInt64(init.spiR) == 0 {
 		return errors.WithStack(protocol.ERR_INVALID_SYNTAX)
-	}
-	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		return err
 	}
 	return nil
 }
@@ -198,21 +257,21 @@ func checkSignatureAlgo(o *Session, isEnabled bool) error {
 }
 
 // HandleInitForSession expects the message given to it to be well formatted
-func HandleInitForSession(o *Session, m *Message) error {
+func HandleInitForSession(o *Session, init *initParams, m *Message) error {
 	// process notifications
 	// check NAT-T payload to determine if there is a NAT between the two peers
 	var rfc7427Signatures = false
-	for _, ns := range m.Payloads.GetNotifications() {
+	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
 			o.Logger.Infof("Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.LocalAddr) {
+			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.LocalAddr) {
 				o.Logger.Infof("HOST nat detected: %s", m.LocalAddr)
 			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), m.IkeHeader.SpiI, m.IkeHeader.SpiR, m.RemoteAddr) {
+			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.RemoteAddr) {
 				o.Logger.Infof("PEER nat detected: %s", m.RemoteAddr)
 			}
 		}
@@ -224,10 +283,9 @@ func HandleInitForSession(o *Session, m *Message) error {
 	// get nonce & spi from responder's response
 	if o.isInitiator {
 		// peer responders nonce
-		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-		o.tkm.Nr = no.Nonce
+		o.tkm.Nr = init.nonce
 		// peer responders spi
-		o.IkeSpiR = append([]byte{}, m.IkeHeader.SpiR...)
+		o.IkeSpiR = append([]byte{}, init.spiR...)
 	}
 	// TODO
 	// If there is NAT , then all the further communication is perfomed over port 4500 instead of the default port 500
@@ -236,8 +294,7 @@ func HandleInitForSession(o *Session, m *Message) error {
 	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// initialize dh shared with their public key
-	keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	if err := o.tkm.DhGenerateKey(keR.KeyData); err != nil {
+	if err := o.tkm.DhGenerateKey(init.dhPublic); err != nil {
 		return err
 	}
 	// create rest of ike sa

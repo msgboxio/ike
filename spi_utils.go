@@ -35,3 +35,15 @@ func getPeerSpi(m *Message, pid protocol.ProtocolId) (peerSpi protocol.Spi, err 
 	}
 	return
 }
+
+func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolId) (protocol.Spi, error) {
+	for _, p := range props {
+		if !p.IsSpiSizeCorrect(len(p.Spi)) {
+			return nil, errors.New("Bad SPI size ")
+		}
+		if p.ProtocolId == pid {
+			return p.Spi, nil
+		}
+	}
+	return nil, errors.New("Missing SPI")
+}
