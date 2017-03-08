@@ -2,98 +2,12 @@ package ike
 
 import (
 	"bytes"
-	"math/big"
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
 	"github.com/pkg/errors"
 )
-
-// IKE_SA_INIT
-// a->b
-//	HDR(SPIi=xxx, SPIr=0, IKE_SA_INIT, Flags: Initiator, Message ID=0),
-//	SAi1, KEi, Ni
-// b->a
-//	HDR((SPIi=xxx, SPIr=yyy, IKE_SA_INIT, Flags: Response, Message ID=0),
-// 	SAr1, KEr, Nr, [CERTREQ]
-type initParams struct {
-	isInitiator bool
-	spiI, spiR  protocol.Spi
-
-	nonce         *big.Int
-	proposals     []*protocol.SaProposal
-	dhTransformId protocol.DhTransformId
-	dhPublic      *big.Int
-
-	ns                []*protocol.NotifyPayload
-	cookie            []byte
-	rfc7427Signatures bool
-}
-
-func makeInit(params *initParams) *Message {
-	// response & initiator are mutually exclusive
-	flags := protocol.RESPONSE
-	if params.isInitiator {
-		flags = protocol.INITIATOR
-	}
-	init := &Message{
-		IkeHeader: &protocol.IkeHeader{
-			SpiI:         params.spiI,
-			SpiR:         params.spiR,
-			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
-			MinorVersion: protocol.IKEV2_MINOR_VERSION,
-			ExchangeType: protocol.IKE_SA_INIT,
-			Flags:        flags,
-			MsgId:        0, // ALWAYS
-		},
-		Payloads: protocol.MakePayloads(),
-	}
-	if params.cookie != nil {
-		init.Payloads.Add(&protocol.NotifyPayload{
-			PayloadHeader:       &protocol.PayloadHeader{},
-			NotificationType:    protocol.COOKIE,
-			NotificationMessage: params.cookie,
-		})
-	}
-	init.Payloads.Add(&protocol.SaPayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		Proposals:     params.proposals,
-	})
-	init.Payloads.Add(&protocol.KePayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: params.dhTransformId,
-		KeyData:       params.dhPublic,
-	})
-	init.Payloads.Add(&protocol.NoncePayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		Nonce:         params.nonce,
-	})
-	// HashAlgorithmId has been set
-	if params.rfc7427Signatures {
-		init.Payloads.Add(&protocol.NotifyPayload{
-			PayloadHeader:    &protocol.PayloadHeader{},
-			NotificationType: protocol.SIGNATURE_HASH_ALGORITHMS,
-			NotificationMessage: []protocol.HashAlgorithmId{
-				protocol.HASH_SHA1,
-				protocol.HASH_SHA2_256,
-				protocol.HASH_SHA2_384,
-				protocol.HASH_SHA2_512,
-			},
-		})
-	}
-	// init.Payloads.Add(&protocol.NotifyPayload{
-	// PayloadHeader:       &protocol.PayloadHeader{},
-	// NotificationType:    protocol.NAT_DETECTION_DESTINATION_IP,
-	// NotificationMessage: getNatHash(o.IkeSpiI, o.IkeSpiR, o.remote),
-	// })
-	// init.Payloads.Add(&protocol.NotifyPayload{
-	// PayloadHeader:       &protocol.PayloadHeader{},
-	// NotificationType:    protocol.NAT_DETECTION_SOURCE_IP,
-	// NotificationMessage: getNatHash(o.IkeSpiI, o.IkeSpiR, o.local),
-	// })
-	return init
-}
 
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(o *Session) *Message {
@@ -122,7 +36,6 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf [
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        protocol.RESPONSE,
-			MsgId:        0, // ALWAYS
 		},
 		Payloads: protocol.MakePayloads(),
 	}
@@ -133,46 +46,6 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf [
 		NotificationMessage: nBuf,
 	})
 	return msg
-}
-
-func parseInit(m *Message) (*initParams, error) {
-	params := &initParams{}
-	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT {
-		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: incorrect type")
-	}
-	//
-	if m.IkeHeader.MsgId != 0 {
-		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid Message Id")
-	}
-	if m.IkeHeader.Flags.IsInitiator() {
-		if m.IkeHeader.Flags.IsResponse() {
-			return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
-		}
-		params.isInitiator = true
-	} else if !m.IkeHeader.Flags.IsResponse() {
-		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
-	}
-	if err := m.EnsurePayloads(InitPayloads); err != nil {
-		return nil, err
-	}
-	params.spiI = m.IkeHeader.SpiI
-	params.spiR = m.IkeHeader.SpiR
-	params.ns = m.Payloads.GetNotifications()
-	// did we get a COOKIE ?
-	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
-		params.cookie = cookie.NotificationMessage.([]byte)
-	}
-	// check if transforms are usable
-	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	params.dhTransformId = keI.DhTransformId
-	params.dhPublic = keI.KeyData
-	// get SA payload
-	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-	params.proposals = ikeSa.Proposals
-	// nonce payload
-	nonce := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-	params.nonce = nonce.Nonce
-	return params, nil
 }
 
 // CheckInitRequest checks IKE_SA_INIT requests
