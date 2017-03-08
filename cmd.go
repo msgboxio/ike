@@ -48,7 +48,7 @@ func (i *IkeCmd) runSession(spi uint64, s *Session) (err error) {
 	err = RunSession(s)
 	// wait for session to finish
 	i.sessions.Remove(spi)
-	s.Logger.Infof("Removed IKE SA: %V", err)
+	s.Logger.Infof("Removed IKE SA: %+v", err)
 	return
 }
 

@@ -134,12 +134,13 @@ func (o *Session) sendMsg(msg *OutgoingMessge, err error) error {
 	return err
 }
 
-func (o *Session) msgIdInc(isResponse bool) (msgId uint32) {
+// nextMsgID increments and returns response ids for responses, returns request ids as is
+func (o *Session) nextMsgID(isResponse bool) (msgID uint32) {
 	if isResponse {
-		msgId = o.msgIdResp
+		msgID = o.msgIdResp
 		o.msgIdResp++
 	} else {
-		msgId = o.msgIdReq
+		msgID = o.msgIdReq
 	}
 	return
 }
@@ -170,7 +171,7 @@ func (o *Session) InitMsg() (*OutgoingMessge, error) {
 		}
 		return initB, nil
 	}
-	return initMsg(o.msgIdInc(!o.isInitiator))
+	return initMsg(o.nextMsgID(!o.isInitiator)) // is a response if not an initiator
 }
 
 // AuthMsg generates IKE_AUTH
@@ -188,8 +189,14 @@ func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 		o.Logger.Infof("Error Authenticating: %+v", err)
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
-	auth.IkeHeader.MsgId = o.msgIdInc(!o.isInitiator)
+	auth.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
 	return o.encode(auth)
+}
+
+func (o *Session) RekeyMsg(child *Message) (*OutgoingMessge, error) {
+	child.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
+	// encode & send
+	return o.encode(child)
 }
 
 // SendMsgGetReply takes a message generator
@@ -219,7 +226,7 @@ func (o *Session) SendAuth() error {
 
 // InstallSa - is used to create a new sa using the original IKE sa
 func (o *Session) InstallSa() error {
-	sa := addSa(o.tkm,
+	sa := addSaParams(o.tkm,
 		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : we use the original SA
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
@@ -229,7 +236,7 @@ func (o *Session) InstallSa() error {
 
 // UnInstallSa
 func (o *Session) UnInstallSa() {
-	sa := removeSa(
+	sa := removeSaParams(
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
 		o.isInitiator)
@@ -264,14 +271,14 @@ func (o *Session) CheckError(err error) error {
 
 func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	info := NotifyFromSession(o, ie)
-	info.IkeHeader.MsgId = o.msgIdInc(false)
+	info.IkeHeader.MsgId = o.nextMsgID(false) // never a response
 	// encode & send
 	o.sendMsg(o.encode(info))
 }
 
 func (o *Session) sendIkeSaDelete() {
 	info := DeleteFromSession(o)
-	info.IkeHeader.MsgId = o.msgIdInc(false)
+	info.IkeHeader.MsgId = o.nextMsgID(false) // never a response
 	// encode & send
 	o.sendMsg(o.encode(info))
 }
@@ -279,7 +286,7 @@ func (o *Session) sendIkeSaDelete() {
 // SendEmptyInformational can be used for periodic keepalive
 func (o *Session) SendEmptyInformational(isResponse bool) error {
 	info := EmptyFromSession(o, isResponse)
-	info.IkeHeader.MsgId = o.msgIdInc(isResponse)
+	info.IkeHeader.MsgId = o.nextMsgID(isResponse)
 	// encode & send
 	return o.sendMsg(o.encode(info))
 }

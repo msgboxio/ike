@@ -2,9 +2,9 @@ package ike
 
 import (
 	"bytes"
-	"errors"
 
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
@@ -12,7 +12,7 @@ var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
 // HDR, SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr}   -->
 // <--  HDR, SK {SA, Nr, [KEr,] TSi, TSr}
 
-func (o *Session) SaRekey(newTkm *Tkm, isInitiator bool, espSpi []byte) (*OutgoingMessge, error) {
+func (o *Session) SaRekey(newTkm *Tkm, isInitiator bool, espSpi []byte) *Message {
 	no := newTkm.Nr
 	targetEspSpi := o.EspSpiR
 	if isInitiator {
@@ -20,7 +20,8 @@ func (o *Session) SaRekey(newTkm *Tkm, isInitiator bool, espSpi []byte) (*Outgoi
 		targetEspSpi = o.EspSpiI
 	}
 	prop := ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, espSpi)
-	child := makeChildSa(&childSaParams{
+	return makeChildSa(&childSaParams{
+		isResponse:    !isInitiator,
 		isInitiator:   isInitiator,
 		ikeSpiI:       o.IkeSpiI,
 		ikeSpiR:       o.IkeSpiR,
@@ -33,26 +34,14 @@ func (o *Session) SaRekey(newTkm *Tkm, isInitiator bool, espSpi []byte) (*Outgoi
 		dhTransformId: newTkm.suite.DhGroup.TransformId(),
 		dhPublic:      newTkm.DhPublic,
 	})
-	msgId := o.msgIdResp
-	if o.isInitiator {
-		msgId = o.msgIdReq
-	}
-	child.IkeHeader.MsgId = msgId
-	// encode & send
-	return o.encode(child)
 }
 
-func HandleSaRekey(o *Session, newTkm *Tkm, asInitiator bool, msg interface{}) (protocol.Spi, error) {
-	m := msg.(*Message)
-	params, err := parseChildSa(m)
-	if err != nil {
-		return nil, err
-	}
+func HandleSaRekey(o *Session, newTkm *Tkm, asInitiator bool, params *childSaParams) (protocol.Spi, error) {
 	// check spi if CREATE_CHILD_SA request received as responder
 	if !asInitiator {
-		spi := o.EspSpiR
-		if !bytes.Equal(params.targetEspSpi, spi) {
-			return nil, errors.New("REKEY child SA request: incorrect target ESP Spi")
+		if !bytes.Equal(params.targetEspSpi, o.EspSpiI) {
+			return nil, errors.Errorf("REKEY child SA request: incorrect target ESP Spi: 0x%x, rx 0x%x",
+				params.targetEspSpi, o.EspSpiI)
 		}
 	}
 	if params.dhPublic == nil {
@@ -63,7 +52,7 @@ func HandleSaRekey(o *Session, newTkm *Tkm, asInitiator bool, msg interface{}) (
 		}
 	}
 	// proposal should be identical
-	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
+	if err := o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
 		return nil, err
 	}
 	// set Nr

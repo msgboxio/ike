@@ -6,7 +6,7 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
-func addSa(tkm *Tkm,
+func addSaParams(tkm *Tkm,
 	ni, nr, dhShared *big.Int,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
@@ -40,7 +40,7 @@ func addSa(tkm *Tkm,
 	return sa
 }
 
-func removeSa(espSpiI, espSpiR []byte,
+func removeSaParams(espSpiI, espSpiR []byte,
 	cfg *Config,
 	forInitiator bool) *platform.SaParams {
 	// sa processing

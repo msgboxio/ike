@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -15,6 +14,7 @@ import (
 	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
+	"github.com/pkg/errors"
 )
 
 var log = logrus.StandardLogger()
