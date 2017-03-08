@@ -100,7 +100,7 @@ func (o *Session) PostMessage(m *Message) {
 		o.Logger.Error("Drop Message: ", err)
 		return
 	}
-	if err := o.handleEncryptedMessage(m); err != nil {
+	if err := DecryptMessage(m, o.tkm, o.isInitiator, o.Logger); err != nil {
 		o.Logger.Warningf("Drop message: %s", err)
 		return
 	}
@@ -116,7 +116,7 @@ func (o *Session) PostMessage(m *Message) {
 // }
 
 func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
-	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
+	buf, err := EncodeMessage(msg, o.tkm, o.isInitiator, o.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -336,20 +336,6 @@ func (o *Session) isMessageValid(m *Message) error {
 		// incremented by sender
 	}
 	return nil
-}
-
-func (o *Session) handleEncryptedMessage(m *Message) (err error) {
-	if m.IkeHeader.NextPayload == protocol.PayloadTypeSK {
-		var b []byte
-		if b, err = o.tkm.VerifyDecrypt(m.Data, o.isInitiator); err != nil {
-			return err
-		}
-		sk := m.Payloads.Get(protocol.PayloadTypeSK)
-		if err = m.DecodePayloads(b, sk.NextPayloadType(), o.Logger); err != nil {
-			return err
-		}
-	}
-	return
 }
 
 func (c *Session) SetAddresses(local, remote net.Addr) {

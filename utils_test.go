@@ -112,8 +112,12 @@ func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.
 			if err != nil {
 				c.errTo <- err
 			}
+			initP, err := parseInit(initR)
+			if err != nil {
+				c.errTo <- err
+			}
 			// check if incoming message is an acceptable Init Response
-			if err := CheckInitResponseForSession(initiator, initR); err != nil {
+			if err := CheckInitResponseForSession(initiator, initP); err != nil {
 				if ce, ok := err.(CookieError); ok {
 					// let retransmission take care to sending init with cookie
 					// session is always returned for CookieError
@@ -146,11 +150,15 @@ func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.
 			if err != nil {
 				c.errTo <- err
 			}
+			initP, err := parseInit(initI)
+			if err != nil {
+				c.errTo <- err
+			}
 			// is it a IKE_SA_INIT req ?
-			if err := CheckInitRequest(cfg, initI); err != nil {
+			if err := CheckInitRequest(cfg, initP, nil); err != nil {
 				// handle errors that need reply: COOKIE or DH
-				if reply := InitErrorNeedsReply(initI, cfg, err); reply != nil {
-					data, err := reply.Encode(nil, false, log)
+				if reply := InitErrorNeedsReply(initP, cfg, nil, err); reply != nil {
+					data, err := EncodeMessage(reply, nil, false, log)
 					if err != nil {
 						c.errTo <- err
 					}

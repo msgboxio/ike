@@ -116,7 +116,7 @@ func testDecode(dec []byte, tkm *Tkm, forInitiator bool, t *testing.T) *Message 
 	t.Logf("\n%s", string(js))
 
 	log := logrus.StandardLogger()
-	enc, err := msg.Encode(tkm, forInitiator, log)
+	enc, err := EncodeMessage(msg, tkm, forInitiator, log)
 	if err != nil {
 		t.Fatal(err)
 	}

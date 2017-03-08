@@ -62,7 +62,7 @@ func (i *IkeCmd) newResponder(spi uint64, msg *Message, config *Config, log *log
 	if err := CheckInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
 		if reply := InitErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
-			data, err := reply.Encode(nil, false, log)
+			data, err := EncodeMessage(reply, nil, false, log)
 			if err != nil {
 				return nil, errors.Wrap(err, "error encoding init reply")
 			}

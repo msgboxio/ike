@@ -8,6 +8,41 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	initPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeKE,
+		protocol.PayloadTypeNonce,
+	}
+
+	authIPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeIDi,
+		protocol.PayloadTypeAUTH,
+	}
+	authRPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeIDr,
+		protocol.PayloadTypeAUTH,
+	}
+	saPayloads = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+
+	rekeyIkeSaPaylods = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeKE,
+		protocol.PayloadTypeNonce,
+	}
+
+	rekeyChildSaPaylods = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+		protocol.PayloadTypeNonce,
+		protocol.PayloadTypeTSi,
+		protocol.PayloadTypeTSr,
+	}
+)
+
 // IKE_SA_INIT
 // a->b
 //	HDR(SPIi=xxx, SPIr=0, IKE_SA_INIT, Flags: Initiator, Message ID=0),
@@ -110,7 +145,7 @@ func parseInit(m *Message) (*initParams, error) {
 	} else if !m.IkeHeader.Flags.IsResponse() {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
 	}
-	if err := m.EnsurePayloads(InitPayloads); err != nil {
+	if err := m.EnsurePayloads(initPayloads); err != nil {
 		return nil, err
 	}
 	params.spiI = m.IkeHeader.SpiI
@@ -245,6 +280,20 @@ func makeAuth(params *authParams, initB []byte) (*Message, error) {
 	return auth, nil
 }
 
+func checkAuth(m *Message, forInitiator bool) error {
+	if m.IkeHeader.ExchangeType != protocol.IKE_AUTH {
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
+	}
+	payloads := authIPayloads
+	if forInitiator {
+		payloads = authRPayloads
+	}
+	if err := m.EnsurePayloads(payloads); err != nil {
+		return err
+	}
+	return nil
+}
+
 // there is no parseAuth because that is done within HandleAuthForSession
 func parseSa(m *Message) (*authParams, error) {
 	params := &authParams{}
@@ -254,7 +303,7 @@ func parseSa(m *Message) (*authParams, error) {
 	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	if err := m.EnsurePayloads(SaPayloads); err == nil {
+	if err := m.EnsurePayloads(saPayloads); err == nil {
 		espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 		if espSa.Proposals == nil {
 			return nil, errors.New("proposals are missing")
@@ -410,7 +459,7 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 		}
 		params.targetEspSpi = rekeySA.Spi
 	}
-	if err := m.EnsurePayloads(RekeyChildSaPaylods); err == nil {
+	if err := m.EnsurePayloads(rekeyChildSaPaylods); err == nil {
 		// rekeying IPSEC SA
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		params.nonce = no.Nonce
@@ -430,7 +479,7 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 			params.dhPublic = keR.KeyData
 			params.dhTransformId = keR.DhTransformId
 		}
-	} else if err := m.EnsurePayloads(RekeyIkeSaPaylods); err == nil {
+	} else if err := m.EnsurePayloads(rekeyIkeSaPaylods); err == nil {
 		// rekeying IKE SA
 		// get sa & nonce
 		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)

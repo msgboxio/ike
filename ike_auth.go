@@ -51,14 +51,7 @@ func AuthFromSession(o *Session) (*Message, error) {
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
 func HandleAuthForSession(o *Session, m *Message) (err error) {
-	if m.IkeHeader.ExchangeType != protocol.IKE_AUTH {
-		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
-	}
-	payloads := AuthIPayloads
-	if o.isInitiator {
-		payloads = AuthRPayloads
-	}
-	if err := m.EnsurePayloads(payloads); err != nil {
+	if err = checkAuth(m, o.isInitiator); err != nil {
 		return err
 	}
 	// authenticate peer

@@ -61,7 +61,7 @@ func TestIkeMsgGen(t *testing.T) {
 	init := InitFromSession(params)
 	init.IkeHeader.MsgId = 42
 	// encode & write init msg
-	initIb, err := init.Encode(tkm, true, log)
+	initIb, err := EncodeMessage(init, tkm, true, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +72,7 @@ func TestIkeMsgGen(t *testing.T) {
 	ids := &PskIdentities{}
 	// auth
 	authI, err := makeAuth(&authParams{
-		false,true,
+		false, true,
 		cfg.IsTransportMode,
 		params.IkeSpiI, params.IkeSpiR,
 		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
@@ -87,7 +87,7 @@ func TestIkeMsgGen(t *testing.T) {
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
 	authI.IkeHeader.MsgId = 43
 	// encode & write authI msg
-	authIb, err := authI.Encode(tkm, true, log)
+	authIb, err := EncodeMessage(authI, tkm, true, log)
 	if err != nil {
 		t.Fatal(err)
 	}
