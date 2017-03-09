@@ -2,10 +2,10 @@ package ike
 
 import (
 	"crypto/rand"
-	"errors"
 	"math/big"
 
 	"github.com/msgboxio/ike/crypto"
+	"github.com/pkg/errors"
 )
 
 // ike-seperation.pdf
@@ -37,7 +37,7 @@ type Tkm struct {
 	skEi, skEr []byte // encryption keys
 }
 
-var ErrorMissingCryptoKeys = errors.New("Missing crypto keys")
+var errMissingCryptoKeys = errors.New("Missing crypto keys")
 
 func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (*Tkm, error) {
 	if err := suite.CheckIkeTransforms(); err != nil {
@@ -179,6 +179,9 @@ func (t *Tkm) VerifyDecrypt(ike []byte, forInitiator bool) (dec []byte, err erro
 	if forInitiator {
 		skA, skE = t.skAr, t.skEr
 	}
+	if skA == nil || skE == nil {
+		return nil, errors.Wrap(errMissingCryptoKeys, "Decrypting")
+	}
 	dec, err = t.suite.VerifyDecrypt(ike, skA, skE, t.suite.Logger)
 	return
 }
@@ -190,7 +193,7 @@ func (t *Tkm) EncryptMac(headers, payload []byte, forInitiator bool) (b []byte, 
 		skA, skE = t.skAi, t.skEi
 	}
 	if skA == nil || skE == nil {
-		return nil, ErrorMissingCryptoKeys
+		return nil, errors.Wrap(errMissingCryptoKeys, "Encrypting")
 	}
 	b, err = t.suite.EncryptMac(headers, payload, skA, skE, t.suite.Logger)
 	return

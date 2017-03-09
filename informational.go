@@ -1,6 +1,9 @@
 package ike
 
-import "github.com/msgboxio/ike/protocol"
+import (
+	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
+)
 
 type InfoParams struct {
 	IsInitiator bool
@@ -16,7 +19,7 @@ const (
 	MSG_DELETE_ESP_SA
 	MSG_EMPTY_REQUEST
 	MSG_EMPTY_RESPONSE
-	ERROR
+	MSG_ERROR
 )
 
 type InformationalEvent struct {
@@ -120,18 +123,17 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 	if del := plds.Get(protocol.PayloadTypeD); del != nil {
 		dp := del.(*protocol.DeletePayload)
 		if dp.ProtocolId == protocol.IKE {
-			o.Logger.Infof("Peer remove IKE SA")
 			return &InformationalEvent{
 				NotificationType: MSG_DELETE_IKE_SA,
-				Message:          msg.IkeHeader.SpiI,
+				Message:          errors.Wrapf(errPeerRemovedIkeSa, "SA: %#x", msg.IkeHeader.SpiI),
 			}
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
-				o.Logger.Infof("Peer remove ESP SA : %#x", spi)
+				o.Logger.Infof("Peer removed ESP SA : %#x", spi)
 				return &InformationalEvent{
 					NotificationType: MSG_DELETE_ESP_SA,
-					Message:          spi,
+					Message:          errors.Wrapf(errPeerRemovedEspSa, "SA: %#x", spi),
 				}
 			}
 		}
@@ -144,7 +146,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
 			o.Logger.Infof("Received Informational Error: %v", err)
 			return &InformationalEvent{
-				NotificationType: ERROR,
+				NotificationType: MSG_ERROR,
 				Message:          err,
 			}
 		}

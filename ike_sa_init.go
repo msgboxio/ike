@@ -9,6 +9,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var errMissingCookie = errors.New("Missing COOKIE")
+
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(o *Session) *Message {
 	nonce := o.tkm.Nr
@@ -57,10 +59,10 @@ func CheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	if cookie := init.cookie; cookie != nil {
 		// is COOKIE correct ?
 		if !bytes.Equal(cookie, getCookie(init.nonce, init.spiI, remote)) {
-			return errors.Wrap(MissingCookieError, "invalid cookie")
+			return errors.Wrap(errMissingCookie, "invalid cookie")
 		}
 	} else if cfg.ThrottleInitRequests {
-		return errors.Wrap(MissingCookieError, "requesting cookie")
+		return errors.Wrap(errMissingCookie, "requesting cookie")
 	}
 	// check if transforms are usable
 	// make sure dh tranform id is the one that was configured
@@ -84,7 +86,7 @@ func InitErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err 
 		buf := []byte{0, 0}
 		packets.WriteB16(buf, 0, config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId)
 		return notificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, buf)
-	case MissingCookieError:
+	case errMissingCookie:
 		// ask peer to send cookie
 		return notificationResponse(init.spiI, protocol.COOKIE, getCookie(init.nonce, init.spiI, remote))
 	}
@@ -103,7 +105,7 @@ func CheckInitResponseForSession(o *Session, init *initParams) error {
 	for _, notif := range init.ns {
 		switch notif.NotificationType {
 		case protocol.COOKIE:
-			return CookieError{notif}
+			return PeerRequestsCookieError{notif}
 		case protocol.INVALID_KE_PAYLOAD:
 			return protocol.ERR_INVALID_KE_PAYLOAD
 		case protocol.NO_PROPOSAL_CHOSEN:

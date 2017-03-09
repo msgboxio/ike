@@ -1,12 +1,12 @@
 package ike
 
 import (
-	"errors"
 	"io"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 func DecodeMessage(b []byte, log *logrus.Logger) (msg *Message, err error) {

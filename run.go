@@ -27,7 +27,7 @@ func runInitiator(o *Session) error {
 			return err
 		}
 		if err = CheckInitResponseForSession(o, init); err != nil {
-			if ce, ok := err.(CookieError); ok {
+			if ce, ok := err.(PeerRequestsCookieError); ok {
 				// session is always returned for CookieError
 				o.SetCookie(ce.Cookie)
 				// send packet with Cookie
@@ -148,6 +148,7 @@ func runIpsecRekey(o *Session) (err error) {
 }
 
 func onIpsecRekey(o *Session, msg *Message) (err error) {
+	// if REKEY rx :
 	params, err := parseChildSa(msg)
 	if err != nil {
 		return
@@ -156,6 +157,7 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 	if err != nil {
 		return
 	}
+	//  send REKEY_reply
 	//  use new tkm to verify REKEY_reply and configure new SA
 	espSpiI, err := HandleChildSaForSession(o, newTkm, false, params)
 	if err != nil {
@@ -180,6 +182,8 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 	// replace espSpiI & espSpiR
 	o.EspSpiI = espSpiI
 	o.EspSpiR = espSpiR
+	//  send INFORMATIONAL, wait for INFORMATIONAL_reply
+	//  if timeout, send REKEY_reply again
 	return
 }
 
@@ -207,10 +211,13 @@ func monitorSa(o *Session) error {
 			// if INFORMATIONAL, send INFORMATIONAL_reply
 			case protocol.INFORMATIONAL:
 				evt := HandleInformationalForSession(o, msg)
-				if evt.NotificationType == MSG_EMPTY_REQUEST {
+				switch evt.NotificationType {
+				case MSG_EMPTY_REQUEST:
 					if err := o.SendEmptyInformational(true); err != nil {
 						return err
 					}
+				case MSG_DELETE_IKE_SA:
+					return evt.Message.(error)
 				}
 			case protocol.CREATE_CHILD_SA:
 				// ONLY :
@@ -224,11 +231,6 @@ func monitorSa(o *Session) error {
 				if err := onIpsecRekey(o, msg); err != nil {
 					return err
 				}
-				// if REKEY rx :
-				//  send REKEY_reply
-				//  install SA
-				//  send INFORMATIONAL, wait for INFORMATIONAL_reply
-				//  if timeout, send REKEY_reply again
 				// reset timers
 				saRekeyTimer.Reset(Jitter(SaRekeyTimeout, -0.2))
 				saRekeyDeadline.Reset(SaRekeyTimeout)
@@ -244,7 +246,7 @@ func monitorSa(o *Session) error {
 			}
 			o.Logger.Info("Rekey Timeout")
 			if err := runIpsecRekey(o); err != nil {
-				o.Logger.Info("Rekey Error: %+v", err)
+				o.Logger.Infof("Rekey Error: %+v", err)
 				continue
 			}
 			// reset timers

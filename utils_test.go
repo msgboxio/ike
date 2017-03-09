@@ -118,7 +118,7 @@ func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.
 			}
 			// check if incoming message is an acceptable Init Response
 			if err := CheckInitResponseForSession(initiator, initP); err != nil {
-				if ce, ok := err.(CookieError); ok {
+				if ce, ok := err.(PeerRequestsCookieError); ok {
 					// let retransmission take care to sending init with cookie
 					// session is always returned for CookieError
 					initiator.SetCookie(ce.Cookie)

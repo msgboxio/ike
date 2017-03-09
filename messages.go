@@ -9,6 +9,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Message carries data about the incoming or outgoing ike packet
 type Message struct {
 	IkeHeader             *protocol.IkeHeader
 	Payloads              *protocol.Payloads
@@ -17,11 +18,13 @@ type Message struct {
 	Data []byte // used to carry raw bytes
 }
 
+// DecodeHeader decodes the ike header and replaces the IkeHeader member
 func (s *Message) DecodeHeader(b []byte, log *logrus.Logger) (err error) {
 	s.IkeHeader, err = protocol.DecodeIkeHeader(b, log)
 	return
 }
 
+// DecodePayloads decodes & replaces the payloads member with list of decoded payloads
 func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log *logrus.Logger) (err error) {
 	if s.Payloads, err = protocol.DecodePayloads(b, nextPayload, log); err != nil {
 		return
@@ -35,12 +38,13 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log
 	return
 }
 
-func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
-	mp := msg.Payloads
+// EnsurePayloads checks if the needed paylaods are present in the message
+func (s *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
+	mp := s.Payloads
 	for _, pt := range payloadTypes {
 		if mp.Get(pt) == nil {
 			return errors.Errorf("essential payload %s is missing from %s message",
-				pt, msg.IkeHeader.ExchangeType)
+				pt, s.IkeHeader.ExchangeType)
 		}
 	}
 	return nil

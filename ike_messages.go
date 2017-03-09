@@ -294,7 +294,6 @@ func checkAuth(m *Message, forInitiator bool) error {
 	return nil
 }
 
-// there is no parseAuth because that is done within HandleAuthForSession
 func parseSa(m *Message) (*authParams, error) {
 	params := &authParams{}
 	if m.IkeHeader.Flags&protocol.RESPONSE != 0 {

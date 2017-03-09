@@ -111,10 +111,6 @@ func (o *Session) PostMessage(m *Message) {
 	o.incoming <- m
 }
 
-// case protocol.INFORMATIONAL:
-// 	return HandleInformationalForSession(o, msg)
-// }
-
 func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
 	buf, err := EncodeMessage(msg, o.tkm, o.isInitiator, o.Logger)
 	if err != nil {
@@ -224,30 +220,25 @@ func (o *Session) SendAuth() error {
 	return o.sendMsg(o.AuthMsg())
 }
 
-// InstallSa - is used to create a new sa using the original IKE sa
+// InstallSa - adds a child SA
 func (o *Session) InstallSa() error {
-	sa := addSaParams(o.tkm,
+	return o.AddSa(addSaParams(o.tkm,
 		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : we use the original SA
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
-		o.isInitiator)
-	return o.AddSa(sa)
+		o.isInitiator))
 }
 
-// UnInstallSa
+// UnInstallSa removes the child SA
 func (o *Session) UnInstallSa() {
-	sa := removeSaParams(
+	o.RemoveSa(removeSaParams(
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
-		o.isInitiator)
-	o.RemoveSa(sa)
-	return
+		o.isInitiator))
 }
 
-// handlers
-
+// HandleClose will cleanly removes child SAs upon receiving a message from peer
 func (o *Session) HandleClose() error {
-	o.Logger.Infof("Peer Closed Session")
 	if o.isClosing {
 		return nil
 	}

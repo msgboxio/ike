@@ -3,7 +3,6 @@ package ike
 import (
 	"crypto/rand"
 	"crypto/sha1"
-	"errors"
 	"math/big"
 	"net"
 
@@ -13,15 +12,13 @@ import (
 // An implementation of COOKIE as specified in
 // 2.6. IKE SA SPIs and Cookies
 
-type CookieError struct {
+type PeerRequestsCookieError struct {
 	Cookie *protocol.NotifyPayload
 }
 
-func (e CookieError) Error() string {
+func (e PeerRequestsCookieError) Error() string {
 	return "Rx Cookie"
 }
-
-var MissingCookieError = errors.New("Missing COOKIE")
 
 // Version for COOKIE
 var cookieVersion []byte
