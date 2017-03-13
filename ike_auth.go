@@ -40,7 +40,7 @@ func AuthFromSession(o *Session) (*Message, error) {
 			tsR:             o.cfg.TsR,
 			authenticator:   o.authLocal,
 			lifetime:        o.cfg.Lifetime,
-		}, initB)
+		}, initB, o.Logger)
 }
 
 // HandleAuthForSession currently supports signature authenticaiton using
@@ -68,7 +68,7 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
 		o.Logger.Info("Ike Auth: SHARED_KEY of ", string(idP.Data))
-		return o.authRemote.Verify(initB, idP, authP.Data)
+		return o.authRemote.Verify(initB, idP, authP.Data, o.Logger)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		chain, err := m.Payloads.GetCertchain()
 		if err != nil {
@@ -105,7 +105,7 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 		}
 		// verify signature
 		certAuth.SetUserCertificate(chain[0])
-		return certAuth.Verify(initB, idP, authP.Data)
+		return certAuth.Verify(initB, idP, authP.Data, o.Logger)
 	default:
 		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
 	}

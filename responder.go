@@ -36,7 +36,7 @@ func NewResponder(cfg *Config, sd *SessionData, initI *Message, log *logrus.Logg
 		Level:     log.Level,
 	}
 
-	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
-	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator, o.Logger)
+	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	return o, nil
 }

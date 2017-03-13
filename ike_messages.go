@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -188,7 +189,7 @@ type authParams struct {
 	lifetime        time.Duration
 }
 
-func makeAuth(params *authParams, initB []byte) (*Message, error) {
+func makeAuth(params *authParams, initB []byte, logger *logrus.Logger) (*Message, error) {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
 	if params.isInitiator {
@@ -231,7 +232,7 @@ func makeAuth(params *authParams, initB []byte) (*Message, error) {
 		Data:          id.Id(),
 	}
 	auth.Payloads.Add(iDp)
-	signature, err := params.authenticator.Sign(initB, iDp)
+	signature, err := params.authenticator.Sign(initB, iDp, logger)
 	if err != nil {
 		return nil, err
 	}

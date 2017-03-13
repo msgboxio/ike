@@ -15,9 +15,9 @@ type CertAuthenticator struct {
 	identity        Identity
 	authMethod      protocol.AuthMethod
 	userCertificate *x509.Certificate
-
-	log *logrus.Logger
 }
+
+var _ Authenticator = (*CertAuthenticator)(nil)
 
 func (r *CertAuthenticator) Identity() Identity {
 	return r.identity
@@ -27,7 +27,7 @@ func (r *CertAuthenticator) AuthMethod() protocol.AuthMethod {
 	return r.authMethod
 }
 
-func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte, error) {
+func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger *logrus.Logger) ([]byte, error) {
 	certId, ok := r.identity.(*CertIdentity)
 	if !ok {
 		// should never happen
@@ -41,17 +41,17 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload) ([]byte,
 	if certId.PrivateKey == nil {
 		return nil, errors.Errorf("missing private key")
 	}
-	r.log.Infof("Ike Auth: OUR CERT: %+v", FormatCert(certId.Certificate))
+	logger.Infof("Ike Auth: OUR CERT: %+v", FormatCert(certId.Certificate))
 	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
-	return Sign(certId.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certId.PrivateKey, r.log)
+	return Sign(certId.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certId.PrivateKey, logger)
 }
 
-func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte) error {
+func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger *logrus.Logger) error {
 	if r.userCertificate == nil {
 		return errors.New("missing Certificate")
 	}
 	signed := r.tkm.SignB(initB, idP.Encode(), !r.forInitiator)
-	return verifySignature(r.AuthMethod(), signed, authData, r.userCertificate, r.log)
+	return verifySignature(r.AuthMethod(), signed, authData, r.userCertificate, logger)
 }
 
 func (r *CertAuthenticator) SetUserCertificate(cert *x509.Certificate) {
