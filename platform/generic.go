@@ -21,11 +21,6 @@ func SetSocketBypas(conn net.Conn, family uint16) (err error) {
 	return
 }
 
-type Listener struct {
-	context.Context
-}
-
-func (Listener) Close() {}
-func ListenForEvents(context.Context, func(interface{}), *logrus.Logger) (listener *Listener) {
+func ListenForEvents(context.Context, func(interface{}), *logrus.Logger) {
 	return
 }

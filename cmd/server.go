@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/msgboxio/context"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
 	"github.com/pkg/errors"
@@ -19,12 +19,13 @@ import (
 
 var log = logrus.StandardLogger()
 
-func waitForSignal(cancel context.CancelFunc) {
+func waitForSignal(cancel context.CancelFunc) error {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	sig := <-c
 	// sig is a ^C, handle it
-	cancel(errors.New(sig.String()))
+	cancel()
+	return errors.New(sig.String())
 }
 
 var localID = &ike.PskIdentities{
@@ -112,15 +113,7 @@ func main() {
 	cb := func(msg interface{}) {
 		log.Debugf("xfrm: \n%s", spew.Sdump(msg))
 	}
-	if xfrm := platform.ListenForEvents(cxt, cb, log); xfrm != nil {
-		go func() {
-			<-xfrm.Done()
-			if err := xfrm.Err(); err != context.Canceled {
-				log.Error(err)
-			}
-			xfrm.Close()
-		}()
-	}
+	platform.ListenForEvents(cxt, cb, log)
 
 	pconn, err := ike.Listen("udp", localString)
 	if err != nil {
@@ -163,7 +156,7 @@ func main() {
 	// this will return when there is a socket error
 	// usually caused by the close call above
 	log.Error(err)
-	cancel(context.Canceled)
+	cancel()
 	// wait for remaining sessions to shutdown
 	wg.Wait()
 	fmt.Printf("shutdown: %v\n", cxt.Err())
