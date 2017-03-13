@@ -3,6 +3,7 @@ package ike
 import (
 	"bytes"
 	"fmt"
+	"math/big"
 	"net"
 	"time"
 
@@ -89,6 +90,32 @@ func (o *Session) Tag() string {
 		ini = "[R]"
 	}
 	return fmt.Sprintf(ini+"%#x", o.IkeSpiI)
+}
+
+func (o *Session) CreateIkeSa(nonce, dhPublic *big.Int, spiI, spiR []byte) error {
+	if o.isInitiator {
+		// peer responders nonce
+		o.tkm.Nr = nonce
+		// peer responders spi
+		o.IkeSpiR = append([]byte{}, spiR...)
+	} else {
+		// peer initiators nonce
+		o.tkm.Ni = nonce
+		// peer initiators spi
+		o.IkeSpiI = append([]byte{}, spiI...)
+	}
+	//
+	// we know what IKE ciphersuite peer selected
+	// generate keys necessary for IKE SA protection and encryption.
+	// initialize dh shared with their public key
+	err := o.tkm.DhGenerateKey(dhPublic)
+	if err != nil {
+		return err
+	}
+	// create rest of ike sa
+	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
+	o.Logger.Info("IKE SA INITIALISED", o)
+	return nil
 }
 
 func (o *Session) SetCookie(cn *protocol.NotifyPayload) {

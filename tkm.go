@@ -39,57 +39,57 @@ type Tkm struct {
 
 var errMissingCryptoKeys = errors.New("Missing crypto keys")
 
-func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (*Tkm, error) {
-	if err := suite.CheckIkeTransforms(); err != nil {
-		return nil, err
+func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (tkm *Tkm, err error) {
+	if err = suite.CheckIkeTransforms(); err != nil {
+		return
 	}
-	if err := espSuite.CheckEspTransforms(); err != nil {
-		return nil, err
-	}
-	tkm := &Tkm{
-		suite:    suite,
-		espSuite: espSuite,
+	if err = espSuite.CheckEspTransforms(); err != nil {
+		return
 	}
 	// standard says nonce shwould be at least half of size of negotiated prf
-	ni, err := tkm.ncCreate(suite.Prf.Length * 8)
+	ni, err := createNonce(suite.Prf.Length * 8)
 	if err != nil {
-		return nil, err
-	}
-	tkm.Ni = ni
-	// for sending public key
-	if err := tkm.dhCreate(); err != nil {
-		return nil, err
-	}
-	return tkm, nil
-}
-
-func NewTkmResponder(suite, espSuite *crypto.CipherSuite, no *big.Int) (tkm *Tkm, err error) {
-	if err := suite.CheckIkeTransforms(); err != nil {
-		return nil, err
-	}
-	if err := espSuite.CheckEspTransforms(); err != nil {
-		return nil, err
+		return
 	}
 	tkm = &Tkm{
 		suite:    suite,
 		espSuite: espSuite,
-		Ni:       no,
+		Ni:       ni,
 	}
-	// TODO : at least 128 bits & at least half the key size of the negotiated prf
-	if nr, err := tkm.ncCreate(no.BitLen()); err != nil {
-		return nil, err
-	} else {
-		tkm.Nr = nr
+	// for sending public key
+	err = tkm.dhCreate()
+	return
+}
+
+func NewTkmResponder(suite, espSuite *crypto.CipherSuite, no *big.Int) (tkm *Tkm, err error) {
+	if err = suite.CheckIkeTransforms(); err != nil {
+		return
 	}
-	if err := tkm.dhCreate(); err != nil {
-		return nil, err
+	if err = espSuite.CheckEspTransforms(); err != nil {
+		return
 	}
-	return tkm, nil
+	// at least 128 bits & at least half the key size of the negotiated prf
+	blen := no.BitLen()
+	if blen < 128 || blen < (suite.Prf.Length*8)/2 {
+		err = errors.New("Proposed nonce is too small")
+		return
+	}
+	nr, err := createNonce(blen)
+	if err != nil {
+		return
+	}
+	tkm = &Tkm{
+		suite:    suite,
+		espSuite: espSuite,
+		Nr:       nr,
+	}
+	err = tkm.dhCreate()
+	return
 }
 
 // 4.1.2 creation of ike sa
 
-func (t *Tkm) ncCreate(bits int) (no *big.Int, err error) {
+func createNonce(bits int) (no *big.Int, err error) {
 	return rand.Prime(rand.Reader, bits)
 }
 

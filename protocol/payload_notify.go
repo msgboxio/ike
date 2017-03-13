@@ -59,11 +59,11 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 	data := b[spiLen+4:]
 	switch s.NotificationType {
 	case AUTH_LIFETIME:
-		if ltime, errc := packets.ReadB32(data, 0); errc != nil {
+		ltime, errc := packets.ReadB32(data, 0)
+		if errc != nil {
 			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload length")
-		} else {
-			s.NotificationMessage = time.Second * time.Duration(ltime)
 		}
+		s.NotificationMessage = time.Second * time.Duration(ltime)
 	case SIGNATURE_HASH_ALGORITHMS:
 		// list of 16-bit hash algorithm identifiers
 		if len(data)%2 != 0 {

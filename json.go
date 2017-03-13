@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/msgboxio/ike/crypto"
+	"github.com/msgboxio/ike/protocol"
 )
 
 func (t *Tkm) String() string {
@@ -25,12 +26,12 @@ func (o *Session) String() string {
 
 func (o *Session) MarshalJSON() ([]byte, error) {
 	session := struct {
-		INI    uint64
-		RES    uint64
+		INI    protocol.Spi
+		RES    protocol.Spi
 		Suites *Tkm
 	}{
-		INI:    SpiToInt64(o.IkeSpiI),
-		RES:    SpiToInt64(o.IkeSpiR),
+		INI:    o.IkeSpiI,
+		RES:    o.IkeSpiR,
 		Suites: o.tkm,
 	}
 	return json.Marshal(session)

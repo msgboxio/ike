@@ -46,6 +46,7 @@ func HandleChildSaForSession(o *Session, newTkm *Tkm, asInitiator bool, params *
 	if params.dhPublic == nil {
 		// return nil, errors.New("REKEY child SA: missing DH parameters")
 	} else {
+		// MUTATION
 		if err := newTkm.DhGenerateKey(params.dhPublic); err != nil {
 			return nil, err
 		}
@@ -55,6 +56,7 @@ func HandleChildSaForSession(o *Session, newTkm *Tkm, asInitiator bool, params *
 		return nil, err
 	}
 	// set Nr
+	// MUTATION
 	if asInitiator {
 		newTkm.Nr = params.nonce
 	} else {

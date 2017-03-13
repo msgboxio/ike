@@ -134,26 +134,13 @@ func HandleInitForSession(o *Session, init *initParams, m *Message) error {
 	if err := checkSignatureAlgo(o, rfc7427Signatures); err != nil {
 		return err
 	}
-	// get nonce & spi from responder's response
-	if o.isInitiator {
-		// peer responders nonce
-		o.tkm.Nr = init.nonce
-		// peer responders spi
-		o.IkeSpiR = append([]byte{}, init.spiR...)
+	if err := o.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
+		return err
 	}
 	// TODO
 	// If there is NAT , then all the further communication is perfomed over port 4500 instead of the default port 500
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
-	//
-	// we know what IKE ciphersuite peer selected
-	// generate keys necessary for IKE SA protection and encryption.
-	// initialize dh shared with their public key
-	if err := o.tkm.DhGenerateKey(init.dhPublic); err != nil {
-		return err
-	}
-	// create rest of ike sa
-	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	o.Logger.Info("IKE SA INITIALISED", o)
+	// MUTATION
 	// save Data
 	if o.isInitiator {
 		o.initRb = m.Data

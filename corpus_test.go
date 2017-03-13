@@ -37,7 +37,7 @@ func initiatorTkm(t *testing.T, log *logrus.Logger) *Tkm {
 		t.Fatal(err)
 	}
 	// nonce for responder
-	if nr, err := tkm.ncCreate(suite.Prf.Length * 8); err != nil {
+	if nr, err := createNonce(suite.Prf.Length * 8); err != nil {
 		t.Fatal(err)
 	} else {
 		tkm.Nr = nr
