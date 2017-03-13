@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/msgboxio/ike/protocol"
-	"github.com/msgboxio/packets"
 	"github.com/pkg/errors"
 )
 
@@ -28,26 +27,6 @@ func InitFromSession(o *Session) *Message {
 		nonce:             nonce,
 		rfc7427Signatures: o.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE,
 	})
-}
-
-func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, nBuf []byte) *Message {
-	msg := &Message{
-		IkeHeader: &protocol.IkeHeader{
-			SpiI:         spi,
-			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
-			MinorVersion: protocol.IKEV2_MINOR_VERSION,
-			ExchangeType: protocol.IKE_SA_INIT,
-			Flags:        protocol.RESPONSE,
-		},
-		Payloads: protocol.MakePayloads(),
-	}
-	msg.Payloads.Add(&protocol.NotifyPayload{
-		PayloadHeader:       &protocol.PayloadHeader{},
-		ProtocolId:          protocol.IKE,
-		NotificationType:    nt,
-		NotificationMessage: nBuf,
-	})
-	return msg
 }
 
 // CheckInitRequest checks IKE_SA_INIT requests
@@ -80,15 +59,14 @@ func CheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 }
 
 func InitErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err error) *Message {
+	// send INVALID_KE_PAYLOAD, NO_PROPOSAL_CHOSEN, or COOKIE
 	switch cause := errors.Cause(err); cause {
 	case protocol.ERR_INVALID_KE_PAYLOAD:
-		// ask PEER for correct DH type
-		buf := []byte{0, 0}
-		packets.WriteB16(buf, 0, config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId)
-		return notificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, buf)
+		tid := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
+		return NotificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, tid)
 	case errMissingCookie:
 		// ask peer to send cookie
-		return notificationResponse(init.spiI, protocol.COOKIE, getCookie(init.nonce, init.spiI, remote))
+		return NotificationResponse(init.spiI, protocol.COOKIE, getCookie(init.nonce, init.spiI, remote))
 	}
 	return nil
 }
@@ -107,6 +85,7 @@ func CheckInitResponseForSession(o *Session, init *initParams) error {
 		case protocol.COOKIE:
 			return PeerRequestsCookieError{notif}
 		case protocol.INVALID_KE_PAYLOAD:
+			// TODO - handle properly
 			return protocol.ERR_INVALID_KE_PAYLOAD
 		case protocol.NO_PROPOSAL_CHOSEN:
 			return protocol.ERR_NO_PROPOSAL_CHOSEN

@@ -31,6 +31,10 @@ func (s *NotifyPayload) Encode() (b []byte) {
 		b = append(b, buf...)
 	case NAT_DETECTION_DESTINATION_IP, NAT_DETECTION_SOURCE_IP:
 		b = append(b, s.NotificationMessage.([]byte)...)
+	case INVALID_KE_PAYLOAD:
+		buf := []byte{0, 0}
+		packets.WriteB16(buf, 0, s.NotificationMessage.(uint16))
+		b = append(b, buf...)
 	default:
 		if s.NotificationMessage != nil {
 			b = append(b, s.NotificationMessage.([]byte)...)
@@ -80,6 +84,12 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload COOKIE")
 		}
 		s.NotificationMessage = append([]byte{}, data...)
+	case INVALID_KE_PAYLOAD:
+		// check if data is 2 bytes
+		if len(data) != 2 {
+			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload INVALID_KE_PAYLOAD")
+		}
+		s.NotificationMessage, _ = packets.ReadB16(data, 0)
 	case SET_WINDOW_SIZE:
 		if len(data) != 4 {
 			return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload SET_WINDOW_SIZE")
