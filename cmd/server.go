@@ -14,18 +14,17 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
-	"github.com/pkg/errors"
 )
 
 var log = logrus.StandardLogger()
 
-func waitForSignal(cancel context.CancelFunc) error {
+func waitForSignal(cancel context.CancelFunc) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel()
-	return errors.New(sig.String())
+	log.Error(sig.String())
 }
 
 var localID = &ike.PskIdentities{
