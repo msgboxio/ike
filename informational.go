@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -130,7 +131,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
-				o.Logger.Infof("Peer removed ESP SA : %#x", spi)
+				level.Info(o.Logger).Log("Peer removed ESP SA :", spi)
 				return &InformationalEvent{
 					NotificationType: MSG_DELETE_ESP_SA,
 					Message:          errors.Wrapf(errPeerRemovedEspSa, "SA: %#x", spi),
@@ -144,7 +145,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 	if note := plds.Get(protocol.PayloadTypeN); note != nil {
 		np := note.(*protocol.NotifyPayload)
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-			o.Logger.Infof("Received Informational Error: %v", err)
+			level.Info(o.Logger).Log("Received Informational Error: %v", err)
 			return &InformationalEvent{
 				NotificationType: MSG_ERROR,
 				Message:          err,
@@ -154,7 +155,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 	// Configuration
 	if cfg := plds.Get(protocol.PayloadTypeCP); cfg != nil {
 		cp := cfg.(*protocol.ConfigurationPayload)
-		o.Logger.Infof("Configuration: %+v", cp)
+		level.Info(o.Logger).Log("Configuration: %+v", cp)
 		// TODO
 	}
 	return nil

@@ -3,6 +3,7 @@ package ike
 import (
 	"time"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -47,7 +48,7 @@ func runInitiator(o *Session) error {
 	o.SetAddresses(msg.LocalAddr, msg.RemoteAddr)
 	// COOKIE is handled within cmd.newSession
 	if err = HandleInitForSession(o, init, msg); err != nil {
-		o.Logger.Errorf("Error Initializing: %+v", err)
+		level.Error(o.Logger).Log("Error Initializing:", err)
 		return err
 	}
 	if err = o.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
@@ -223,7 +224,7 @@ func monitorSa(o *Session) error {
 				// ONLY :
 				// Accept SA rekey if responder
 				if o.isInitiator {
-					o.Logger.Info("Rekey Request: Currently only supported for responder")
+					level.Info(o.Logger).Log("Rekey Request: Currently only supported for responder")
 					// send notification
 					o.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
 					continue
@@ -241,12 +242,12 @@ func monitorSa(o *Session) error {
 			// ONLY :
 			// Initiate SA rekey if initiator
 			if !o.isInitiator {
-				o.Logger.Info("Rekey Timeout: Currently only supported for initiator")
+				level.Info(o.Logger).Log("Rekey Timeout: Currently only supported for initiator")
 				continue
 			}
-			o.Logger.Info("Rekey Timeout")
+			level.Info(o.Logger).Log("Rekey Timeout")
 			if err := runIpsecRekey(o); err != nil {
-				o.Logger.Infof("Rekey Error: %+v", err)
+				level.Info(o.Logger).Log("Rekey Error:", err)
 				continue
 			}
 			// reset timers

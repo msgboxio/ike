@@ -5,15 +5,16 @@ package platform
 import (
 	"context"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 )
 
 type ListenerCallback func(interface{})
 
-func ListenForEvents(parent context.Context, cb ListenerCallback, log *logrus.Logger) {
+func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger) {
 	ch := make(chan netlink.XfrmMsg, 10)
 	errCh := make(chan error)
 	doneCh := make(chan struct{})
@@ -23,7 +24,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log *logrus.Lo
 		panic(err)
 	}
 
-	log.Debug("Started listening for xfrm messages from kernel")
+	level.Debug(log).Log("Started listening for xfrm messages from kernel")
 	go func() {
 	done:
 		for {
@@ -37,7 +38,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log *logrus.Lo
 			case msg := <-ch:
 				switch msg.Type() {
 				case nl.XFRM_MSG_EXPIRE:
-					log.Debugf("xfrm expire: %+v", spew.Sdump(msg.(*netlink.XfrmMsgExpire)))
+					level.Debug(log).Log("xfrm expire: %+v", spew.Sdump(msg.(*netlink.XfrmMsgExpire)))
 				case nl.XFRM_MSG_ACQUIRE:
 				// case nl.XFRM_MSG_NEWPOLICY:
 				// case nl.XFRM_MSG_DELPOLICY:
@@ -47,7 +48,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log *logrus.Lo
 				}
 			}
 		}
-		log.Debug("Stopped listening for xfrm messages from kernel")
+		level.Debug(log).Log("Stopped listening for xfrm messages from kernel")
 		close(ch)
 		close(errCh)
 		close(doneCh)

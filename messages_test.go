@@ -7,16 +7,16 @@ import (
 	"errors"
 	"flag"
 	"io/ioutil"
+	"os"
 	"testing"
 
 	"math/big"
 
+	"github.com/go-kit/kit/log"
 	"github.com/google/gopacket/bytediff"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
-
-	"github.com/Sirupsen/logrus"
 )
 
 var sa_init = `
@@ -66,13 +66,12 @@ e2 51 6a e1 95 b6 72 60  a0 a3 41 27 ed 3c 59 d6
 `
 
 func init() {
-	flag.Set("logtostderr", "true")
 	// flag.Set("v", "1")
 	flag.Parse()
 }
 
 func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
-	log := logrus.StandardLogger()
+	log := log.NewLogfmtLogger(os.Stdout)
 	msg := &Message{}
 	err := msg.DecodeHeader(dec, log)
 	if err != nil {
@@ -115,7 +114,7 @@ func testDecode(dec []byte, tkm *Tkm, forInitiator bool, t *testing.T) *Message 
 	}
 	t.Logf("\n%s", string(js))
 
-	log := logrus.StandardLogger()
+	log := log.NewLogfmtLogger(os.Stdout)
 	enc, err := EncodeMessage(msg, tkm, forInitiator, log)
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +146,7 @@ func TestDecode(t *testing.T) {
 	no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 
 	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048
-	log := logrus.StandardLogger()
+	log := log.NewLogfmtLogger(os.Stdout)
 	suite, _ := crypto.NewCipherSuite(transforms, log)
 
 	tkm := &Tkm{

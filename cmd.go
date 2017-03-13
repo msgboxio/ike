@@ -2,10 +2,12 @@ package ike
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/platform"
 	"github.com/pkg/errors"
 )
@@ -49,16 +51,16 @@ func (i *Cmd) runSession(spi uint64, s *Session) (err error) {
 	case errPeerRemovedIkeSa:
 		s.HandleClose()
 	default:
-		s.Logger.Warnf("Error: %+v", err)
+		level.Warn(s.Logger).Log("Error", err)
 	}
-	s.Logger.Infof("Remove IKE SA: %#x<=>%#x: %s", s.IkeSpiI, s.IkeSpiR, err)
+	level.Info(s.Logger).Log("Remove IKE SA: ", fmt.Sprintf("%#x<=>%#x: %s", s.IkeSpiI, s.IkeSpiR, err))
 	// wait for session to finish
 	i.sessions.Remove(spi)
 	return
 }
 
 // newResponder handles IKE_SA_INIT requests & replies
-func (i *Cmd) newResponder(spi uint64, msg *Message, config *Config, log *logrus.Logger) (session *Session, err error) {
+func (i *Cmd) newResponder(spi uint64, msg *Message, config *Config, log log.Logger) (session *Session, err error) {
 	// consider creating a new session
 	// is it a IKE_SA_INIT req ?
 	init, err := parseInit(msg)
@@ -93,7 +95,7 @@ func (i *Cmd) newResponder(spi uint64, msg *Message, config *Config, log *logrus
 }
 
 // RunInitiator starts & watches over on initiator session in a separate goroutine
-func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log *logrus.Logger) {
+func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) {
 	go func() {
 		for { // restart conn
 			sd := &SessionData{
@@ -103,13 +105,13 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log *logrus.Logg
 			}
 			initiator, err := NewInitiator(config, sd, log)
 			if err != nil {
-				log.Errorln("could not start Initiator: ", err)
+				level.Error(log).Log("could not start Initiator: ", err)
 				return
 			}
 			spi := SpiToInt64(initiator.IkeSpiI)
 			// TODO - currently this is break before make
 			if err = i.runSession(spi, initiator); err == context.DeadlineExceeded {
-				initiator.Logger.Info("ReKeying: ")
+				level.Info(initiator.Logger).Log("ReKeying: ")
 				continue
 			} else if err == context.Canceled {
 				break
@@ -129,7 +131,7 @@ func (i *Cmd) ShutDown(err error) {
 }
 
 // Run loops until there is a socket error
-func (i *Cmd) Run(config *Config, log *logrus.Logger) error {
+func (i *Cmd) Run(config *Config, log log.Logger) error {
 	for {
 		// this will return with error when there is a socket error
 		msg, err := ReadMessage(i.conn, log)
@@ -144,7 +146,7 @@ func (i *Cmd) Run(config *Config, log *logrus.Logger) error {
 			var err error
 			session, err = i.newResponder(spi, msg, config, log)
 			if err != nil {
-				log.Warning("drop packet: ", err)
+				level.Warn(log).Log("drop packet: ", err)
 				continue
 			}
 		}

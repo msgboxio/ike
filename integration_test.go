@@ -2,14 +2,14 @@ package ike
 
 import (
 	"net"
+	"os"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/msgboxio/ike/platform"
 )
 
 var localAddr, remoteAddr net.Addr
-var log = logrus.StandardLogger()
+var log = log.NewLogfmtLogger(os.Stdout)
 
 func TestIntPsk(t *testing.T) {
 	testWithIdentity(t, pskTestId, pskTestId, log)
@@ -26,7 +26,6 @@ func TestIntEcCert(t *testing.T) {
 }
 
 func BenchmarkEcCert(bt *testing.B) {
-	logrus.SetLevel(logrus.WarnLevel)
 	localID, remoteID := eccertTestIds(bt)
 	for n := 0; n < bt.N; n++ {
 		testWithIdentity(bt, localID, remoteID, log)
@@ -34,14 +33,13 @@ func BenchmarkEcCert(bt *testing.B) {
 }
 
 func BenchmarkIntCert(bt *testing.B) {
-	logrus.SetLevel(logrus.WarnLevel)
 	localID, remoteID := certTestIds(bt)
 	for n := 0; n < bt.N; n++ {
 		testWithIdentity(bt, localID, remoteID, log)
 	}
 }
 
-func testWithIdentity(t testing.TB, locid, remid Identity, log *logrus.Logger) {
+func testWithIdentity(t testing.TB, locid, remid Identity, log log.Logger) {
 	var cfg = DefaultConfig()
 	cfg.LocalID = locid
 	cfg.RemoteID = remid

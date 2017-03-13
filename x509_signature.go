@@ -6,7 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -54,7 +54,7 @@ func init() {
 	}
 }
 
-func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate, log *logrus.Logger) error {
+func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate, log log.Logger) error {
 	// if using plain rsa signature, verify using SHA1
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 		return checkSignature(signed, signature, x509.SHA1WithRSA, cert)
@@ -66,7 +66,7 @@ func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 	}
 	// check if specified signature algorithm is available
 	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
-		log.Infof("Verifying using SignatureAlgorithm %v, cert SignatureAlgorithm %v",
+		log.Log("Verifying using SignatureAlgorithm %v, cert SignatureAlgorithm %v",
 			method, cert.SignatureAlgorithm)
 		if err := checkSignature(signed, sigAuth.Signature, method, cert); err != nil {
 			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
@@ -81,7 +81,7 @@ func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm,
 	return cert.CheckSignature(algorithm, signed, signature)
 }
 
-func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.Signer, log *logrus.Logger) ([]byte, error) {
+func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.Signer, log log.Logger) ([]byte, error) {
 	// if using a plain old signature, this is all we need
 	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
 		return sign(x509.SHA1WithRSA, signed, private, log)
@@ -98,8 +98,8 @@ func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed [
 	return sigAuth.Encode(), nil
 }
 
-func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log *logrus.Logger) (signature []byte, err error) {
-	log.Infof("Signing Using SignatureAlgorithm: %v", algo)
+func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log log.Logger) (signature []byte, err error) {
+	log.Log("Signing Using SignatureAlgorithm: %v", algo)
 
 	var hashType crypto.Hash
 	switch algo {

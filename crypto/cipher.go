@@ -7,8 +7,9 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/dgryski/go-camellia"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 )
 
@@ -68,11 +69,9 @@ func (cs *simpleCipher) String() string {
 func (cs *simpleCipher) Overhead(clear []byte) int {
 	return cs.blockLen - len(clear)%cs.blockLen + cs.macLen + cs.ivLen
 }
-func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) (dec []byte, err error) {
-	if log.Level == logrus.DebugLevel {
-		log.Debugf("simple verify&decrypt:Clear:\n%sSkA:\n%sSkE\n%s",
-			hex.Dump(ike), hex.Dump(skA), hex.Dump(skE))
-	}
+func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte, log log.Logger) (dec []byte, err error) {
+	level.Debug(log).Log("simple verify&decrypt:Clear:\n%sSkA:\n%sSkE\n%s",
+		hex.Dump(ike), hex.Dump(skA), hex.Dump(skE))
 	// MAC-then-decrypt
 	if err = verifyMac(skA, ike, cs.macLen, cs.macFunc); err != nil {
 		return
@@ -82,7 +81,7 @@ func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) 
 	return
 }
 
-func (cs *simpleCipher) EncryptMac(headers, payload, skA, skE []byte, log *logrus.Logger) (b []byte, err error) {
+func (cs *simpleCipher) EncryptMac(headers, payload, skA, skE []byte, log log.Logger) (b []byte, err error) {
 	// encrypt-then-MAC
 	encr, err := encrypt(payload, skE, cs.ivLen, cs.cipherFunc, log)
 	if err != nil {
@@ -91,10 +90,8 @@ func (cs *simpleCipher) EncryptMac(headers, payload, skA, skE []byte, log *logru
 	data := append(headers, encr...)
 	mac := cs.macFunc(skA, data)
 	b = append(data, mac...)
-	if log.Level == logrus.DebugLevel {
-		log.Debugf("simple encrypt&mac:\nMac:\n%sSkA\n%sSkE\n%s",
-			hex.Dump(mac), hex.Dump(skA), hex.Dump(skE))
-	}
+	level.Debug(log).Log("simple encrypt&mac:\nMac:\n%sSkA\n%sSkE\n%s",
+		hex.Dump(mac), hex.Dump(skA), hex.Dump(skE))
 	return
 }
 
@@ -121,7 +118,7 @@ func cipherNull([]byte, []byte, bool) interface{} { return nil }
 
 // decryption & encryption routines
 
-func decrypt(b, key []byte, ivLen int, cipherFn cipherFunc, log *logrus.Logger) (dec []byte, err error) {
+func decrypt(b, key []byte, ivLen int, cipherFn cipherFunc, log log.Logger) (dec []byte, err error) {
 	iv := b[0:ivLen]
 	ciphertext := b[ivLen:]
 	// block ciphers only yet
@@ -144,13 +141,11 @@ func decrypt(b, key []byte, ivLen int, cipherFn cipherFunc, log *logrus.Logger) 
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	if log.Level == logrus.DebugLevel {
-		log.Debugf("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
-	}
+	level.Debug(log).Log("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
 	return
 }
 
-func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc, log *logrus.Logger) (b []byte, err error) {
+func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc, log log.Logger) (b []byte, err error) {
 	iv, err := rand.Prime(rand.Reader, ivLen*8) // bits
 	if err != nil {
 		return
@@ -174,9 +169,7 @@ func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc, log *logrus.Logg
 	cyp := make([]byte, len(clear))
 	block.CryptBlocks(cyp, clear)
 	b = append(iv.Bytes(), cyp...)
-	if log.Level == logrus.DebugLevel {
-		log.Debugf("Pad %d: Clear:\n%sIV:\n%sCyp:\n%s",
-			pl, hex.Dump(clear), hex.Dump(iv.Bytes()), hex.Dump(cyp))
-	}
+	level.Debug(log).Log("Pad %d: Clear:\n%sIV:\n%sCyp:\n%s",
+		pl, hex.Dump(clear), hex.Dump(iv.Bytes()), hex.Dump(cyp))
 	return
 }

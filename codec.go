@@ -3,13 +3,14 @@ package ike
 import (
 	"io"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
 
-func DecodeMessage(b []byte, log *logrus.Logger) (msg *Message, err error) {
+func DecodeMessage(b []byte, log log.Logger) (msg *Message, err error) {
 	msg = &Message{}
 	if err = msg.DecodeHeader(b, log); err != nil {
 		return
@@ -27,7 +28,7 @@ func DecodeMessage(b []byte, log *logrus.Logger) (msg *Message, err error) {
 	return
 }
 
-func DecryptMessage(m *Message, tkm *Tkm, forInitiator bool, log *logrus.Logger) (err error) {
+func DecryptMessage(m *Message, tkm *Tkm, forInitiator bool, log log.Logger) (err error) {
 	if m.IkeHeader.NextPayload == protocol.PayloadTypeSK {
 		var b []byte
 		if b, err = tkm.VerifyDecrypt(m.Data, forInitiator); err != nil {
@@ -41,13 +42,10 @@ func DecryptMessage(m *Message, tkm *Tkm, forInitiator bool, log *logrus.Logger)
 	return
 }
 
-func EncodeMessage(msg *Message, tkm *Tkm, forInitiator bool, log *logrus.Logger) (b []byte, err error) {
-	if log.Level == logrus.DebugLevel {
-		log.Debug("Tx:\n" + spew.Sdump(msg))
-	} else {
-		log.Infof("[%d]Sending %s%s: payloads %s",
-			msg.IkeHeader.MsgId, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags, msg.Payloads)
-	}
+func EncodeMessage(msg *Message, tkm *Tkm, forInitiator bool, log log.Logger) (b []byte, err error) {
+	level.Debug(log).Log("Tx:\n" + spew.Sdump(msg))
+	log.Log("[%d]Sending %s%s: payloads %s",
+		msg.IkeHeader.MsgId, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags, msg.Payloads)
 	firstPayloadType := protocol.PayloadTypeNone // no payloads are one possibility
 	if len(msg.Payloads.Array) > 0 {
 		firstPayloadType = msg.Payloads.Array[0].Type()

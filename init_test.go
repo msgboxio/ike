@@ -2,9 +2,10 @@ package ike
 
 import (
 	"net"
+	"os"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 )
@@ -41,8 +42,7 @@ func TestInit2(t *testing.T) {
 
 	go runTestInitiator(cfg1, &testcb{chr, sa, cerr}, chi, log)
 
-	log2 := logrus.New()
-	// log2.Level = logrus.DebugLevel
+	log2 := log.NewLogfmtLogger(os.Stdout)
 	var cfg2 = *cfg1
 	cfg2.ProposalIke = protocol.IKE_AES_GCM_16_MODP3072
 	go runTestResponder(&cfg2, &testcb{chi, sa, cerr}, chr, log2)

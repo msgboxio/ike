@@ -7,7 +7,8 @@ import (
 	"net"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
@@ -79,7 +80,7 @@ type Session struct {
 
 	*SessionData
 
-	Logger *logrus.Logger
+	Logger log.Logger
 }
 
 // Housekeeping
@@ -114,7 +115,7 @@ func (o *Session) CreateIkeSa(nonce, dhPublic *big.Int, spiI, spiR []byte) error
 	}
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	o.Logger.Info("IKE SA INITIALISED", o)
+	level.Info(o.Logger).Log("IKE SA INITIALISED", o)
 	return nil
 }
 
@@ -124,15 +125,15 @@ func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
 
 func (o *Session) PostMessage(m *Message) {
 	if err := o.isMessageValid(m); err != nil {
-		o.Logger.Error("Drop Message: ", err)
+		level.Error(o.Logger).Log("Drop Message: ", err)
 		return
 	}
 	if err := DecryptMessage(m, o.tkm, o.isInitiator, o.Logger); err != nil {
-		o.Logger.Warningf("Drop message: %s", err)
+		level.Warn(o.Logger).Log("Drop message: %s", err)
 		return
 	}
 	if o.isClosing {
-		o.Logger.Error("Drop Message: Closing")
+		level.Error(o.Logger).Log("Drop Message: Closing")
 		return
 	}
 	o.incoming <- m
@@ -152,7 +153,7 @@ func (o *Session) sendMsg(msg *OutgoingMessge, err error) error {
 	}
 	err = o.SendMessage(msg)
 	if err != nil {
-		o.Logger.Error(err)
+		level.Error(o.Logger).Log(err)
 	}
 	return err
 }
@@ -170,7 +171,7 @@ func (o *Session) nextMsgID(isResponse bool) (msgID uint32) {
 
 // Close is called to shutdown this session
 func (o *Session) Close(err error) {
-	o.Logger.Infof("Close Session, err: %s", err)
+	level.Info(o.Logger).Log("Close Session, err: %s", err)
 	if o.isClosing {
 		return
 	}
@@ -199,7 +200,7 @@ func (o *Session) InitMsg() (*OutgoingMessge, error) {
 
 // AuthMsg generates IKE_AUTH
 func (o *Session) AuthMsg() (*OutgoingMessge, error) {
-	o.Logger.Infof("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+	level.Info(o.Logger).Log("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
@@ -209,7 +210,7 @@ func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 		o.IkeAuth(err)
 	}
 	if err != nil {
-		o.Logger.Infof("Error Authenticating: %+v", err)
+		level.Info(o.Logger).Log("Error Authenticating: %+v", err)
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
@@ -376,22 +377,22 @@ func (o *Session) SendMessage(msg *OutgoingMessge) error {
 }
 func (o *Session) IkeAuth(err error) {
 	if err == nil {
-		o.Logger.Info("New IKE SA: ", o)
+		level.Info(o.Logger).Log("New IKE SA: ", o)
 	} else {
-		o.Logger.Warningf("IKE SA FAILED: %+v", err)
+		level.Warn(o.Logger).Log("IKE SA FAILED: %+v", err)
 	}
 }
 func (o *Session) AddSa(sa *platform.SaParams) error {
 	saAddr(sa, o.Local, o.Remote)
 	err := o.Cb.AddSa(o, sa)
-	o.Logger.Infof("Installed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
+	level.Info(o.Logger).Log("Installed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
 		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
 	return err
 }
 func (o *Session) RemoveSa(sa *platform.SaParams) error {
 	saAddr(sa, o.Local, o.Remote)
 	err := o.Cb.RemoveSa(o, sa)
-	o.Logger.Infof("Removed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
+	level.Info(o.Logger).Log("Removed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
 		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
 	return err
 }

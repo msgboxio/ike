@@ -7,7 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"golang.org/x/crypto/chacha20poly1305"
 )
@@ -117,7 +118,7 @@ func (cs *aeadCipher) Overhead(clear []byte) int {
 
 const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
 
-func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) (dec []byte, err error) {
+func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte, log log.Logger) (dec []byte, err error) {
 	// Encryption key has salt appended to it
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
@@ -130,10 +131,8 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) (d
 	ct := ike[ADLEN+cs.ivLen : len(ike)-cs.icvLen]
 	icv := ike[len(ike)-cs.icvLen:]
 	nonce := append(append([]byte{}, salt...), iv...) // 12B; 4B salt + 8B iv
-	if log.Level == logrus.DebugLevel {
-		log.Infof("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
-			hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(ad), hex.Dump(ct), hex.Dump(icv))
-	}
+	level.Debug(log).Log("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
+		hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(ad), hex.Dump(ct), hex.Dump(icv))
 	clear, err := aead.Open([]byte{}, nonce, append(ct, icv...), ad)
 	if err != nil {
 		return
@@ -145,14 +144,12 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) (d
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	if log.Level == logrus.DebugLevel {
-		log.Debugf("Padlen:%d\nClear:\n%s",
-			padlen, hex.Dump(clear))
-	}
+	level.Debug(log).Log("Padlen:%d\nClear:\n%s",
+		padlen, hex.Dump(clear))
 	return
 }
 
-func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte, log *logrus.Logger) (encr []byte, err error) {
+func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte, log log.Logger) (encr []byte, err error) {
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
 	aead, err := cs.aeadFunc(key)
@@ -173,10 +170,8 @@ func (cs *aeadCipher) EncryptMac(headers, payload, skA, skE []byte, log *logrus.
 		payload = append(payload, pad...)
 	}
 	encr = aead.Seal([]byte{}, nonce, payload, headers)
-	if log.Level == logrus.DebugLevel {
-		log.Debugf("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
-			hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(headers), padlen, hex.Dump(encr[len(payload):]))
-	}
+	level.Debug(log).Log("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
+		hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(headers), padlen, hex.Dump(encr[len(payload):]))
 	encr = append(append(headers, ivBytes...), encr...)
 	return
 }

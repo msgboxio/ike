@@ -5,8 +5,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 )
 
@@ -75,7 +76,7 @@ func (p *Payloads) GetNotification(nt NotificationType) *NotifyPayload {
 	return nil
 }
 
-func DecodePayloads(b []byte, nextPayload PayloadType, log *logrus.Logger) (*Payloads, error) {
+func DecodePayloads(b []byte, nextPayload PayloadType, log log.Logger) (*Payloads, error) {
 	payloads := MakePayloads()
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
@@ -88,8 +89,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log *logrus.Logger) (*Pay
 		}
 		if (len(b) < int(pHeader.PayloadLength)) ||
 			(int(pHeader.PayloadLength) < PAYLOAD_HEADER_LENGTH) {
-			return nil, errors.Wrap(ERR_INVALID_SYNTAX,
-				fmt.Sprintf("incorrect payload length in payload header"))
+			return nil, errors.Wrap(ERR_INVALID_SYNTAX, "incorrect payload length in payload header")
 		}
 		var payload Payload
 		switch nextPayload {
@@ -132,9 +132,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log *logrus.Logger) (*Pay
 		if err := payload.Decode(pbuf); err != nil {
 			return nil, err
 		}
-		if log.Level == logrus.DebugLevel {
-			log.Infof("Payload %s: %s from:\n%s", payload.Type(), spew.Sdump(payload), hex.Dump(pbuf))
-		}
+		level.Debug(log).Log("Payload %s: %s from:\n%s", payload.Type(), spew.Sdump(payload), hex.Dump(pbuf))
 		payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
 			// log.V(1).Infof("Received %s: encrypted payloads %s", s.IkeHeader.ExchangeType, *payloads)
@@ -150,7 +148,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log *logrus.Logger) (*Pay
 	return payloads, nil
 }
 
-func EncodePayloads(payloads *Payloads, log *logrus.Logger) (b []byte) {
+func EncodePayloads(payloads *Payloads, log log.Logger) (b []byte) {
 	for idx, pl := range payloads.Array {
 		body := pl.Encode()
 		hdr := pl.Header()
@@ -161,9 +159,7 @@ func EncodePayloads(payloads *Payloads, log *logrus.Logger) (b []byte) {
 		}
 		hdr.NextPayload = next
 		body = append(hdr.Encode(log), body...)
-		if log.Level == logrus.DebugLevel {
-			log.Infof("Payload %s: %s to:\n%s", pl.Type(), spew.Sdump(pl), hex.Dump(body))
-		}
+		level.Debug(log).Log("Payload %s: %s to:\n%s", pl.Type(), spew.Sdump(pl), hex.Dump(body))
 		b = append(b, body...)
 	}
 	return

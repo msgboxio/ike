@@ -3,15 +3,15 @@ package crypto
 import (
 	"github.com/pkg/errors"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 )
 
 // Cipher interface provides Encryption & Integrity Protection
 type Cipher interface {
 	Overhead(clear []byte) int
-	VerifyDecrypt(ike, skA, skE []byte, log *logrus.Logger) (dec []byte, err error)
-	EncryptMac(headers, payload, skA, skE []byte, log *logrus.Logger) (b []byte, err error)
+	VerifyDecrypt(ike, skA, skE []byte, log log.Logger) (dec []byte, err error)
+	EncryptMac(headers, payload, skA, skE []byte, log log.Logger) (b []byte, err error)
 }
 
 type CipherSuite struct {
@@ -22,12 +22,12 @@ type CipherSuite struct {
 	// Lengths, in bytes, of the key material needed for each component.
 	KeyLen, MacTruncLen int
 
-	*logrus.Logger
+	log.Logger
 }
 
 // Build a CipherSuite from the given transfom
 // TODO - check that the entire suite makes sense
-func NewCipherSuite(trs protocol.Transforms, log *logrus.Logger) (*CipherSuite, error) {
+func NewCipherSuite(trs protocol.Transforms, log log.Logger) (*CipherSuite, error) {
 	cs := &CipherSuite{Logger: log}
 	// empty variables, filled in later
 	var aead *aeadCipher

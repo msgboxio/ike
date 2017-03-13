@@ -3,9 +3,10 @@ package ike
 import (
 	"encoding/hex"
 	"math/big"
+	"os"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
@@ -29,7 +30,7 @@ func TestTkm(t *testing.T) {
 	}
 
 	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048
-	log := logrus.StandardLogger()
+	log := log.NewLogfmtLogger(os.Stdout)
 	suite, _ := crypto.NewCipherSuite(transforms, log)
 	tkm := &Tkm{
 		suite:    suite,

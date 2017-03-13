@@ -10,13 +10,14 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/davecgh/go-spew/spew"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
 )
 
-var log = logrus.StandardLogger()
+var logger log.Logger
 
 func waitForSignal(cancel context.CancelFunc) {
 	c := make(chan os.Signal, 1)
@@ -24,7 +25,7 @@ func waitForSignal(cancel context.CancelFunc) {
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel()
-	log.Error(sig.String())
+	level.Error(logger).Log(sig.String())
 }
 
 var localID = &ike.PskIdentities{
@@ -71,14 +72,14 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 		if certFile != "" {
 			certs, err := ike.LoadCerts(certFile)
 			if err != nil {
-				log.Warningf("Cert: %s", err)
+				level.Warn(log).Log("Cert: %s", err)
 			}
 			localId.Certificate = certs[0]
 		}
 		if keyFile != "" {
 			key, err := ike.LoadKey(keyFile)
 			if err != nil {
-				log.Warningf("Key: %s", err)
+				level.Warn(log).Log("Key: %s", err)
 			}
 			localId.PrivateKey = key
 		}
@@ -94,8 +95,9 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	config.LocalID = localID
 	config.RemoteID = remoteID
 
+	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	if isDebug {
-		logrus.SetLevel(logrus.DebugLevel)
+		logger = level.NewFilter(logger, level.AllowDebug())
 	}
 	return
 }
@@ -106,38 +108,38 @@ func main() {
 	go waitForSignal(cancel)
 
 	ifs, _ := net.InterfaceAddrs()
-	log.Infof("Available interfaces %+v", ifs)
+	logger.Log("Available interfaces", ifs)
 	// this should load the xfrm modules
 	// requires root
 	cb := func(msg interface{}) {
-		log.Debugf("xfrm: \n%s", spew.Sdump(msg))
+		logger.Log("xfrm:", spew.Sdump(msg))
 	}
-	platform.ListenForEvents(cxt, cb, log)
+	platform.ListenForEvents(cxt, cb, logger)
 
 	pconn, err := ike.Listen("udp", localString)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 	// requires root
 	if err := platform.SetSocketBypas(ike.InnerConn(pconn), syscall.AF_INET6); err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	cmd := ike.NewCmd(pconn, ike.SessionCallback{
 		AddSa: func(session *ike.Session, sa *platform.SaParams) error {
-			return platform.InstallChildSa(sa, log)
+			return platform.InstallChildSa(sa, logger)
 		},
 		RemoveSa: func(session *ike.Session, sa *platform.SaParams) error {
-			return platform.RemoveChildSa(sa, log)
+			return platform.RemoveChildSa(sa, logger)
 		},
 	})
 
 	if remoteString != "" {
 		remoteAddr, err := net.ResolveUDPAddr("udp", remoteString)
 		if err != nil {
-			log.Fatalf("error resolving: %+v", err)
+			panic(err)
 		}
-		cmd.RunInitiator(remoteAddr, config, log)
+		cmd.RunInitiator(remoteAddr, config, logger)
 	}
 
 	wg := &sync.WaitGroup{}
@@ -151,10 +153,10 @@ func main() {
 		wg.Done()
 	}()
 
-	err = cmd.Run(config, log)
+	err = cmd.Run(config, logger)
 	// this will return when there is a socket error
 	// usually caused by the close call above
-	log.Error(err)
+	logger.Log("error", err)
 	cancel()
 	// wait for remaining sessions to shutdown
 	wg.Wait()

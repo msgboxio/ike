@@ -1,7 +1,7 @@
 package ike
 
 import (
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 )
 
@@ -9,8 +9,8 @@ import (
 type Authenticator interface {
 	Identity() Identity
 	AuthMethod() protocol.AuthMethod
-	Sign([]byte, *protocol.IdPayload, *logrus.Logger) ([]byte, error)
-	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger *logrus.Logger) error
+	Sign([]byte, *protocol.IdPayload, log.Logger) ([]byte, error)
+	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error
 }
 
 func NewAuthenticator(id Identity, tkm *Tkm, authMethod protocol.AuthMethod, forInitiator bool) Authenticator {

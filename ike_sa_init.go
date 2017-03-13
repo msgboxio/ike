@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net"
 
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -102,7 +103,7 @@ func CheckInitResponseForSession(o *Session, init *initParams) error {
 // return error secure signatures are configured, but not proposed by peer
 func checkSignatureAlgo(o *Session, isEnabled bool) error {
 	if !isEnabled {
-		o.Logger.Warningf("Not using secure signatures")
+		level.Warn(o.Logger).Log("Not using secure signatures")
 		if o.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
 			return errors.New("Peer is not using secure signatures")
 		}
@@ -118,15 +119,15 @@ func HandleInitForSession(o *Session, init *initParams, m *Message) error {
 	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			o.Logger.Infof("Peer requested %s", protocol.AUTH_DIGITAL_SIGNATURE)
+			level.Info(o.Logger).Log("Peer requested", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.LocalAddr) {
-				o.Logger.Infof("HOST nat detected: %s", m.LocalAddr)
+				level.Info(o.Logger).Log("HOST nat detected", m.LocalAddr)
 			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.RemoteAddr) {
-				o.Logger.Infof("PEER nat detected: %s", m.RemoteAddr)
+				level.Info(o.Logger).Log("PEER nat detected", m.RemoteAddr)
 			}
 		}
 	}

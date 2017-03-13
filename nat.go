@@ -11,7 +11,6 @@ import (
 
 func checkNatHash(digest []byte, spiI, spiR protocol.Spi, addr net.Addr) bool {
 	target := getNatHash(spiI, spiR, addr)
-	// log.Infof("Their:\n%sOur:\n%s", hex.Dump(digest), hex.Dump(target))
 	return bytes.Equal(digest, target)
 }
 
@@ -24,6 +23,5 @@ func getNatHash(spiI, spiR protocol.Spi, addr net.Addr) []byte {
 	portb := []byte{0, 0}
 	packets.WriteB16(portb, 0, uint16(port))
 	digest.Write(portb)
-	// log.Infof("\n%s%s%s%s", hex.Dump(spiI), hex.Dump(spiR), hex.Dump(ip), hex.Dump(portb))
 	return digest.Sum(nil)
 }

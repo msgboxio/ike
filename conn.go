@@ -7,11 +7,20 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
+
+var logger log.Logger
+
+func init() {
+	logger = log.NewLogfmtLogger(os.Stdout)
+	logger = level.NewFilter(logger, level.AllowInfo())
+	logger = log.With(logger, "caller", log.DefaultCaller)
+}
 
 type Conn interface {
 	ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, err error)
@@ -78,13 +87,13 @@ func listenUDP4(localString string) (p4 *pconnV4, err error) {
 	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
-			logrus.Warningf("udp source address detection not supported on %s", runtime.GOOS)
+			level.Warn(logger).Log("udp source address detection not supported", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
 		}
 	}
-	logrus.Infof("socket listening 4: %s", udp.LocalAddr())
+	logger.Log("socket listening 4: %s", udp.LocalAddr())
 	return (*pconnV4)(p), nil
 }
 
@@ -99,13 +108,13 @@ func listenUDP6(localString string) (p6 *pconnV6, err error) {
 	cf := ipv6.FlagSrc | ipv6.FlagDst | ipv6.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
-			logrus.Warningf("udp source address detection not supported on %s", runtime.GOOS)
+			level.Warn(logger).Log("udp source address detection not supported", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
 		}
 	}
-	logrus.Infof("socket listening 6: %s", udp.LocalAddr())
+	logger.Log("socket listening 6: %s", udp.LocalAddr())
 	return (*pconnV6)(p), nil
 }
 
@@ -116,7 +125,7 @@ func (p *pconnV4) ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, e
 		b = b[:n]
 		localIP = cm.Dst
 	}
-	logrus.Infof("%d from %v", n, remoteAddr)
+	logger.Log("%d from %v", n, remoteAddr)
 	return
 }
 
@@ -129,7 +138,7 @@ func (p *pconnV6) ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, e
 			localIP = cm.Dst
 		}
 	}
-	logrus.Infof("%d from %v", n, remoteAddr)
+	logger.Log("%d from %v", n, remoteAddr)
 	return
 }
 
@@ -140,7 +149,7 @@ func (p *pconnV6) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	} else if n != len(reply) {
 		return io.ErrShortWrite
 	}
-	logrus.Infof("%d to %v", n, remoteAddr)
+	logger.Log("%d to %v", n, remoteAddr)
 	return nil
 }
 
@@ -151,14 +160,14 @@ func (p *pconnV4) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	} else if n != len(reply) {
 		return io.ErrShortWrite
 	}
-	logrus.Infof("%d to %v", n, remoteAddr)
+	logger.Log("%d to %v", n, remoteAddr)
 	return nil
 }
 
 // ReadMessage reads an IKE message from connection
 // Connection errors are returned, protocol errors are simply logged
 // TODO - defrag logic seems wrong; revisit
-func ReadMessage(conn Conn, log *logrus.Logger) (*Message, error) {
+func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 	var buf []byte
 	for {
 		b, remoteAddr, localIP, err := conn.ReadPacket()
@@ -175,7 +184,7 @@ func ReadMessage(conn Conn, log *logrus.Logger) (*Message, error) {
 			continue
 		}
 		if err != nil {
-			logrus.Error(err)
+			level.Error(logger).Log(err)
 			continue
 		}
 		port := InnerConn(conn).LocalAddr().(*net.UDPAddr).Port

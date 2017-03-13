@@ -3,11 +3,11 @@ package ike
 import (
 	"math/big"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/crypto"
 )
 
-func NewTkm(cfg *Config, log *logrus.Logger, ni *big.Int) (*Tkm, error) {
+func NewTkm(cfg *Config, log log.Logger, ni *big.Int) (*Tkm, error) {
 	suite, err := crypto.NewCipherSuite(cfg.ProposalIke, log)
 	if err != nil {
 		return nil, err

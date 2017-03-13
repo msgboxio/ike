@@ -3,7 +3,8 @@ package ike
 import (
 	"crypto/x509"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -27,7 +28,7 @@ func (r *CertAuthenticator) AuthMethod() protocol.AuthMethod {
 	return r.authMethod
 }
 
-func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger *logrus.Logger) ([]byte, error) {
+func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger log.Logger) ([]byte, error) {
 	certId, ok := r.identity.(*CertIdentity)
 	if !ok {
 		// should never happen
@@ -41,12 +42,12 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger *
 	if certId.PrivateKey == nil {
 		return nil, errors.Errorf("missing private key")
 	}
-	logger.Infof("Ike Auth: OUR CERT: %+v", FormatCert(certId.Certificate))
+	level.Info(logger).Log("Ike Auth: OUR CERT:", FormatCert(certId.Certificate))
 	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
 	return Sign(certId.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certId.PrivateKey, logger)
 }
 
-func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger *logrus.Logger) error {
+func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error {
 	if r.userCertificate == nil {
 		return errors.New("missing Certificate")
 	}

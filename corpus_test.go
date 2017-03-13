@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 )
@@ -26,7 +27,7 @@ var ids = PskIdentities{
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-func initiatorTkm(t *testing.T, log *logrus.Logger) *Tkm {
+func initiatorTkm(t *testing.T, log log.Logger) *Tkm {
 	config := newConfig()
 	suite, err := crypto.NewCipherSuite(config.ProposalIke, log)
 	if err != nil {
@@ -46,7 +47,7 @@ func initiatorTkm(t *testing.T, log *logrus.Logger) *Tkm {
 }
 
 func TestIkeMsgGen(t *testing.T) {
-	log := logrus.StandardLogger()
+	log := log.NewLogfmtLogger(os.Stdout)
 	cfg := newConfig()
 	tkm := initiatorTkm(t, log)
 	ikeSpi := MakeSpi()
@@ -139,6 +140,6 @@ func TestCorpusDecode(t *testing.T) {
 			t.Errorf("%s:%s", file.Name(), err)
 			t.Fail()
 		}
-		t.Logf("%s: \n%s", file.Name(), string(js))
+		t.Log("%s: \n%s", file.Name(), string(js))
 	}
 }

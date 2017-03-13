@@ -6,14 +6,14 @@ import (
 	"context"
 	"net"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 )
 
-func InstallChildSa(*SaParams, *logrus.Logger) error {
+func InstallChildSa(*SaParams, log.Logger) error {
 	return nil
 }
 
-func RemoveChildSa(*SaParams, *logrus.Logger) error {
+func RemoveChildSa(*SaParams, log.Logger) error {
 	return nil
 }
 
@@ -21,6 +21,6 @@ func SetSocketBypas(conn net.Conn, family uint16) (err error) {
 	return
 }
 
-func ListenForEvents(context.Context, func(interface{}), *logrus.Logger) {
+func ListenForEvents(context.Context, func(interface{}), log.Logger) {
 	return
 }

@@ -1,10 +1,12 @@
 package ike
 
-import "github.com/Sirupsen/logrus"
+import (
+	"github.com/go-kit/kit/log"
+)
 
 // NewInitiator creates an initiator session
-func NewInitiator(cfg *Config, sd *SessionData, log *logrus.Logger) (*Session, error) {
-	tkm, err := NewTkm(cfg, log, nil)
+func NewInitiator(cfg *Config, sd *SessionData, logger log.Logger) (*Session, error) {
+	tkm, err := NewTkm(cfg, logger, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -18,12 +20,7 @@ func NewInitiator(cfg *Config, sd *SessionData, log *logrus.Logger) (*Session, e
 		incoming:    make(chan *Message, 10),
 		SessionData: sd,
 	}
-	o.Logger = &logrus.Logger{
-		Out:       log.Out,
-		Formatter: &PrefixFormatter{Prefix: o.Tag()},
-		Hooks:     log.Hooks,
-		Level:     log.Level,
-	}
+	o.Logger = log.With(logger, "i", o.Tag())
 
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)

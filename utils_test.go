@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Sirupsen/logrus"
+	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/platform"
 )
 
@@ -97,7 +97,7 @@ func (c *testcb) Error(s *Session, err error) {
 }
 func (c *testcb) SetAddresses(local, remote net.Addr) {}
 
-func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.Logger) {
+func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log log.Logger) {
 	initiator, err := NewInitiator(cfg, nil, log)
 	if err != nil {
 		c.errTo <- err
@@ -143,7 +143,7 @@ func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.
 	initiator.PostMessage(authR)
 }
 
-func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log *logrus.Logger) {
+func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log log.Logger) {
 	waitForInitI := func() *Message {
 		for {
 			initI, err := DecodeMessage(<-readFrom, log)
