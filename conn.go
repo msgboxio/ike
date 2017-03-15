@@ -14,19 +14,15 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
-var logger log.Logger
-
-func init() {
-	logger = log.NewLogfmtLogger(os.Stdout)
-	logger = level.NewFilter(logger, level.AllowInfo())
-	logger = log.With(logger, "caller", log.DefaultCaller)
-}
-
 type Conn interface {
 	ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, err error)
 	WritePacket(reply []byte, remoteAddr net.Addr) error
 	Close() error
 }
+
+// check if types are implemented
+var _ Conn = (*pconnV4)(nil)
+var _ Conn = (*pconnV6)(nil)
 
 type pconnV4 ipv4.PacketConn
 
@@ -59,24 +55,24 @@ func checkV4onX(address string) (bool, error) {
 	return v4Only, nil
 }
 
-func Listen(network, address string) (Conn, error) {
+func Listen(network, address string, logger log.Logger) (Conn, error) {
 	isV4, err := checkV4onX(address)
 	if err != nil {
 		return nil, err
 	}
 	if isV4 {
-		return listenUDP4(address)
+		return listenUDP4(address, logger)
 	}
 	switch network {
 	case "udp4":
-		return listenUDP4(address)
+		return listenUDP4(address, logger)
 	case "udp6", "udp":
-		return listenUDP6(address)
+		return listenUDP6(address, logger)
 	}
 	return nil, ErrorUdpOnly
 }
 
-func listenUDP4(localString string) (p4 *pconnV4, err error) {
+func listenUDP4(localString string, logger log.Logger) (p4 *pconnV4, err error) {
 	udp, err := net.ListenPacket("udp4", localString)
 	if err != nil {
 		return nil, errors.Wrap(err, "lsten")
@@ -87,17 +83,17 @@ func listenUDP4(localString string) (p4 *pconnV4, err error) {
 	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
-			level.Warn(logger).Log("udp source address detection not supported", runtime.GOOS)
+			level.Warn(logger).Log("msg", "udp source address detection not supported", "on", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
 		}
 	}
-	logger.Log("socket listening 4: %s", udp.LocalAddr())
+	logger.Log("listening", udp.LocalAddr())
 	return (*pconnV4)(p), nil
 }
 
-func listenUDP6(localString string) (p6 *pconnV6, err error) {
+func listenUDP6(localString string, logger log.Logger) (p6 *pconnV6, err error) {
 	udp, err := net.ListenPacket("udp", localString)
 	if err != nil {
 		return nil, errors.Wrap(err, "lsten")
@@ -108,13 +104,13 @@ func listenUDP6(localString string) (p6 *pconnV6, err error) {
 	cf := ipv6.FlagSrc | ipv6.FlagDst | ipv6.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
-			level.Warn(logger).Log("udp source address detection not supported", runtime.GOOS)
+			level.Warn(logger).Log("msg", "udp source address detection not supported", "on", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
 		}
 	}
-	logger.Log("socket listening 6: %s", udp.LocalAddr())
+	logger.Log("listening", udp.LocalAddr())
 	return (*pconnV6)(p), nil
 }
 
@@ -125,7 +121,6 @@ func (p *pconnV4) ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, e
 		b = b[:n]
 		localIP = cm.Dst
 	}
-	logger.Log("%d from %v", n, remoteAddr)
 	return
 }
 
@@ -138,7 +133,6 @@ func (p *pconnV6) ReadPacket() (b []byte, remoteAddr net.Addr, localIP net.IP, e
 			localIP = cm.Dst
 		}
 	}
-	logger.Log("%d from %v", n, remoteAddr)
 	return
 }
 
@@ -149,7 +143,6 @@ func (p *pconnV6) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	} else if n != len(reply) {
 		return io.ErrShortWrite
 	}
-	logger.Log("%d to %v", n, remoteAddr)
 	return nil
 }
 
@@ -160,7 +153,6 @@ func (p *pconnV4) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	} else if n != len(reply) {
 		return io.ErrShortWrite
 	}
-	logger.Log("%d to %v", n, remoteAddr)
 	return nil
 }
 
@@ -174,6 +166,7 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 		if err != nil {
 			return nil, err
 		}
+		log.Log("read", len(b), "from", remoteAddr)
 		if buf != nil {
 			b = append(buf, b...)
 			buf = nil
@@ -184,7 +177,7 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 			continue
 		}
 		if err != nil {
-			level.Error(logger).Log(err)
+			level.Error(log).Log(err)
 			continue
 		}
 		port := InnerConn(conn).LocalAddr().(*net.UDPAddr).Port
@@ -195,6 +188,20 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 		msg.RemoteAddr = remoteAddr
 		return msg, nil
 	}
+}
+
+func WriteMessage(conn Conn, msg *Message, tkm *Tkm, forInitiator bool, log log.Logger) (err error) {
+	data, err := msg.Encode(tkm, forInitiator, log)
+	if err != nil {
+		return err
+	}
+	return WriteData(conn, data, msg.RemoteAddr, log)
+}
+
+func WriteData(conn Conn, data []byte, remote net.Addr, log log.Logger) (err error) {
+	err = conn.WritePacket(data, remote)
+	log.Log("write", len(data), "to", remote, "error", err)
+	return
 }
 
 // InnerConn returns the conn buried within the conn used here

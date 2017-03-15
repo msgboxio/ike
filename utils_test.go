@@ -158,7 +158,7 @@ func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log log.Logg
 			if err := CheckInitRequest(cfg, initP, nil); err != nil {
 				// handle errors that need reply: COOKIE or DH
 				if reply := InitErrorNeedsReply(initP, cfg, nil, err); reply != nil {
-					data, err := EncodeMessage(reply, nil, false, log)
+					data, err := reply.Encode(nil, false, log)
 					if err != nil {
 						c.errTo <- err
 					}

@@ -71,7 +71,7 @@ type Session struct {
 	isInitiator         bool
 	IkeSpiI, IkeSpiR    protocol.Spi
 	EspSpiI, EspSpiR    protocol.Spi
-	msgIdReq, msgIdResp uint32
+	msgIDReq, msgIDResp uint32
 
 	incoming chan *Message
 
@@ -90,7 +90,11 @@ func (o *Session) Tag() string {
 	if !o.isInitiator {
 		ini = "[R]"
 	}
-	return fmt.Sprintf(ini+"%#x", o.IkeSpiI)
+	return ini + o.IkeSpiI.String()
+}
+
+func (o *Session) String() string {
+	return fmt.Sprintf("%s<=>%s %s", o.IkeSpiI, o.IkeSpiR, o.tkm)
 }
 
 func (o *Session) CreateIkeSa(nonce, dhPublic *big.Int, spiI, spiR []byte) error {
@@ -115,7 +119,7 @@ func (o *Session) CreateIkeSa(nonce, dhPublic *big.Int, spiI, spiR []byte) error
 	}
 	// create rest of ike sa
 	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
-	level.Info(o.Logger).Log("IKE SA INITIALISED", o)
+	o.Logger.Log("IKE_SA", "initialised", "session", o)
 	return nil
 }
 
@@ -125,53 +129,46 @@ func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
 
 func (o *Session) PostMessage(m *Message) {
 	if err := o.isMessageValid(m); err != nil {
-		level.Error(o.Logger).Log("Drop Message: ", err)
+		level.Error(o.Logger).Log("Drop", err)
 		return
 	}
 	if err := DecryptMessage(m, o.tkm, o.isInitiator, o.Logger); err != nil {
-		level.Warn(o.Logger).Log("Drop message: %s", err)
+		level.Warn(o.Logger).Log("Drop", err)
 		return
 	}
 	if o.isClosing {
-		level.Error(o.Logger).Log("Drop Message: Closing")
+		level.Error(o.Logger).Log("Drop", "Closing")
 		return
 	}
 	o.incoming <- m
 }
 
 func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
-	buf, err := EncodeMessage(msg, o.tkm, o.isInitiator, o.Logger)
-	if err != nil {
-		return nil, err
-	}
-	return &OutgoingMessge{buf}, nil
+	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
+	return &OutgoingMessge{buf}, err
 }
 
 func (o *Session) sendMsg(msg *OutgoingMessge, err error) error {
 	if err != nil {
 		return err
 	}
-	err = o.SendMessage(msg)
-	if err != nil {
-		level.Error(o.Logger).Log(err)
-	}
-	return err
+	return WriteData(o.Conn, msg.Data, o.Remote, o.Logger)
 }
 
 // nextMsgID increments and returns response ids for responses, returns request ids as is
 func (o *Session) nextMsgID(isResponse bool) (msgID uint32) {
 	if isResponse {
-		msgID = o.msgIdResp
-		o.msgIdResp++
+		msgID = o.msgIDResp
+		o.msgIDResp++
 	} else {
-		msgID = o.msgIdReq
+		msgID = o.msgIDReq
 	}
 	return
 }
 
 // Close is called to shutdown this session
 func (o *Session) Close(err error) {
-	level.Info(o.Logger).Log("Close Session, err: %s", err)
+	o.Logger.Log("msg", "Close Session", "err", err)
 	if o.isClosing {
 		return
 	}
@@ -200,7 +197,7 @@ func (o *Session) InitMsg() (*OutgoingMessge, error) {
 
 // AuthMsg generates IKE_AUTH
 func (o *Session) AuthMsg() (*OutgoingMessge, error) {
-	level.Info(o.Logger).Log("SA selectors: [INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR)
+	o.Logger.Log("msg", "AUTH", "selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR))
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
@@ -210,7 +207,7 @@ func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 		o.IkeAuth(err)
 	}
 	if err != nil {
-		level.Info(o.Logger).Log("Error Authenticating: %+v", err)
+		o.Logger.Log("err", err)
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
@@ -340,17 +337,17 @@ func (o *Session) isMessageValid(m *Message) error {
 	seq := m.IkeHeader.MsgId
 	if m.IkeHeader.Flags.IsResponse() {
 		// response id ought to be the same as our request id
-		if seq != o.msgIdReq {
+		if seq != o.msgIDReq {
 			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
-				fmt.Sprintf("unexpected response id %d, expected %d", seq, o.msgIdReq))
+				fmt.Sprintf("unexpected response id %d, expected %d", seq, o.msgIDReq))
 		}
 		// requestId has been confirmed, increment it for next request
-		o.msgIdReq++
+		o.msgIDReq++
 	} else { // request
 		// TODO - does not handle our responses getting lost
-		if seq != o.msgIdResp {
+		if seq != o.msgIDResp {
 			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
-				fmt.Sprintf("unexpected request id %d, expected %d", seq, o.msgIdResp))
+				fmt.Sprintf("unexpected request id %d, expected %d", seq, o.msgIDResp))
 		}
 		// incremented by sender
 	}
@@ -372,27 +369,27 @@ func saAddr(sa *platform.SaParams, local, remote net.Addr) {
 		sa.Res = remoteIP
 	}
 }
-func (o *Session) SendMessage(msg *OutgoingMessge) error {
-	return o.Conn.WritePacket(msg.Data, o.Remote)
-}
+
 func (o *Session) IkeAuth(err error) {
 	if err == nil {
-		level.Info(o.Logger).Log("New IKE SA: ", o)
+		o.Logger.Log("IKE_SA", "installed", "sa", o)
 	} else {
-		level.Warn(o.Logger).Log("IKE SA FAILED: %+v", err)
+		level.Warn(o.Logger).Log("IKE_SA", "failed", "err", err)
 	}
 }
 func (o *Session) AddSa(sa *platform.SaParams) error {
 	saAddr(sa, o.Local, o.Remote)
 	err := o.Cb.AddSa(o, sa)
-	level.Info(o.Logger).Log("Installed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
-		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
+	o.Logger.Log("CHILD_SA", "installed",
+		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
+		"err", err)
 	return err
 }
 func (o *Session) RemoveSa(sa *platform.SaParams) error {
 	saAddr(sa, o.Local, o.Remote)
 	err := o.Cb.RemoveSa(o, sa)
-	level.Info(o.Logger).Log("Removed Child SA: %#x<=>%#x; [%s]%s<=>%s[%s] err: %v",
-		sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res, err)
+	o.Logger.Log("CHILD_SA", "removed",
+		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
+		"err", err)
 	return err
 }

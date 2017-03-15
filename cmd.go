@@ -46,16 +46,16 @@ func (i *Cmd) onError(session *Session, err error) {
 
 func (i *Cmd) runSession(spi uint64, s *Session) (err error) {
 	i.sessions.Add(spi, s)
+	// wait for session to finish
 	err = RunSession(s)
 	switch errors.Cause(err) {
 	case errPeerRemovedIkeSa:
 		s.HandleClose()
 	default:
-		level.Warn(s.Logger).Log("Error", err)
+		level.Warn(s.Logger).Log("err", err)
 	}
-	level.Info(s.Logger).Log("Remove IKE SA: ", fmt.Sprintf("%#x<=>%#x: %s", s.IkeSpiI, s.IkeSpiR, err))
-	// wait for session to finish
 	i.sessions.Remove(spi)
+	s.Logger.Log("IKE_SA", "removed", "session", fmt.Sprintf("%s<=>%s", s.IkeSpiI, s.IkeSpiR))
 	return
 }
 
@@ -70,11 +70,7 @@ func (i *Cmd) newResponder(spi uint64, msg *Message, config *Config, log log.Log
 	if err := CheckInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
 		if reply := InitErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
-			data, err := EncodeMessage(reply, nil, false, log)
-			if err != nil {
-				return nil, errors.Wrap(err, "error encoding init reply")
-			}
-			i.conn.WritePacket(data, msg.RemoteAddr)
+			WriteMessage(i.conn, reply, nil, false, log)
 		}
 		// dont create a new session
 		return nil, err
@@ -105,13 +101,13 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) 
 			}
 			initiator, err := NewInitiator(config, sd, log)
 			if err != nil {
-				level.Error(log).Log("could not start Initiator: ", err)
+				level.Error(log).Log("msg", "could not start Initiator", "err", err)
 				return
 			}
 			spi := SpiToInt64(initiator.IkeSpiI)
 			// TODO - currently this is break before make
 			if err = i.runSession(spi, initiator); err == context.DeadlineExceeded {
-				level.Info(initiator.Logger).Log("ReKeying: ")
+				level.Info(initiator.Logger).Log("msg", "reKeying ")
 				continue
 			} else if err == context.Canceled {
 				break
@@ -146,7 +142,7 @@ func (i *Cmd) Run(config *Config, log log.Logger) error {
 			var err error
 			session, err = i.newResponder(spi, msg, config, log)
 			if err != nil {
-				level.Warn(log).Log("drop packet: ", err)
+				level.Warn(log).Log("msg", "drop packet: ", "err", err)
 				continue
 			}
 		}

@@ -22,6 +22,8 @@ func TestInit1(t *testing.T) {
 	sa := make(chan *platform.SaParams, 1)
 	cerr := make(chan error, 1)
 
+	log := log.NewLogfmtLogger(os.Stdout)
+
 	go runTestInitiator(cfg, &testcb{chr, sa, cerr}, chi, log)
 	go runTestResponder(cfg, &testcb{chi, sa, cerr}, chr, log)
 
@@ -40,7 +42,8 @@ func TestInit2(t *testing.T) {
 	sa := make(chan *platform.SaParams, 1)
 	cerr := make(chan error, 1)
 
-	go runTestInitiator(cfg1, &testcb{chr, sa, cerr}, chi, log)
+	log1 := log.NewLogfmtLogger(os.Stdout)
+	go runTestInitiator(cfg1, &testcb{chr, sa, cerr}, chi, log1)
 
 	log2 := log.NewLogfmtLogger(os.Stdout)
 	var cfg2 = *cfg1

@@ -132,7 +132,7 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log log.Logger) (*Payload
 		if err := payload.Decode(pbuf); err != nil {
 			return nil, err
 		}
-		level.Debug(log).Log("Payload %s: %s from:\n%s", payload.Type(), spew.Sdump(payload), hex.Dump(pbuf))
+		level.Debug(log).Log("type", payload.Type(), "pld", spew.Sdump(payload), "dump", hex.Dump(pbuf))
 		payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
 			// log.V(1).Infof("Received %s: encrypted payloads %s", s.IkeHeader.ExchangeType, *payloads)
@@ -159,7 +159,7 @@ func EncodePayloads(payloads *Payloads, log log.Logger) (b []byte) {
 		}
 		hdr.NextPayload = next
 		body = append(hdr.Encode(log), body...)
-		level.Debug(log).Log("Payload %s: %s to:\n%s", pl.Type(), spew.Sdump(pl), hex.Dump(body))
+		level.Debug(log).Log("type", pl.Type(), "pld", spew.Sdump(pl), "dump", hex.Dump(body))
 		b = append(b, body...)
 	}
 	return

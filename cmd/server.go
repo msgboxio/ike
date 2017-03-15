@@ -17,15 +17,13 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
-var logger log.Logger
-
-func waitForSignal(cancel context.CancelFunc) {
+func waitForSignal(cancel context.CancelFunc, logger log.Logger) {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel()
-	level.Error(logger).Log(sig.String())
+	level.Error(logger).Log("signal", sig.String())
 }
 
 var localID = &ike.PskIdentities{
@@ -42,6 +40,8 @@ var remoteID = &ike.PskIdentities{
 
 // var remoteID = &ike.CertIdentity{}
 
+var isDebug bool
+
 func loadConfig() (config *ike.Config, localString string, remoteString string) {
 	flag.StringVar(&localString, "local", "0.0.0.0:4500", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
@@ -55,7 +55,6 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
 	flag.StringVar(&peerID, "peerid", "", "Peer ID")
 
-	var isDebug bool
 	flag.BoolVar(&isDebug, "debug", isDebug, "debug logs")
 
 	flag.Parse()
@@ -72,14 +71,14 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 		if certFile != "" {
 			certs, err := ike.LoadCerts(certFile)
 			if err != nil {
-				level.Warn(log).Log("Cert: %s", err)
+				level.Warn(log).Log("err", err)
 			}
 			localId.Certificate = certs[0]
 		}
 		if keyFile != "" {
 			key, err := ike.LoadKey(keyFile)
 			if err != nil {
-				level.Warn(log).Log("Key: %s", err)
+				level.Warn(log).Log("err", err)
 			}
 			localId.PrivateKey = key
 		}
@@ -95,28 +94,33 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	config.LocalID = localID
 	config.RemoteID = remoteID
 
-	logger = log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
-	if isDebug {
-		logger = level.NewFilter(logger, level.AllowDebug())
-	}
 	return
 }
 
 func main() {
 	config, localString, remoteString := loadConfig()
+
+	logger := log.NewLogfmtLogger(os.Stdout)
+	if isDebug {
+		logger = level.NewFilter(logger, level.AllowDebug())
+	} else {
+		logger = level.NewFilter(logger, level.AllowInfo())
+	}
+	// logger = log.With(logger, "ts", log.DefaultTimestamp, "caller", log.DefaultCaller)
+
 	cxt, cancel := context.WithCancel(context.Background())
-	go waitForSignal(cancel)
+	go waitForSignal(cancel, logger)
 
 	ifs, _ := net.InterfaceAddrs()
-	logger.Log("Available interfaces", ifs)
+	logger.Log("interfaces", spew.Sprintf("%#v", ifs))
 	// this should load the xfrm modules
 	// requires root
 	cb := func(msg interface{}) {
-		logger.Log("xfrm:", spew.Sdump(msg))
+		logger.Log("xfrm:", spew.Sprintf("%#v", msg))
 	}
 	platform.ListenForEvents(cxt, cb, logger)
 
-	pconn, err := ike.Listen("udp", localString)
+	pconn, err := ike.Listen("udp", localString, logger)
 	if err != nil {
 		panic(err)
 	}

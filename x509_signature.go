@@ -66,8 +66,7 @@ func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, c
 	}
 	// check if specified signature algorithm is available
 	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
-		log.Log("Verifying using SignatureAlgorithm %v, cert SignatureAlgorithm %v",
-			method, cert.SignatureAlgorithm)
+		log.Log("verify", method, "cert", cert.SignatureAlgorithm)
 		if err := checkSignature(signed, sigAuth.Signature, method, cert); err != nil {
 			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
 		}
@@ -99,7 +98,7 @@ func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed [
 }
 
 func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log log.Logger) (signature []byte, err error) {
-	log.Log("Signing Using SignatureAlgorithm: %v", algo)
+	log.Log("Signing", algo)
 
 	var hashType crypto.Hash
 	switch algo {

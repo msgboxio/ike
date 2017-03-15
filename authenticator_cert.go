@@ -29,22 +29,22 @@ func (r *CertAuthenticator) AuthMethod() protocol.AuthMethod {
 }
 
 func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger log.Logger) ([]byte, error) {
-	certId, ok := r.identity.(*CertIdentity)
+	certID, ok := r.identity.(*CertIdentity)
 	if !ok {
 		// should never happen
 		panic("Logic Error")
 	}
 	// certificate is not required to sign
 	// it is transferred to peer, and hopefully signature algos are compatible
-	if certId.Certificate == nil {
+	if certID.Certificate == nil {
 		return nil, errors.Errorf("missing certificate")
 	}
-	if certId.PrivateKey == nil {
+	if certID.PrivateKey == nil {
 		return nil, errors.Errorf("missing private key")
 	}
-	level.Info(logger).Log("Ike Auth: OUR CERT:", FormatCert(certId.Certificate))
+	level.Info(logger).Log("Auth", "OUR", "cert", FormatCert(certID.Certificate))
 	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
-	return Sign(certId.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certId.PrivateKey, logger)
+	return Sign(certID.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certID.PrivateKey, logger)
 }
 
 func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error {

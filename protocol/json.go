@@ -16,6 +16,10 @@ func (p Payloads) MarshalJSON() ([]byte, error) {
 	return json.Marshal(jmap)
 }
 
-func (s Spi) MarshalJSON() ([]byte, error) {
+func (s Spi) String() string {
+	return fmt.Sprintf("%#x", []byte(s))
+}
+
+func (s *Spi) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"0x%x\"", s)), nil
 }

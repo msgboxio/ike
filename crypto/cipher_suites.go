@@ -14,6 +14,9 @@ type Cipher interface {
 	EncryptMac(headers, payload, skA, skE []byte, log log.Logger) (b []byte, err error)
 }
 
+var _ Cipher = (*simpleCipher)(nil)
+var _ Cipher = (*aeadCipher)(nil)
+
 type CipherSuite struct {
 	Cipher  // aead or nonAead
 	Prf     *Prf

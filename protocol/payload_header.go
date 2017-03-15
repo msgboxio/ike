@@ -22,7 +22,7 @@ func (h PayloadHeader) Encode(log log.Logger) (b []byte) {
 	b = make([]byte, PAYLOAD_HEADER_LENGTH)
 	packets.WriteB8(b, 0, uint8(h.NextPayload))
 	packets.WriteB16(b, 2, h.PayloadLength+PAYLOAD_HEADER_LENGTH)
-	level.Debug(log).Log("Payload Header: %+v to \n%s", h, hex.Dump(b))
+	level.Debug(log).Log("PayloadHeader", h, "to", hex.Dump(b))
 	return
 }
 
@@ -36,6 +36,6 @@ func (h *PayloadHeader) Decode(b []byte, log log.Logger) error {
 		h.IsCritical = true
 	}
 	h.PayloadLength, _ = packets.ReadB16(b, 2)
-	level.Debug(log).Log("Payload Header: %+v from \n%s", *h, hex.Dump(b))
+	level.Debug(log).Log("PayloadHeader", *h, "from", hex.Dump(b))
 	return nil
 }

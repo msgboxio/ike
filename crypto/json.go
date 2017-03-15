@@ -25,3 +25,7 @@ func (cs *CipherSuite) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(suite)
 }
+
+func (cs *CipherSuite) String() string {
+	return fmt.Sprintf("Cipher:%s Prf:%s DhGroup:%s", _str(cs.Cipher), _str(cs.Prf), _str(cs.DhGroup))
+}

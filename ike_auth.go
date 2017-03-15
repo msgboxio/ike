@@ -69,7 +69,7 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 	authP := m.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		level.Info(logger).Log("Ike Auth: SHARED_KEY of ", string(idP.Data))
+		o.Logger.Log("msg", "Ike Auth", "SHARED_KEY", string(idP.Data))
 		return o.authRemote.Verify(initB, idP, authP.Data, o.Logger)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		chain, err := m.Payloads.GetCertchain()
@@ -77,7 +77,7 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 			return err
 		}
 		cert := FormatCert(chain[0])
-		level.Info(logger).Log("Ike Auth: PEER CERT: %+v", cert)
+		o.Logger.Log("msg", "Ike Auth", "PEER_CERT", cert)
 		// ensure key used to compute a digital signature belongs to the name in the ID payload
 		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
 			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
@@ -125,7 +125,7 @@ func HandleSaForSession(o *Session, m *Message) error {
 			return errors.Errorf("peer notified: %s;", nErr)
 		}
 	}
-	level.Debug(o.Logger).Log("params", spew.Sdump(params), "err", err)
+	level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
 	if err != nil {
 		return err
 	}
@@ -133,8 +133,8 @@ func HandleSaForSession(o *Session, m *Message) error {
 		return err
 	}
 	// TODO - check selector
-	level.Info(o.Logger).Log("Configured selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR))
-	level.Info(o.Logger).Log("Offered selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
+	o.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR))
+	o.Logger.Log("offered_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
 	// message looks OK
 	if o.isInitiator {
 		if params.isResponse {
@@ -160,19 +160,19 @@ func HandleSaForSession(o *Session, m *Message) error {
 		if params.lifetime <= 2*time.Second {
 			reauth = 0
 		}
-		level.Info(logger).Log("Lifetime:", params.lifetime, "reauth in:", reauth)
+		o.Logger.Log("Lifetime", params.lifetime, "reauth_in", reauth)
 		// TODO - start alarm for reauth
 		// time.AfterFunc(reauth, func() {
-		// 	level.Info(logger).Log("Lifetime Expired")
+		// 	o.Logger.Log("Lifetime Expired")
 		// 	o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
 		// })
 	}
 	// transport mode
 	if params.isTransportMode && o.cfg.IsTransportMode {
-		level.Info(logger).Log("Using Transport Mode")
+		o.Logger.Log("msg", "Using Transport Mode")
 	} else {
 		if params.isTransportMode {
-			level.Info(logger).Log("Peer wanted Transport mode, forcing Tunnel mode")
+			o.Logger.Log("msg", "Peer wanted Transport mode, forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			return errors.New("Peer Rejected Transport Mode Config")
 		}

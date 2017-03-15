@@ -39,7 +39,7 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger 
 		return nil, errors.Errorf("No Secret for %s", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), psk.forInitiator)
-	level.Debug(logger).Log("Ike PSK Auth as ", string(idP.Data))
+	level.Debug(logger).Log("sign", "PSK", "id", string(idP.Data))
 	// TODO : tkm.Auth always uses the hash negotiated with prf
 	prf := psk.tkm.suite.Prf
 	return prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length], nil

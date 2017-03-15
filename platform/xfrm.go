@@ -228,8 +228,9 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 }
 
 func InstallChildSa(sa *SaParams, log log.Logger) error {
+	logger = log.With(logger, "do", "install")
 	for _, policy := range makeSaPolicies(256, 16, sa) {
-		level.Debug(log).Log("adding Policy: %+v", policy)
+		level.Debug(log).Log("Policy", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
@@ -241,7 +242,7 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
-		level.Debug(log).Log("adding State: %+v", state)
+		level.Debug(log).Log("State", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
 			if err == syscall.EEXIST {
@@ -257,15 +258,16 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 }
 
 func RemoveChildSa(sa *SaParams, log log.Logger) error {
+	logger = log.With(logger, "do", "remove")
 	for _, policy := range makeSaPolicies(256, 16, sa) {
-		level.Debug(log).Log("removing Policy: %+v", policy)
+		level.Debug(log).Log("Policy", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {
 			return errors.Errorf("Failed to remove policy %v: %v", policy, err)
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
-		level.Debug(log).Log("removing State: %+v", state)
+		level.Debug(log).Log("State", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateDel(state); err != nil {
 			return errors.Errorf("Failed to remove state %+v: %v", state, err)

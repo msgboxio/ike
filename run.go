@@ -14,7 +14,7 @@ const SaRekeyTimeout = 5 * time.Second
 
 func runInitiator(o *Session) error {
 	// send initiator INIT after jittered wait and wait for reply
-	time.Sleep(Jitter(4*time.Second, 1))
+	time.Sleep(Jitter(2*time.Second, -0.5))
 	msg, err := o.SendMsgGetReply(o.InitMsg)
 	if err != nil {
 		return err
@@ -48,7 +48,7 @@ func runInitiator(o *Session) error {
 	o.SetAddresses(msg.LocalAddr, msg.RemoteAddr)
 	// COOKIE is handled within cmd.newSession
 	if err = HandleInitForSession(o, init, msg); err != nil {
-		level.Error(o.Logger).Log("Error Initializing:", err)
+		level.Error(o.Logger).Log("init", err)
 		return err
 	}
 	if err = o.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
@@ -224,7 +224,7 @@ func monitorSa(o *Session) error {
 				// ONLY :
 				// Accept SA rekey if responder
 				if o.isInitiator {
-					level.Info(o.Logger).Log("Rekey Request: Currently only supported for responder")
+					o.Logger.Log("warn", "Rekey Request: Currently only supported for responder")
 					// send notification
 					o.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
 					continue
@@ -242,12 +242,12 @@ func monitorSa(o *Session) error {
 			// ONLY :
 			// Initiate SA rekey if initiator
 			if !o.isInitiator {
-				level.Info(o.Logger).Log("Rekey Timeout: Currently only supported for initiator")
+				o.Logger.Log("warn", "Rekey Timeout: Currently only supported for initiator")
 				continue
 			}
-			level.Info(o.Logger).Log("Rekey Timeout")
+			o.Logger.Log("note", "Rekey Timeout")
 			if err := runIpsecRekey(o); err != nil {
-				level.Info(o.Logger).Log("Rekey Error:", err)
+				o.Logger.Log("error:", err)
 				continue
 			}
 			// reset timers

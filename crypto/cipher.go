@@ -70,8 +70,9 @@ func (cs *simpleCipher) Overhead(clear []byte) int {
 	return cs.blockLen - len(clear)%cs.blockLen + cs.macLen + cs.ivLen
 }
 func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte, log log.Logger) (dec []byte, err error) {
-	level.Debug(log).Log("simple verify&decrypt:Clear:\n%sSkA:\n%sSkE\n%s",
-		hex.Dump(ike), hex.Dump(skA), hex.Dump(skE))
+	level.Debug(log).Log(
+		"msg", "simple verify&decrypt",
+		"Clear", hex.Dump(ike), "SkA", hex.Dump(skA), "SkE", hex.Dump(skE))
 	// MAC-then-decrypt
 	if err = verifyMac(skA, ike, cs.macLen, cs.macFunc); err != nil {
 		return
@@ -90,8 +91,9 @@ func (cs *simpleCipher) EncryptMac(headers, payload, skA, skE []byte, log log.Lo
 	data := append(headers, encr...)
 	mac := cs.macFunc(skA, data)
 	b = append(data, mac...)
-	level.Debug(log).Log("simple encrypt&mac:\nMac:\n%sSkA\n%sSkE\n%s",
-		hex.Dump(mac), hex.Dump(skA), hex.Dump(skE))
+	level.Debug(log).Log(
+		"msg", "simple encrypt&mac",
+		"Mac", hex.Dump(mac), "SkA", hex.Dump(skA), "SkE", hex.Dump(skE))
 	return
 }
 
@@ -141,7 +143,11 @@ func decrypt(b, key []byte, ivLen int, cipherFn cipherFunc, log log.Logger) (dec
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	level.Debug(log).Log("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
+	level.Debug(log).Log(
+		"Pad ", padlen,
+		"Clear", hex.Dump(clear),
+		"Cyp", hex.Dump(ciphertext),
+		"IV", hex.Dump(iv))
 	return
 }
 
@@ -160,16 +166,19 @@ func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc, log log.Logger) 
 	// CBC mode always works in whole blocks.
 	// (b - (length % b)) % b
 	// pl := (block.BlockSize() - (len(clear) % block.BlockSize())) % block.BlockSize()
-	pl := block.BlockSize() - len(clear)%block.BlockSize()
-	if pl != 0 {
-		pad := make([]byte, pl)
-		pad[pl-1] = byte(pl - 1)
+	padlen := block.BlockSize() - len(clear)%block.BlockSize()
+	if padlen != 0 {
+		pad := make([]byte, padlen)
+		pad[padlen-1] = byte(padlen - 1)
 		clear = append(clear, pad...)
 	}
-	cyp := make([]byte, len(clear))
-	block.CryptBlocks(cyp, clear)
-	b = append(iv.Bytes(), cyp...)
-	level.Debug(log).Log("Pad %d: Clear:\n%sIV:\n%sCyp:\n%s",
-		pl, hex.Dump(clear), hex.Dump(iv.Bytes()), hex.Dump(cyp))
+	ciphertext := make([]byte, len(clear))
+	block.CryptBlocks(ciphertext, clear)
+	b = append(iv.Bytes(), ciphertext...)
+	level.Debug(log).Log(
+		"Pad ", padlen,
+		"Clear", hex.Dump(clear),
+		"Cyp", hex.Dump(ciphertext),
+		"IV", hex.Dump(iv.Bytes()))
 	return
 }

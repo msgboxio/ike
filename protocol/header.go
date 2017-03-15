@@ -37,7 +37,7 @@ func DecodeIkeHeader(b []byte, log log.Logger) (h *IkeHeader, err error) {
 	if h.MsgLength > MAX_IKE_MESSAGE_LEN {
 		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Bad Message Length in header : %d", h.MsgLength))
 	}
-	level.Debug(log).Log("Ike Header: %+v from \n%s", *h, hex.Dump(b[:IKE_HEADER_LEN]))
+	level.Debug(log).Log("Header", *h, "from", hex.Dump(b[:IKE_HEADER_LEN]))
 	return
 }
 
@@ -51,6 +51,6 @@ func (h *IkeHeader) Encode(log log.Logger) (b []byte) {
 	packets.WriteB8(b, 19, uint8(h.Flags))
 	packets.WriteB32(b, 20, h.MsgId)
 	packets.WriteB32(b, 24, h.MsgLength)
-	level.Debug(log).Log("Ike Header: %+v to \n%s", *h, hex.Dump(b))
+	level.Debug(log).Log("Header", *h, "to", hex.Dump(b))
 	return
 }

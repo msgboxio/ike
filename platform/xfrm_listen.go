@@ -24,7 +24,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 		panic(err)
 	}
 
-	level.Debug(log).Log("Started listening for xfrm messages from kernel")
+	level.Debug(log).Log("note", "Started listening for xfrm messages from kernel")
 	go func() {
 	done:
 		for {
@@ -33,12 +33,12 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 				doneCh <- struct{}{}
 				break done
 			case err := <-errCh:
-				log.Warn("Error from Listener", err)
+				log.Warn("listener", err)
 				break done
 			case msg := <-ch:
 				switch msg.Type() {
 				case nl.XFRM_MSG_EXPIRE:
-					level.Debug(log).Log("xfrm expire: %+v", spew.Sdump(msg.(*netlink.XfrmMsgExpire)))
+					level.Debug(log).Log("expire", spew.Sdump(msg.(*netlink.XfrmMsgExpire)))
 				case nl.XFRM_MSG_ACQUIRE:
 				// case nl.XFRM_MSG_NEWPOLICY:
 				// case nl.XFRM_MSG_DELPOLICY:
@@ -48,7 +48,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 				}
 			}
 		}
-		level.Debug(log).Log("Stopped listening for xfrm messages from kernel")
+		level.Debug(log).Log("note", "Stopped listening for xfrm messages from kernel")
 		close(ch)
 		close(errCh)
 		close(doneCh)

@@ -62,7 +62,7 @@ func TestIkeMsgGen(t *testing.T) {
 	init := InitFromSession(params)
 	init.IkeHeader.MsgId = 42
 	// encode & write init msg
-	initIb, err := EncodeMessage(init, tkm, true, log)
+	initIb, err := init.Encode(tkm, true, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,9 +78,9 @@ func TestIkeMsgGen(t *testing.T) {
 		params.IkeSpiI, params.IkeSpiR,
 		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
 		cfg.TsI, cfg.TsR,
-		&PskAuthenticator{tkm, true, ids, log},
+		&PskAuthenticator{tkm, true, ids},
 		time.Hour,
-	}, initIb)
+	}, initIb, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestIkeMsgGen(t *testing.T) {
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
 	authI.IkeHeader.MsgId = 43
 	// encode & write authI msg
-	authIb, err := EncodeMessage(authI, tkm, true, log)
+	authIb, err := authI.Encode(tkm, true, log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +140,6 @@ func TestCorpusDecode(t *testing.T) {
 			t.Errorf("%s:%s", file.Name(), err)
 			t.Fail()
 		}
-		t.Log("%s: \n%s", file.Name(), string(js))
+		t.Log("file", file.Name(), "data", string(js))
 	}
 }

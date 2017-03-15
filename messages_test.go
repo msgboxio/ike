@@ -78,7 +78,6 @@ func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
 		return nil, err
 	}
 	if len(dec) < int(msg.IkeHeader.MsgLength) {
-		log.Error("")
 		err = protocol.ERR_INVALID_SYNTAX
 		return nil, err
 	}
@@ -115,7 +114,7 @@ func testDecode(dec []byte, tkm *Tkm, forInitiator bool, t *testing.T) *Message 
 	t.Logf("\n%s", string(js))
 
 	log := log.NewLogfmtLogger(os.Stdout)
-	enc, err := EncodeMessage(msg, tkm, forInitiator, log)
+	enc, err := msg.Encode(tkm, forInitiator, log)
 	if err != nil {
 		t.Fatal(err)
 	}

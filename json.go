@@ -2,14 +2,14 @@ package ike
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 )
 
 func (t *Tkm) String() string {
-	b, _ := json.Marshal(t)
-	return string(b)
+	return fmt.Sprintf("ESP:%s IKE:%s", t.espSuite, t.suite)
 }
 
 func (t *Tkm) MarshalJSON() ([]byte, error) {
@@ -17,11 +17,6 @@ func (t *Tkm) MarshalJSON() ([]byte, error) {
 		ESP, IKE *crypto.CipherSuite
 	}{ESP: t.espSuite, IKE: t.suite}
 	return json.Marshal(suite)
-}
-
-func (o *Session) String() string {
-	b, _ := json.Marshal(o)
-	return string(b)
 }
 
 func (o *Session) MarshalJSON() ([]byte, error) {

@@ -20,7 +20,7 @@ func NewInitiator(cfg *Config, sd *SessionData, logger log.Logger) (*Session, er
 		incoming:    make(chan *Message, 10),
 		SessionData: sd,
 	}
-	o.Logger = log.With(logger, "i", o.Tag())
+	o.Logger = log.With(logger, "session", o.Tag())
 
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)

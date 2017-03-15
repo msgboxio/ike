@@ -103,7 +103,7 @@ func CheckInitResponseForSession(o *Session, init *initParams) error {
 // return error secure signatures are configured, but not proposed by peer
 func checkSignatureAlgo(o *Session, isEnabled bool) error {
 	if !isEnabled {
-		level.Warn(o.Logger).Log("Not using secure signatures")
+		level.Warn(o.Logger).Log("msg", "Not using secure signatures")
 		if o.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
 			return errors.New("Peer is not using secure signatures")
 		}
@@ -119,15 +119,15 @@ func HandleInitForSession(o *Session, init *initParams, m *Message) error {
 	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			level.Info(o.Logger).Log("Peer requested", protocol.AUTH_DIGITAL_SIGNATURE)
+			o.Logger.Log("secure", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.LocalAddr) {
-				level.Info(o.Logger).Log("HOST nat detected", m.LocalAddr)
+				o.Logger.Log("HOST_NAT", m.LocalAddr)
 			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.RemoteAddr) {
-				level.Info(o.Logger).Log("PEER nat detected", m.RemoteAddr)
+				o.Logger.Log("PEER_NAT", m.RemoteAddr)
 			}
 		}
 	}
