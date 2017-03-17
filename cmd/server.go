@@ -125,7 +125,7 @@ func main() {
 		panic(err)
 	}
 	// requires root
-	if err := platform.SetSocketBypas(ike.InnerConn(pconn), syscall.AF_INET6); err != nil {
+	if err := platform.SetSocketBypas(pconn.Inner(), syscall.AF_INET6); err != nil {
 		panic(err)
 	}
 

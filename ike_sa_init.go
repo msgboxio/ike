@@ -23,7 +23,7 @@ func InitFromSession(o *Session) *Message {
 		spiR:              o.IkeSpiR,
 		proposals:         ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
 		cookie:            o.responderCookie,
-		dhTransformId:     o.tkm.suite.DhGroup.TransformId(),
+		dhTransformID:     o.tkm.suite.DhGroup.TransformId(),
 		dhPublic:          o.tkm.DhPublic,
 		nonce:             nonce,
 		rfc7427Signatures: o.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE,
@@ -47,10 +47,10 @@ func CheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	// check if transforms are usable
 	// make sure dh tranform id is the one that was configured
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-	if dh := protocol.DhTransformId(tr); dh != init.dhTransformId {
+	if dh := protocol.DhTransformId(tr); dh != init.dhTransformID {
 		return errors.Wrapf(protocol.ERR_INVALID_KE_PAYLOAD,
 			"Using different DH transform [%s] vs the one configured [%s]",
-			init.dhTransformId, dh)
+			init.dhTransformID, dh)
 	}
 	// check ike proposal
 	if err := cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {

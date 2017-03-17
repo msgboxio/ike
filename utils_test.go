@@ -75,6 +75,37 @@ func eccertTestIds(t testing.TB) (localID, remoteID Identity) {
 	return
 }
 
+func testCfg() *Config {
+	cfg := DefaultConfig()
+	cfg.LocalID = pskTestId
+	cfg.RemoteID = pskTestId
+	return cfg
+}
+
+type mockConn struct {
+	ch chan []byte
+}
+
+func (m *mockConn) ReadPacket() (b []byte, remoteAddr, localAddr net.Addr, err error) {
+	return <-m.ch, &net.UDPAddr{}, &net.UDPAddr{}, nil
+}
+func (m *mockConn) WritePacket(reply []byte, remoteAddr net.Addr) error {
+	copy := append([]byte{}, reply...)
+	m.ch <- copy
+	return nil
+}
+func (m *mockConn) Inner() net.Conn {
+	return nil
+}
+func (m *mockConn) Close() error {
+	close(m.ch)
+	return nil
+}
+
+func testConn() *mockConn {
+	return &mockConn{ch: make(chan []byte, 2)}
+}
+
 type testcb struct {
 	writeTo chan []byte
 	saTo    chan *platform.SaParams

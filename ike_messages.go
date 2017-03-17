@@ -57,7 +57,7 @@ type initParams struct {
 
 	nonce         *big.Int
 	proposals     []*protocol.SaProposal
-	dhTransformId protocol.DhTransformId
+	dhTransformID protocol.DhTransformId
 	dhPublic      *big.Int
 
 	ns                []*protocol.NotifyPayload
@@ -96,7 +96,7 @@ func makeInit(params *initParams) *Message {
 	})
 	init.Payloads.Add(&protocol.KePayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		DhTransformId: params.dhTransformId,
+		DhTransformId: params.dhTransformID,
 		KeyData:       params.dhPublic,
 	})
 	init.Payloads.Add(&protocol.NoncePayload{
@@ -158,7 +158,7 @@ func parseInit(m *Message) (*initParams, error) {
 	}
 	// check if transforms are usable
 	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
-	params.dhTransformId = keI.DhTransformId
+	params.dhTransformID = keI.DhTransformId
 	params.dhPublic = keI.KeyData
 	// get SA payload
 	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
