@@ -20,16 +20,16 @@ type CertAuthenticator struct {
 
 var _ Authenticator = (*CertAuthenticator)(nil)
 
-func (r *CertAuthenticator) Identity() Identity {
-	return r.identity
+func (o *CertAuthenticator) Identity() Identity {
+	return o.identity
 }
 
-func (r *CertAuthenticator) AuthMethod() protocol.AuthMethod {
-	return r.authMethod
+func (o *CertAuthenticator) AuthMethod() protocol.AuthMethod {
+	return o.authMethod
 }
 
-func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger log.Logger) ([]byte, error) {
-	certID, ok := r.identity.(*CertIdentity)
+func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger log.Logger) ([]byte, error) {
+	certID, ok := o.identity.(*CertIdentity)
 	if !ok {
 		// should never happen
 		panic("Logic Error")
@@ -43,18 +43,18 @@ func (r *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger l
 		return nil, errors.Errorf("missing private key")
 	}
 	level.Info(logger).Log("Auth", "OUR", "cert", FormatCert(certID.Certificate))
-	signed := r.tkm.SignB(initB, idP.Encode(), r.forInitiator)
-	return Sign(certID.Certificate.SignatureAlgorithm, r.AuthMethod(), signed, certID.PrivateKey, logger)
+	signed := o.tkm.SignB(initB, idP.Encode(), o.forInitiator)
+	return CreateSignature(certID.Certificate.SignatureAlgorithm, o.AuthMethod(), signed, certID.PrivateKey, logger)
 }
 
-func (r *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error {
-	if r.userCertificate == nil {
+func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error {
+	if o.userCertificate == nil {
 		return errors.New("missing Certificate")
 	}
-	signed := r.tkm.SignB(initB, idP.Encode(), !r.forInitiator)
-	return verifySignature(r.AuthMethod(), signed, authData, r.userCertificate, logger)
+	signed := o.tkm.SignB(initB, idP.Encode(), !o.forInitiator)
+	return VerifySignature(o.AuthMethod(), signed, authData, o.userCertificate, logger)
 }
 
-func (r *CertAuthenticator) SetUserCertificate(cert *x509.Certificate) {
-	r.userCertificate = cert
+func (o *CertAuthenticator) SetUserCertificate(cert *x509.Certificate) {
+	o.userCertificate = cert
 }

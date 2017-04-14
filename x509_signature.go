@@ -11,8 +11,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-var asnCertAuthTypes = map[string]x509.SignatureAlgorithm{}
-var signatureAlgorithmToAsn1 = map[x509.SignatureAlgorithm][]byte{}
+var asnToCertAuth = map[string]x509.SignatureAlgorithm{}
+var certAuthToAsn = map[x509.SignatureAlgorithm][]byte{}
 
 // asn1 objects from rfc7427
 var (
@@ -49,56 +49,73 @@ func init() {
 	}
 	for k, v := range _asnCertAuthTypes {
 		d, _ := hex.DecodeString(k)
-		asnCertAuthTypes[string(d)] = v
-		signatureAlgorithmToAsn1[v] = d
+		asnToCertAuth[string(d)] = v
+		certAuthToAsn[v] = d
 	}
 }
 
-func verifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate, log log.Logger) error {
+// VerifySignature using certificate & configured auth method
+func VerifySignature(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate, log log.Logger) error {
 	// if using plain rsa signature, verify using SHA1
-	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
-		return checkSignature(signed, signature, x509.SHA1WithRSA, cert)
+	switch authMethod {
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DSS_DIGITAL_SIGNATURE:
+		return cert.CheckSignature(x509.SHA1WithRSA, signed, signature)
+		// not sure about this
+		// case protocol.AUTH_ECDSA_256:
+		// 	return cert.CheckSignature(x509.ECDSAWithSHA256, signed, signature)
+		// case protocol.AUTH_ECDSA_384:
+		// 	return cert.CheckSignature(x509.ECDSAWithSHA384, signed, signature)
+		// case protocol.AUTH_ECDSA_521:
+		// 	return cert.CheckSignature(x509.ECDSAWithSHA512, signed, signature)
+	case protocol.AUTH_DIGITAL_SIGNATURE:
+		return verifyAuthDigitalSig(authMethod, signed, signature, cert, log)
+	default:
+		return errors.Errorf("Authentication Method is not supported: %s", authMethod)
 	}
+}
+
+func verifyAuthDigitalSig(authMethod protocol.AuthMethod, signed, signature []byte, cert *x509.Certificate, log log.Logger) error {
 	// further parse signature to extract hash & signature algorithm
 	sigAuth := &protocol.SignatureAuth{}
 	if err := sigAuth.Decode(signature); err != nil {
 		return err
 	}
 	// check if specified signature algorithm is available
-	if method, ok := asnCertAuthTypes[string(sigAuth.Asn1Data)]; ok {
-		log.Log("verify", method, "cert", cert.SignatureAlgorithm)
-		if err := checkSignature(signed, sigAuth.Signature, method, cert); err != nil {
-			return errors.Errorf("Ike Auth failed: with method %s, %s", method, err)
+	if algo, ok := asnToCertAuth[string(sigAuth.Asn1Data)]; ok {
+		log.Log("asnSignatureAlgorithm", algo, "certSignatureAlgorithm", cert.SignatureAlgorithm)
+		if err := cert.CheckSignature(algo, signed, sigAuth.Signature); err != nil {
+			return errors.Errorf("Signature Check failed for method %s, %s", algo, err)
 		}
 	} else {
-		return errors.Errorf("Ike Auth failed: signature method not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
+		return errors.Errorf("Signature type not supported:\n%s", hex.Dump(sigAuth.Asn1Data))
 	}
 	return nil
 }
 
-func checkSignature(signed, signature []byte, algorithm x509.SignatureAlgorithm, cert *x509.Certificate) error {
-	return cert.CheckSignature(algorithm, signed, signature)
-}
-
-func Sign(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.Signer, log log.Logger) ([]byte, error) {
+// CreateSignature signs request using private key & configured method
+func CreateSignature(algo x509.SignatureAlgorithm, authMethod protocol.AuthMethod, signed []byte, private crypto.Signer, log log.Logger) ([]byte, error) {
 	// if using a plain old signature, this is all we need
-	if authMethod == protocol.AUTH_RSA_DIGITAL_SIGNATURE {
-		return sign(x509.SHA1WithRSA, signed, private, log)
+	switch authMethod {
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DSS_DIGITAL_SIGNATURE:
+		return signData(x509.SHA1WithRSA, signed, private, log)
+	case protocol.AUTH_DIGITAL_SIGNATURE:
+	default:
+		return nil, errors.Errorf("Authentication Method is not supported: %s", authMethod)
 	}
-	signature, err := sign(algo, signed, private, log)
+	signature, err := signData(algo, signed, private, log)
 	if err != nil {
 		return nil, err
 	}
 	// encode rfc7427 signature
 	sigAuth := &protocol.SignatureAuth{
-		Asn1Data:  signatureAlgorithmToAsn1[algo],
+		Asn1Data:  certAuthToAsn[algo],
 		Signature: signature,
 	}
 	return sigAuth.Encode(), nil
 }
 
-func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log log.Logger) (signature []byte, err error) {
-	log.Log("Signing", algo)
+func signData(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log log.Logger) (signature []byte, err error) {
+	log.Log("SignatureAlgorithm", algo)
 
 	var hashType crypto.Hash
 	switch algo {
@@ -106,9 +123,9 @@ func sign(algo x509.SignatureAlgorithm, signed []byte, priv crypto.Signer, log l
 		hashType = crypto.SHA1
 	case x509.SHA256WithRSA, x509.SHA256WithRSAPSS, x509.DSAWithSHA256, x509.ECDSAWithSHA256:
 		hashType = crypto.SHA256
-	case x509.SHA384WithRSA /*x509.SHA384WithRSAPSS,*/, x509.ECDSAWithSHA384:
+	case x509.SHA384WithRSA, x509.SHA384WithRSAPSS, x509.ECDSAWithSHA384:
 		hashType = crypto.SHA384
-	case x509.SHA512WithRSA /*x509.SHA512WithRSAPSS,*/, x509.ECDSAWithSHA512:
+	case x509.SHA512WithRSA, x509.SHA512WithRSAPSS, x509.ECDSAWithSHA512:
 		hashType = crypto.SHA512
 	default:
 		return nil, x509.ErrUnsupportedAlgorithm

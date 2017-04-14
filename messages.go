@@ -38,6 +38,7 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log
 	return
 }
 
+// DecodeMessage decodes an keeps the message buffer for later decryption
 func DecodeMessage(b []byte, log log.Logger) (msg *Message, err error) {
 	msg = &Message{}
 	if err = msg.DecodeHeader(b, log); err != nil {
@@ -56,6 +57,7 @@ func DecodeMessage(b []byte, log log.Logger) (msg *Message, err error) {
 	return
 }
 
+// DecryptMessage uses crypto keys to decode & verify the message
 func DecryptMessage(m *Message, tkm *Tkm, forInitiator bool, log log.Logger) (err error) {
 	if m.IkeHeader.NextPayload == protocol.PayloadTypeSK {
 		var b []byte
@@ -82,6 +84,7 @@ func (s *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
 	return nil
 }
 
+// Encode encodes the message using crypto keys
 func (msg *Message) Encode(tkm *Tkm, forInitiator bool, log log.Logger) (b []byte, err error) {
 	level.Debug(log).Log("tx:" + spew.Sprintf("%#v", msg))
 	log.Log("sending", fmt.Sprintf("[%d] %s%s", msg.IkeHeader.MsgId, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags),
