@@ -7,11 +7,13 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
+var debugCrypto = false
+
 // Cipher interface provides Encryption & Integrity Protection
 type Cipher interface {
 	Overhead(clear []byte) int
-	VerifyDecrypt(ike, skA, skE []byte, log log.Logger) (dec []byte, err error)
-	EncryptMac(headers, payload, skA, skE []byte, log log.Logger) (b []byte, err error)
+	VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error)
+	EncryptMac(ike, skA, skE []byte) (b []byte, err error)
 }
 
 var _ Cipher = (*simpleCipher)(nil)
@@ -30,8 +32,8 @@ type CipherSuite struct {
 
 // Build a CipherSuite from the given transfom
 // TODO - check that the entire suite makes sense
-func NewCipherSuite(trs protocol.Transforms, log log.Logger) (*CipherSuite, error) {
-	cs := &CipherSuite{Logger: log}
+func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
+	cs := &CipherSuite{}
 	// empty variables, filled in later
 	var aead *aeadCipher
 	var cipher *simpleCipher

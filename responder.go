@@ -15,7 +15,7 @@ func NewResponder(cfg *Config, sd *SessionData, initI *Message, logger log.Logge
 	// assert ?
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	// creating tkm is expensive, should come after checks are positive
-	tkm, err := NewTkm(cfg, logger, noI.Nonce)
+	tkm, err := NewTkm(cfg, noI.Nonce)
 	if err != nil {
 		return nil, err
 	}

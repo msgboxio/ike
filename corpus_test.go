@@ -27,9 +27,9 @@ var ids = PskIdentities{
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-func initiatorTkm(t *testing.T, log log.Logger) *Tkm {
+func initiatorTkm(t *testing.T) *Tkm {
 	config := newConfig()
-	suite, err := crypto.NewCipherSuite(config.ProposalIke, log)
+	suite, err := crypto.NewCipherSuite(config.ProposalIke)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func initiatorTkm(t *testing.T, log log.Logger) *Tkm {
 func TestIkeMsgGen(t *testing.T) {
 	log := log.NewLogfmtLogger(os.Stdout)
 	cfg := newConfig()
-	tkm := initiatorTkm(t, log)
+	tkm := initiatorTkm(t)
 	ikeSpi := MakeSpi()
 	params := &Session{
 		isInitiator: true,

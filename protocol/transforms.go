@@ -87,12 +87,6 @@ var (
 		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_256, IsLast: true},
 	}
 
-	IKE_AES256GCM16_PRFSHA384_ECP384 = Transforms{
-		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_AES_GCM_16, KeyLength: 256}, // AEAD_AES_256_GCM
-		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA2_384},
-		TRANSFORM_TYPE_DH:    &SaTransform{Transform: T_ECP_384, IsLast: true},
-	}
-
 	IKE_CHACHA20POLY1305_PRFSHA256_ECP256 = Transforms{
 		TRANSFORM_TYPE_ENCR:  &SaTransform{Transform: T_AEAD_CHACHA20_POLY1305, KeyLength: 256},
 		TRANSFORM_TYPE_INTEG: &SaTransform{Transform: T_PRF_HMAC_SHA2_256},

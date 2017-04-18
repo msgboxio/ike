@@ -85,38 +85,36 @@ func (s *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
 }
 
 // Encode encodes the message using crypto keys
-func (msg *Message) Encode(tkm *Tkm, forInitiator bool, log log.Logger) (b []byte, err error) {
-	level.Debug(log).Log("tx:" + spew.Sprintf("%#v", msg))
-	log.Log("sending", fmt.Sprintf("[%d] %s%s", msg.IkeHeader.MsgId, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags),
-		"payloads", msg.Payloads)
+func (s *Message) Encode(tkm *Tkm, forInitiator bool, log log.Logger) (b []byte, err error) {
+	level.Debug(log).Log("tx:" + spew.Sprintf("%#v", s))
+	log.Log("sending", fmt.Sprintf("[%d] %s%s", s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags),
+		"payloads", s.Payloads)
 	firstPayloadType := protocol.PayloadTypeNone // no payloads are one possibility
-	if len(msg.Payloads.Array) > 0 {
-		firstPayloadType = msg.Payloads.Array[0].Type()
+	if len(s.Payloads.Array) > 0 {
+		firstPayloadType = s.Payloads.Array[0].Type()
 	}
-	nextPayload := msg.IkeHeader.NextPayload
+	nextPayload := s.IkeHeader.NextPayload
 	if nextPayload == protocol.PayloadTypeSK {
 		if tkm == nil {
 			err = errors.New("cant encrypt, no tkm found")
 			return
 		}
-		payload := protocol.EncodePayloads(msg.Payloads, log)
+		payload := protocol.EncodePayloads(s.Payloads, log)
 		plen := len(payload) + tkm.CryptoOverhead(payload)
-		// payload header
-		ph := protocol.PayloadHeader{
+		// sk payload header
+		skph := protocol.PayloadHeader{
 			NextPayload:   firstPayloadType,
 			PayloadLength: uint16(plen),
 		}.Encode(log)
 		// prepare proper ike header
-		msg.IkeHeader.MsgLength = uint32(protocol.IKE_HEADER_LEN + len(ph) + plen)
-		// encode ike header, and add to protocol header
-		headers := append(msg.IkeHeader.Encode(log), ph...)
+		s.IkeHeader.MsgLength = uint32(protocol.IKE_HEADER_LEN + len(skph) + plen)
 		// finally ask the tkm to apply secrets
-		b, err = tkm.EncryptMac(headers, payload, forInitiator)
+		b, err = tkm.EncryptMac(append(append(s.IkeHeader.Encode(log), skph...), payload...), forInitiator)
 	} else {
-		b = protocol.EncodePayloads(msg.Payloads, log)
-		msg.IkeHeader.NextPayload = firstPayloadType
-		msg.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)
-		b = append(msg.IkeHeader.Encode(log), b...)
+		b = protocol.EncodePayloads(s.Payloads, log)
+		s.IkeHeader.NextPayload = firstPayloadType
+		s.IkeHeader.MsgLength = uint32(len(b) + protocol.IKE_HEADER_LEN)
+		b = append(s.IkeHeader.Encode(log), b...)
 	}
 	return
 }

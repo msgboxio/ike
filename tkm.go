@@ -182,12 +182,12 @@ func (t *Tkm) VerifyDecrypt(ike []byte, forInitiator bool) (dec []byte, err erro
 	if skA == nil || skE == nil {
 		return nil, errors.Wrap(errMissingCryptoKeys, "Decrypting")
 	}
-	dec, err = t.suite.VerifyDecrypt(ike, skA, skE, t.suite.Logger)
+	dec, err = t.suite.VerifyDecrypt(ike, skA, skE)
 	return
 }
 
 // encrypt-then-MAC
-func (t *Tkm) EncryptMac(headers, payload []byte, forInitiator bool) (b []byte, err error) {
+func (t *Tkm) EncryptMac(ike []byte, forInitiator bool) (b []byte, err error) {
 	skA, skE := t.skAr, t.skEr
 	if forInitiator {
 		skA, skE = t.skAi, t.skEi
@@ -195,7 +195,7 @@ func (t *Tkm) EncryptMac(headers, payload []byte, forInitiator bool) (b []byte, 
 	if skA == nil || skE == nil {
 		return nil, errors.Wrap(errMissingCryptoKeys, "Encrypting")
 	}
-	b, err = t.suite.EncryptMac(headers, payload, skA, skE, t.suite.Logger)
+	b, err = t.suite.EncryptMac(ike, skA, skE)
 	return
 }
 

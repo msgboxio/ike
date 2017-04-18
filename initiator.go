@@ -6,7 +6,7 @@ import (
 
 // NewInitiator creates an initiator session
 func NewInitiator(cfg *Config, sd *SessionData, logger log.Logger) (*Session, error) {
-	tkm, err := NewTkm(cfg, logger, nil)
+	tkm, err := NewTkm(cfg, nil)
 	if err != nil {
 		return nil, err
 	}

@@ -110,7 +110,7 @@ func runIpsecRekey(o *Session) (err error) {
 	// if REKEY timeout
 	//  create new tkm, send REKEY, wait for REKEY_reply,
 	//  retry on timeout
-	newTkm, err := NewTkm(&o.cfg, o.Logger, nil)
+	newTkm, err := NewTkm(&o.cfg, nil)
 	if err != nil {
 		return
 	}
@@ -154,7 +154,7 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 	if err != nil {
 		return
 	}
-	newTkm, err := NewTkm(&o.cfg, o.Logger, params.nonce)
+	newTkm, err := NewTkm(&o.cfg, params.nonce)
 	if err != nil {
 		return
 	}

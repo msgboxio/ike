@@ -3,16 +3,15 @@ package ike
 import (
 	"math/big"
 
-	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/crypto"
 )
 
-func NewTkm(cfg *Config, log log.Logger, ni *big.Int) (*Tkm, error) {
-	suite, err := crypto.NewCipherSuite(cfg.ProposalIke, log)
+func NewTkm(cfg *Config, ni *big.Int) (*Tkm, error) {
+	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
 	if err != nil {
 		return nil, err
 	}
-	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp, log)
+	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp)
 	if err != nil {
 		return nil, err
 	}

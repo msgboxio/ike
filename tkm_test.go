@@ -3,10 +3,8 @@ package ike
 import (
 	"encoding/hex"
 	"math/big"
-	"os"
 	"testing"
 
-	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/msgboxio/packets"
@@ -30,8 +28,7 @@ func TestTkm(t *testing.T) {
 	}
 
 	transforms := protocol.IKE_CAMELLIA_CBC_SHA2_256_128_MODP2048
-	log := log.NewLogfmtLogger(os.Stdout)
-	suite, _ := crypto.NewCipherSuite(transforms, log)
+	suite, _ := crypto.NewCipherSuite(transforms)
 	tkm := &Tkm{
 		suite:    suite,
 		Ni:       Nonce,

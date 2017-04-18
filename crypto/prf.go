@@ -21,14 +21,14 @@ func (p *Prf) String() string {
 	return p.PrfTransformId.String()
 }
 
-func prfTranform(prfId uint16) (*Prf, error) {
-	switch prf := protocol.PrfTransformId(prfId); prf {
+func prfTranform(prfID uint16) (*Prf, error) {
+	switch prf := protocol.PrfTransformId(prfID); prf {
 	case protocol.PRF_HMAC_SHA2_256:
 		return &Prf{macPrf(sha256.New), sha256.Size, prf}, nil
 	case protocol.PRF_HMAC_SHA1:
 		return &Prf{macPrf(sha1.New), sha1.Size, prf}, nil
 	default:
-		return nil, errors.Errorf("Unsupported PRF transfom: %s", prfId)
+		return nil, errors.Errorf("Unsupported PRF transfom: %d", prfID)
 	}
 }
 
