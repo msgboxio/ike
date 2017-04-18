@@ -7,12 +7,10 @@ import (
 	"errors"
 	"flag"
 	"io/ioutil"
-	"os"
 	"testing"
 
 	"math/big"
 
-	"github.com/go-kit/kit/log"
 	"github.com/google/gopacket/bytediff"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
@@ -66,14 +64,12 @@ e2 51 6a e1 95 b6 72 60  a0 a3 41 27 ed 3c 59 d6
 `
 
 func init() {
-	// flag.Set("v", "1")
 	flag.Parse()
 }
 
 func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
-	log := log.NewLogfmtLogger(os.Stdout)
 	msg := &Message{}
-	err := msg.DecodeHeader(dec, log)
+	err := msg.DecodeHeader(dec)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +77,7 @@ func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
 		err = protocol.ERR_INVALID_SYNTAX
 		return nil, err
 	}
-	if err = msg.DecodePayloads(dec[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload, log); err != nil {
+	if err = msg.DecodePayloads(dec[protocol.IKE_HEADER_LEN:msg.IkeHeader.MsgLength], msg.IkeHeader.NextPayload, logger); err != nil {
 		return nil, err
 	}
 	if msg.IkeHeader.NextPayload == protocol.PayloadTypeSK {
@@ -94,7 +90,7 @@ func decodeMessage(dec []byte, tkm *Tkm, forInitiator bool) (*Message, error) {
 			return nil, err
 		}
 		sk := msg.Payloads.Get(protocol.PayloadTypeSK)
-		if err = msg.DecodePayloads(b, sk.NextPayloadType(), log); err != nil {
+		if err = msg.DecodePayloads(b, sk.NextPayloadType(), logger); err != nil {
 			return nil, err
 		}
 	}
@@ -113,8 +109,7 @@ func testDecode(dec []byte, tkm *Tkm, forInitiator bool, t *testing.T) *Message 
 	}
 	t.Logf("\n%s", string(js))
 
-	log := log.NewLogfmtLogger(os.Stdout)
-	enc, err := msg.Encode(tkm, forInitiator, log)
+	enc, err := msg.Encode(tkm, forInitiator, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

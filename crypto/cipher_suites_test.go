@@ -1,12 +1,10 @@
 package crypto
 
 import (
-	"crypto/rand"
-	"testing"
-
 	"bytes"
-
+	"crypto/rand"
 	"encoding/hex"
+	"testing"
 
 	"github.com/msgboxio/ike/protocol"
 )

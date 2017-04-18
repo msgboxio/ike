@@ -14,11 +14,6 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
-var pskTestId = &PskIdentities{
-	Primary: "ak@msgbox.io",
-	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-}
-
 func certTestIds(t testing.TB) (localID, remoteID Identity) {
 	roots, err := LoadRoot("test/cert/cacert.pem")
 	if err != nil {
@@ -77,33 +72,9 @@ func eccertTestIds(t testing.TB) (localID, remoteID Identity) {
 
 func testCfg() *Config {
 	cfg := DefaultConfig()
-	cfg.LocalID = pskTestId
-	cfg.RemoteID = pskTestId
+	cfg.LocalID = pskTestID
+	cfg.RemoteID = pskTestID
 	return cfg
-}
-
-type mockConn struct {
-	ch chan []byte
-}
-
-func (m *mockConn) ReadPacket() (b []byte, remoteAddr, localAddr net.Addr, err error) {
-	return <-m.ch, &net.UDPAddr{}, &net.UDPAddr{}, nil
-}
-func (m *mockConn) WritePacket(reply []byte, remoteAddr net.Addr) error {
-	copy := append([]byte{}, reply...)
-	m.ch <- copy
-	return nil
-}
-func (m *mockConn) Inner() net.Conn {
-	return nil
-}
-func (m *mockConn) Close() error {
-	close(m.ch)
-	return nil
-}
-
-func testConn() *mockConn {
-	return &mockConn{ch: make(chan []byte, 2)}
 }
 
 type testcb struct {
@@ -112,90 +83,59 @@ type testcb struct {
 	errTo   chan error
 }
 
-func (c *testcb) SendMessage(s *Session, msg *OutgoingMessge) error {
-	c.writeTo <- msg.Data
+func (t *testcb) ReadPacket() (b []byte, remoteAddr, localAddr net.Addr, err error) {
+	return
+}
+func (t *testcb) WritePacket(reply []byte, remoteAddr net.Addr) error {
+	t.writeTo <- reply
 	return nil
 }
-func (c *testcb) AddSa(s *Session, sa *platform.SaParams) error {
-	c.saTo <- sa
-	return nil
-}
-func (c *testcb) RemoveSa(*Session, *platform.SaParams) error { return nil }
-func (c *testcb) RekeySa(*Session) error                      { return nil }
-func (c *testcb) IkeAuth(*Session, error)                     {}
-func (c *testcb) Error(s *Session, err error) {
-	c.errTo <- err
-}
-func (c *testcb) SetAddresses(local, remote net.Addr) {}
+func (t *testcb) Inner() net.Conn { return nil }
+func (t *testcb) Close() error    { return nil }
 
-func runTestInitiator(cfg *Config, c *testcb, readFrom chan []byte, log log.Logger) {
-	initiator, err := NewInitiator(cfg, nil, log)
+func runTestInitiator(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Logger) {
+	initiator, err := NewInitiator(cfg, &SessionData{Conn: cbk}, log)
 	if err != nil {
-		c.errTo <- err
+		cbk.errTo <- err
 	}
 	// run state machine, will send initI on given channel
-	go RunSession(initiator)
-
-	// wait for initR
-	waitForInitR := func() *Message {
-		for {
-			initR, err := DecodeMessage(<-readFrom, log)
-			if err != nil {
-				c.errTo <- err
-			}
-			initP, err := parseInit(initR)
-			if err != nil {
-				c.errTo <- err
-			}
-			// check if incoming message is an acceptable Init Response
-			if err := CheckInitResponseForSession(initiator, initP); err != nil {
-				if ce, ok := err.(PeerRequestsCookieError); ok {
-					// let retransmission take care to sending init with cookie
-					// session is always returned for CookieError
-					initiator.SetCookie(ce.Cookie)
-				} else {
-					c.errTo <- err
-				}
-			} else {
-				return initR
-			}
+	go func() {
+		err = RunSession(initiator)
+		if err != nil {
+			cbk.errTo <- err
 		}
+	}()
+
+	for {
+		msg, err := DecodeMessage(<-readFrom, log)
+		if err != nil {
+			cbk.errTo <- err
+			break
+		}
+		initiator.PostMessage(msg)
 	}
-	initR := waitForInitR()
-	// use initR
-	// process initR, send authI
-	initiator.PostMessage(initR)
-	// wait for auhtR
-	authR, err := DecodeMessage(<-readFrom, log)
-	if err != nil {
-		c.errTo <- err
-	}
-	// process authR
-	initiator.PostMessage(authR)
 }
 
-func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log log.Logger) {
+func runTestResponder(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Logger) {
 	waitForInitI := func() *Message {
 		for {
 			initI, err := DecodeMessage(<-readFrom, log)
 			if err != nil {
-				c.errTo <- err
+				cbk.errTo <- err
 			}
 			initP, err := parseInit(initI)
 			if err != nil {
-				c.errTo <- err
+				cbk.errTo <- err
 			}
 			// is it a IKE_SA_INIT req ?
 			if err := CheckInitRequest(cfg, initP, nil); err != nil {
 				// handle errors that need reply: COOKIE or DH
 				if reply := InitErrorNeedsReply(initP, cfg, nil, err); reply != nil {
-					data, err := reply.Encode(nil, false, log)
-					if err != nil {
-						c.errTo <- err
+					if err := WriteMessage(cbk, reply, nil, false, log); err != nil {
+						cbk.errTo <- err
 					}
-					c.writeTo <- data
 				} else {
-					c.errTo <- err
+					cbk.errTo <- err
 				}
 			} else {
 				return initI
@@ -207,18 +147,25 @@ func runTestResponder(cfg *Config, c *testcb, readFrom chan []byte, log log.Logg
 	// create responder
 	responder, err := NewResponder(cfg, nil, initI, log)
 	if err != nil {
-		c.errTo <- err
+		cbk.errTo <- err
 	}
-	go RunSession(responder)
+	go func() {
+		err = RunSession(responder)
+		if err != nil {
+			cbk.errTo <- err
+		}
+	}()
 	// initI to responder, will send initR
 	responder.PostMessage(initI)
-	// wait for authI
-	authI, err := DecodeMessage(<-readFrom, log)
-	if err != nil {
-		c.errTo <- err
+	for {
+		authI, err := DecodeMessage(<-readFrom, log)
+		if err != nil {
+			cbk.errTo <- err
+			break
+		}
+		// authI to responder, will send authR
+		responder.PostMessage(authI)
 	}
-	// authI to responder, will send authR
-	responder.PostMessage(authI)
 }
 
 func waitFor2Sa(t testing.TB, sa chan *platform.SaParams, cerr chan error) (err error) {

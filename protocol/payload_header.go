@@ -3,9 +3,8 @@ package protocol
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/packets"
 	"github.com/pkg/errors"
 )
@@ -18,15 +17,17 @@ func (h *PayloadHeader) Header() *PayloadHeader {
 	return h
 }
 
-func (h PayloadHeader) Encode(log log.Logger) (b []byte) {
+func (h PayloadHeader) Encode() (b []byte) {
 	b = make([]byte, PAYLOAD_HEADER_LENGTH)
 	packets.WriteB8(b, 0, uint8(h.NextPayload))
 	packets.WriteB16(b, 2, h.PayloadLength+PAYLOAD_HEADER_LENGTH)
-	level.Debug(log).Log("PayloadHeader", h, "to", hex.Dump(b))
+	if PacketLog {
+		log.Printf("Payload Header: %+v to \n%s", h, hex.Dump(b))
+	}
 	return
 }
 
-func (h *PayloadHeader) Decode(b []byte, log log.Logger) error {
+func (h *PayloadHeader) Decode(b []byte) error {
 	if len(b) < 4 {
 		return errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Packet Too short : %d", len(b)))
 	}
@@ -36,6 +37,8 @@ func (h *PayloadHeader) Decode(b []byte, log log.Logger) error {
 		h.IsCritical = true
 	}
 	h.PayloadLength, _ = packets.ReadB16(b, 2)
-	level.Debug(log).Log("PayloadHeader", *h, "from", hex.Dump(b))
+	if PacketLog {
+		log.Printf("Payload Header: %+v from \n%s", *h, hex.Dump(b))
+	}
 	return nil
 }

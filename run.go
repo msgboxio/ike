@@ -35,7 +35,7 @@ func runInitiator(o *Session) error {
 				if msg, err = o.SendMsgGetReply(o.InitMsg); err != nil {
 					return err
 				}
-				// This will keep going if peer keeps sendign COOKIE
+				// This will keep going if peer keeps sending COOKIE
 				// TODO -fix
 				continue
 			}

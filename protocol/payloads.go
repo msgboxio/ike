@@ -3,13 +3,13 @@ package protocol
 import (
 	"crypto/x509"
 	"encoding/hex"
-	"fmt"
+	"log"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
 )
+
+var PacketLog = false
 
 // Payloads
 type Payloads struct {
@@ -76,15 +76,15 @@ func (p *Payloads) GetNotification(nt NotificationType) *NotifyPayload {
 	return nil
 }
 
-func DecodePayloads(b []byte, nextPayload PayloadType, log log.Logger) (*Payloads, error) {
+func DecodePayloads(b []byte, nextPayload PayloadType) (*Payloads, error) {
 	payloads := MakePayloads()
 	for nextPayload != PayloadTypeNone {
 		if len(b) < PAYLOAD_HEADER_LENGTH {
-			return nil, errors.Wrap(ERR_INVALID_SYNTAX,
-				fmt.Sprintf("payload is too small, %d < %d", len(b), PAYLOAD_HEADER_LENGTH))
+			return nil, errors.Wrapf(ERR_INVALID_SYNTAX,
+				"payload is too small, %d < %d", len(b), PAYLOAD_HEADER_LENGTH)
 		}
 		pHeader := &PayloadHeader{}
-		if err := pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH], log); err != nil {
+		if err := pHeader.Decode(b[:PAYLOAD_HEADER_LENGTH]); err != nil {
 			return nil, err
 		}
 		if (len(b) < int(pHeader.PayloadLength)) ||
@@ -126,13 +126,15 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log log.Logger) (*Payload
 		case PayloadTypeEAP:
 			payload = &EapPayload{PayloadHeader: pHeader}
 		default:
-			return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Invalid Payload Type received: 0x%x", nextPayload))
+			return nil, errors.Wrapf(ERR_INVALID_SYNTAX, "Invalid Payload Type received: 0x%x", nextPayload)
 		}
 		pbuf := b[PAYLOAD_HEADER_LENGTH:pHeader.PayloadLength]
 		if err := payload.Decode(pbuf); err != nil {
 			return nil, err
 		}
-		level.Debug(log).Log("type", payload.Type(), "pld", spew.Sdump(payload), "dump", hex.Dump(pbuf))
+		if PacketLog {
+			log.Printf("Payload %s: %s from:\n%s", payload.Type(), spew.Sdump(payload), hex.Dump(pbuf))
+		}
 		payloads.Add(payload)
 		if nextPayload == PayloadTypeSK {
 			// log.V(1).Infof("Received %s: encrypted payloads %s", s.IkeHeader.ExchangeType, *payloads)
@@ -142,13 +144,12 @@ func DecodePayloads(b []byte, nextPayload PayloadType, log log.Logger) (*Payload
 		b = b[pHeader.PayloadLength:]
 	}
 	if len(b) > 0 {
-		return nil, errors.Wrap(ERR_INVALID_SYNTAX,
-			fmt.Sprintf("remaining %d\n%s", len(b), hex.Dump(b)))
+		return nil, errors.Wrapf(ERR_INVALID_SYNTAX, "remaining %d\n%s", len(b), hex.Dump(b))
 	}
 	return payloads, nil
 }
 
-func EncodePayloads(payloads *Payloads, log log.Logger) (b []byte) {
+func EncodePayloads(payloads *Payloads) (b []byte) {
 	for idx, pl := range payloads.Array {
 		body := pl.Encode()
 		hdr := pl.Header()
@@ -158,8 +159,10 @@ func EncodePayloads(payloads *Payloads, log log.Logger) (b []byte) {
 			next = payloads.Array[idx+1].Type()
 		}
 		hdr.NextPayload = next
-		body = append(hdr.Encode(log), body...)
-		level.Debug(log).Log("type", pl.Type(), "pld", spew.Sdump(pl), "dump", hex.Dump(body))
+		body = append(hdr.Encode(), body...)
+		if PacketLog {
+			log.Println("Payload %s: %s to:\n%s", pl.Type(), spew.Sdump(pl), hex.Dump(body))
+		}
 		b = append(b, body...)
 	}
 	return

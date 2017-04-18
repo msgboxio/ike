@@ -2,11 +2,11 @@ package ike
 
 import (
 	"bytes"
+	"net"
 	"runtime"
 	"testing"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/go-kit/kit/log"
 )
 
 func TestOsxV6(t *testing.T) {
@@ -27,9 +27,33 @@ func TestOsxV6(t *testing.T) {
 	}
 }
 
+type mockConn struct {
+	ch chan []byte
+}
+
+func (m *mockConn) ReadPacket() (b []byte, remoteAddr, localAddr net.Addr, err error) {
+	return <-m.ch, &net.UDPAddr{}, &net.UDPAddr{}, nil
+}
+func (m *mockConn) WritePacket(reply []byte, remoteAddr net.Addr) error {
+	copy := append([]byte{}, reply...)
+	m.ch <- copy
+	return nil
+}
+func (m *mockConn) Inner() net.Conn {
+	return nil
+}
+func (m *mockConn) Close() error {
+	close(m.ch)
+	return nil
+}
+
+func testConn() *mockConn {
+	return &mockConn{ch: make(chan []byte, 2)}
+}
+
 func TestReadFragment(t *testing.T) {
 	conn := testConn()
-	sess, _ := NewInitiator(testCfg(), nil, log.NewNopLogger())
+	sess, _ := NewInitiator(testCfg(), nil, logger)
 	msg, _ := InitFromSession(sess).Encode(nil, false, sess.Logger)
 	conn.WritePacket(msg[:40], nil)
 	conn.WritePacket(msg[40:], nil)

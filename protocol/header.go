@@ -3,14 +3,13 @@ package protocol
 import (
 	"encoding/hex"
 	"fmt"
+	"log"
 
-	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/packets"
 	"github.com/pkg/errors"
 )
 
-func DecodeIkeHeader(b []byte, log log.Logger) (h *IkeHeader, err error) {
+func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
 	h = &IkeHeader{}
 	if len(b) < IKE_HEADER_LEN {
 		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Packet Too short : %d", len(b)))
@@ -37,11 +36,13 @@ func DecodeIkeHeader(b []byte, log log.Logger) (h *IkeHeader, err error) {
 	if h.MsgLength > MAX_IKE_MESSAGE_LEN {
 		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Bad Message Length in header : %d", h.MsgLength))
 	}
-	level.Debug(log).Log("Header", *h, "from", hex.Dump(b[:IKE_HEADER_LEN]))
+	if PacketLog {
+		log.Printf("Ike Header: %+v from \n%s", *h, hex.Dump(b[:IKE_HEADER_LEN]))
+	}
 	return
 }
 
-func (h *IkeHeader) Encode(log log.Logger) (b []byte) {
+func (h *IkeHeader) Encode() (b []byte) {
 	b = make([]byte, IKE_HEADER_LEN)
 	copy(b, h.SpiI[:])
 	copy(b[8:], h.SpiR[:])
@@ -51,6 +52,8 @@ func (h *IkeHeader) Encode(log log.Logger) (b []byte) {
 	packets.WriteB8(b, 19, uint8(h.Flags))
 	packets.WriteB32(b, 20, h.MsgId)
 	packets.WriteB32(b, 24, h.MsgLength)
-	level.Debug(log).Log("Header", *h, "to", hex.Dump(b))
+	if PacketLog {
+		log.Printf("Ike Header: %+v to \n%s", *h, hex.Dump(b))
+	}
 	return
 }
