@@ -24,16 +24,16 @@ var pskTestID = &PskIdentities{
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-func TestIntPsk(t *testing.T) {
+func TestPskAuth(t *testing.T) {
 	testWithIdentity(t, pskTestID, pskTestID, logger)
 }
 
-func TestIntCert(t *testing.T) {
+func TestCertAuth(t *testing.T) {
 	localID, remoteID := certTestIds(t)
 	testWithIdentity(t, localID, remoteID, logger)
 }
 
-func TestIntEcCert(t *testing.T) {
+func TestEcCertAuth(t *testing.T) {
 	localID, remoteID := eccertTestIds(t)
 	testWithIdentity(t, localID, remoteID, logger)
 }

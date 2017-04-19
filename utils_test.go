@@ -102,6 +102,9 @@ func sdata(cbk *testcb) *SessionData {
 				cbk.saTo <- sa
 				return nil
 			},
+			RemoveSa: func(_ *Session, sa *platform.SaParams) error {
+				return nil
+			},
 		},
 	}
 }
@@ -180,10 +183,12 @@ func waitFor2Sa(t testing.TB, sa chan *platform.SaParams, cerr chan error) (err 
 	cxt, cancel := context.WithCancel(context.Background())
 	// receive the 2 sa
 	go func() {
+	done:
 		for {
 			select {
 			case <-cxt.Done():
-				return
+				t.Log("XXX DONE XXX")
+				break done
 			case sa1 := <-sa:
 				t.Logf("sa1I: %v", sa1.SpiI)
 				wg.Done()
@@ -192,12 +197,14 @@ func waitFor2Sa(t testing.TB, sa chan *platform.SaParams, cerr chan error) (err 
 				wg.Done()
 			case err = <-cerr:
 				cancel()
-				t.Logf("%+v", err)
+				t.Logf("error: %+v", err)
 				wg.Done()
 				wg.Done()
+				break done
 			}
 		}
 	}()
 	wg.Wait()
+	cancel()
 	return
 }

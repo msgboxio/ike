@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -39,7 +38,7 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger 
 		return nil, errors.Errorf("No Secret for %s", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), psk.forInitiator)
-	level.Debug(logger).Log("sign", "PSK", "id", string(idP.Data))
+	logger.Log("sign", "PSK", "id", string(idP.Data))
 	// TODO : tkm.Auth always uses the hash negotiated with prf
 	prf := psk.tkm.suite.Prf
 	return prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length], nil
