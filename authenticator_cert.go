@@ -4,7 +4,6 @@ import (
 	"crypto/x509"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -42,7 +41,8 @@ func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger l
 	if certID.PrivateKey == nil {
 		return nil, errors.Errorf("missing private key")
 	}
-	level.Info(logger).Log("Auth", "OUR", "cert", FormatCert(certID.Certificate))
+	cert := FormatCert(certID.Certificate)
+	logger.Log("Auth", "OUR", "cert", cert.String())
 	signed := o.tkm.SignB(initB, idP.Encode(), o.forInitiator)
 	return CreateSignature(certID.Certificate.SignatureAlgorithm, o.AuthMethod(), signed, certID.PrivateKey, logger)
 }

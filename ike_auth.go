@@ -75,7 +75,7 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 			return err
 		}
 		cert := FormatCert(chain[0])
-		o.Logger.Log("msg", "Ike Auth", "PEER_CERT", cert)
+		o.Logger.Log("msg", "Ike Auth", "PEER_CERT", cert.String())
 		// ensure key used to compute a digital signature belongs to the name in the ID payload
 		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
 			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
