@@ -12,61 +12,60 @@ var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
 
 const SaRekeyTimeout = 5 * time.Second
 
-func runInitiator(o *Session) error {
+func runInitiator(o *Session) (err error) {
 	// send initiator INIT after jittered wait and wait for reply
 	time.Sleep(Jitter(2*time.Second, -0.5))
-	msg, err := o.SendMsgGetReply(o.InitMsg)
-	if err != nil {
-		return err
-	}
-	// TODO - check if we already have a connection to this host
-	// check if incoming message is an acceptable Init Response
+	var msg *Message
 	var init *initParams
 	for {
+		msg, err = o.SendMsgGetReply(o.InitMsg)
+		if err != nil {
+			return
+		}
+		// TODO - check if we already have a connection to this host
+		// check if incoming message is an acceptable Init Response
 		init, err = parseInit(msg)
 		if err != nil {
-			return err
+			if init == nil {
+				return
+			}
 		}
 		if err = CheckInitResponseForSession(o, init); err != nil {
 			if ce, ok := err.(PeerRequestsCookieError); ok {
 				// session is always returned for CookieError
 				o.SetCookie(ce.Cookie)
-				// send packet with Cookie
-				if msg, err = o.SendMsgGetReply(o.InitMsg); err != nil {
-					return err
-				}
 				// This will keep going if peer keeps sending COOKIE
 				// TODO -fix
 				continue
 			}
 			// return error
-			return err
+			return
 		}
 		break
 	}
 	// rewrite LocalAddr
-	o.SetAddresses(msg.LocalAddr, msg.RemoteAddr)
+	if err = o.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
+		return
+	}
 	// COOKIE is handled within cmd.newSession
 	if err = HandleInitForSession(o, init, msg); err != nil {
 		level.Error(o.Logger).Log("init", err)
-		return err
-	}
-	if err = o.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
-		return err
+		return
 	}
 	// on send AUTH and wait for reply
 	if msg, err = o.SendMsgGetReply(o.AuthMsg); err != nil {
-		return err
+		return
 	}
 	if err = HandleAuthForSession(o, msg); err != nil {
 		// send notification to peer & end IKE SA
-		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		err = errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		return
 	}
 	if err = HandleSaForSession(o, msg); err != nil {
 		// send notification to peer & end IKE SA
-		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		err = errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
-	return nil
+	return
 }
 
 // got new INIT
@@ -82,7 +81,8 @@ func runResponder(o *Session) error {
 	if err = HandleInitForSession(o, init, msg); err != nil {
 		return err
 	}
-	if err = o.AddHostBasedSelectors(AddrToIp(msg.LocalAddr), AddrToIp(msg.RemoteAddr)); err != nil {
+	// not really necessary
+	if err = o.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
 		return err
 	}
 	// send INIT_reply & wait for AUTH

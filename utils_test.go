@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/platform"
+	"github.com/pkg/errors"
 )
 
 func certTestIds(t testing.TB) (localID, remoteID Identity) {
@@ -93,8 +94,20 @@ func (t *testcb) WritePacket(reply []byte, remoteAddr net.Addr) error {
 func (t *testcb) Inner() net.Conn { return nil }
 func (t *testcb) Close() error    { return nil }
 
+func sdata(cbk *testcb) *SessionData {
+	return &SessionData{
+		Conn: cbk,
+		Cb: SessionCallback{
+			AddSa: func(_ *Session, sa *platform.SaParams) error {
+				cbk.saTo <- sa
+				return nil
+			},
+		},
+	}
+}
+
 func runTestInitiator(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Logger) {
-	initiator, err := NewInitiator(cfg, &SessionData{Conn: cbk}, log)
+	initiator, err := NewInitiator(cfg, sdata(cbk), log)
 	if err != nil {
 		cbk.errTo <- err
 	}
@@ -123,29 +136,22 @@ func runTestResponder(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Lo
 			if err != nil {
 				cbk.errTo <- err
 			}
-			initP, err := parseInit(initI)
-			if err != nil {
+			if err = HandleInitRequest(initI, cbk, cfg, log); errors.Cause(err) == errMissingCookie {
+				continue
+			} else if err != nil {
 				cbk.errTo <- err
+				return nil
 			}
-			// is it a IKE_SA_INIT req ?
-			if err := CheckInitRequest(cfg, initP, nil); err != nil {
-				// handle errors that need reply: COOKIE or DH
-				if reply := InitErrorNeedsReply(initP, cfg, nil, err); reply != nil {
-					if err := WriteMessage(cbk, reply, nil, false, log); err != nil {
-						cbk.errTo <- err
-					}
-				} else {
-					cbk.errTo <- err
-				}
-			} else {
-				return initI
-			}
+			return initI
 		}
 	}
 	// wait for initI
 	initI := waitForInitI()
+	if initI == nil {
+		return
+	}
 	// create responder
-	responder, err := NewResponder(cfg, nil, initI, log)
+	responder, err := NewResponder(cfg, sdata(cbk), initI, log)
 	if err != nil {
 		cbk.errTo <- err
 	}
@@ -173,11 +179,11 @@ func waitFor2Sa(t testing.TB, sa chan *platform.SaParams, cerr chan error) (err 
 	wg.Add(2)
 	cxt, cancel := context.WithCancel(context.Background())
 	// receive the 2 sa
-	go func() error {
+	go func() {
 		for {
 			select {
 			case <-cxt.Done():
-				return err
+				return
 			case sa1 := <-sa:
 				t.Logf("sa1I: %v", sa1.SpiI)
 				wg.Done()

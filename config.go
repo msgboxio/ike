@@ -96,6 +96,23 @@ func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
 	return
 }
 
+func (cfg *Config) AddHostBasedSelectors(local, remote net.IP, isInitiator bool) error {
+	slen := len(local) * 8
+	ini := remote
+	res := local
+	if isInitiator {
+		ini = local
+		res = remote
+	}
+	err := cfg.AddSelector(
+		&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
+		&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
+	if err != nil {
+		return errors.Wrapf(err, "could not add selectors for %s=>%s", ini, res)
+	}
+	return nil
+}
+
 func ProposalFromTransform(prot protocol.ProtocolId, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
 	return []*protocol.SaProposal{
 		&protocol.SaProposal{

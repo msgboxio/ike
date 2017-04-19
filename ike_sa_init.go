@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"net"
 
+	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
 
-var errMissingCookie = errors.New("Missing COOKIE")
+var errMissingCookie = errors.New("COOKIE")
 
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(o *Session) *Message {
@@ -30,8 +31,29 @@ func InitFromSession(o *Session) *Message {
 	})
 }
 
-// CheckInitRequest checks IKE_SA_INIT requests
-func CheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
+//
+// rquest handling
+//
+
+// HandleInitRequest will handle sending cookie requests to the initiator
+func HandleInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) error {
+	// is it a IKE_SA_INIT req ?
+	init, err := parseInit(msg)
+	if err != nil {
+		return err
+	}
+	if err := checkInitRequest(config, init, msg.RemoteAddr); err != nil {
+		// handle errors that need reply: COOKIE or DH
+		if reply := initErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
+			WriteMessage(conn, reply, nil, false, log)
+		}
+		return err
+	}
+	return nil
+}
+
+// checkInitRequest checks IKE_SA_INIT requests
+func checkInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	if !init.isInitiator {
 		return protocol.ERR_INVALID_SYNTAX
 	}
@@ -59,7 +81,7 @@ func CheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	return nil
 }
 
-func InitErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err error) *Message {
+func initErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err error) *Message {
 	// send INVALID_KE_PAYLOAD, NO_PROPOSAL_CHOSEN, or COOKIE
 	switch cause := errors.Cause(err); cause {
 	case protocol.ERR_INVALID_KE_PAYLOAD:
@@ -71,6 +93,10 @@ func InitErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err 
 	}
 	return nil
 }
+
+//
+// response handling
+//
 
 func CheckInitResponseForSession(o *Session, init *initParams) error {
 	if init.isInitiator { // id must be zero

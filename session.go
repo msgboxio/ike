@@ -140,6 +140,8 @@ func (o *Session) PostMessage(m *Message) {
 		level.Error(o.Logger).Log("Drop", "Closing")
 		return
 	}
+	// requestId has been confirmed, increment it for next request
+	o.msgIDReq++
 	o.incoming <- m
 }
 
@@ -192,6 +194,8 @@ func (o *Session) InitMsg() (*OutgoingMessge, error) {
 		}
 		return initB, nil
 	}
+	// reset request ID to 0 - needed when resending with COOKIE
+	o.msgIDReq = 0
 	return initMsg(o.nextMsgID(!o.isInitiator)) // is a response if not an initiator
 }
 
@@ -307,23 +311,6 @@ func (o *Session) SendEmptyInformational(isResponse bool) error {
 	return o.sendMsg(o.encode(info))
 }
 
-func (o *Session) AddHostBasedSelectors(local, remote net.IP) error {
-	slen := len(local) * 8
-	ini := remote
-	res := local
-	if o.isInitiator {
-		ini = local
-		res = remote
-	}
-	err := o.cfg.AddSelector(
-		&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
-		&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
-	if err != nil {
-		return errors.Wrapf(err, "could not add selectors for %s=>%s", ini, res)
-	}
-	return nil
-}
-
 func (o *Session) isMessageValid(m *Message) error {
 	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, o.IkeSpiI) {
 		return errors.Errorf("different initiator Spi %s", spi)
@@ -341,8 +328,6 @@ func (o *Session) isMessageValid(m *Message) error {
 			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
 				fmt.Sprintf("unexpected response id %d, expected %d", seq, o.msgIDReq))
 		}
-		// requestId has been confirmed, increment it for next request
-		o.msgIDReq++
 	} else { // request
 		// TODO - does not handle our responses getting lost
 		if seq != o.msgIDResp {
@@ -354,9 +339,15 @@ func (o *Session) isMessageValid(m *Message) error {
 	return nil
 }
 
-func (c *Session) SetAddresses(local, remote net.Addr) {
-	c.Local = local
-	c.Remote = remote
+// SetAddresses sets tunnel endpoint addresses
+func (o *Session) SetAddresses(local, remote net.Addr) error {
+	o.Local = local
+	o.Remote = remote
+	if o.cfg.TsI != nil && o.cfg.TsR != nil {
+		// selectors already configured
+		return nil
+	}
+	return o.cfg.AddHostBasedSelectors(AddrToIp(local), AddrToIp(remote), o.isInitiator)
 }
 
 func saAddr(sa *platform.SaParams, local, remote net.Addr) {

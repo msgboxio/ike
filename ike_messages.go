@@ -146,15 +146,16 @@ func parseInit(m *Message) (*initParams, error) {
 	} else if !m.IkeHeader.Flags.IsResponse() {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
 	}
-	if err := m.EnsurePayloads(initPayloads); err != nil {
-		return nil, err
-	}
 	params.spiI = m.IkeHeader.SpiI
 	params.spiR = m.IkeHeader.SpiR
 	params.ns = m.Payloads.GetNotifications()
 	// did we get a COOKIE ?
 	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
 		params.cookie = cookie.NotificationMessage.([]byte)
+	}
+	// if we got a COOKIE request, then there are no more payloads
+	if err := m.EnsurePayloads(initPayloads); err != nil {
+		return params, err
 	}
 	// check if transforms are usable
 	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)

@@ -8,8 +8,6 @@ import (
 
 	"fmt"
 
-	"github.com/davecgh/go-spew/spew"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -125,10 +123,7 @@ func HandleSaForSession(o *Session, m *Message) error {
 			return errors.Errorf("peer notified: %s;", nErr)
 		}
 	}
-	level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
-	if err != nil {
-		return err
-	}
+	// level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
 	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
 		return err
 	}

@@ -62,18 +62,9 @@ func (i *Cmd) runSession(spi uint64, s *Session) (err error) {
 // newResponder handles IKE_SA_INIT requests & replies
 func (i *Cmd) newResponder(spi uint64, msg *Message, config *Config, log log.Logger) (session *Session, err error) {
 	// consider creating a new session
-	// is it a IKE_SA_INIT req ?
-	init, err := parseInit(msg)
-	if err != nil {
-		return nil, err
-	}
-	if err := CheckInitRequest(config, init, msg.RemoteAddr); err != nil {
-		// handle errors that need reply: COOKIE or DH
-		if reply := InitErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
-			WriteMessage(i.conn, reply, nil, false, log)
-		}
+	if err = HandleInitRequest(msg, i.conn, config, log); err != nil {
 		// dont create a new session
-		return nil, err
+		return
 	}
 	// create and run session
 	sd := &SessionData{
