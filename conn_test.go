@@ -51,6 +51,13 @@ func testConn() *mockConn {
 	return &mockConn{ch: make(chan []byte, 2)}
 }
 
+func testCfg() *Config {
+	cfg := DefaultConfig()
+	cfg.LocalID = pskTestID
+	cfg.RemoteID = pskTestID
+	return cfg
+}
+
 func TestReadFragment(t *testing.T) {
 	conn := testConn()
 	sess, _ := NewInitiator(testCfg(), nil, logger)

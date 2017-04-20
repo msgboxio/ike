@@ -7,13 +7,29 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"net"
+	"os"
 	"sync"
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/platform"
 	"github.com/pkg/errors"
 )
+
+var localAddr, remoteAddr net.Addr
+
+var logger log.Logger
+
+func init() {
+	logger = level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
+	// logger = level.NewFilter(log.NewNopLogger())
+}
+
+var pskTestID = &PskIdentities{
+	Primary: "ak@msgbox.io",
+	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
+}
 
 func certTestIds(t testing.TB) (localID, remoteID Identity) {
 	roots, err := LoadRoot("test/cert/cacert.pem")
@@ -69,13 +85,6 @@ func eccertTestIds(t testing.TB) (localID, remoteID Identity) {
 		Name:  "172.17.0.1",
 	}
 	return
-}
-
-func testCfg() *Config {
-	cfg := DefaultConfig()
-	cfg.LocalID = pskTestID
-	cfg.RemoteID = pskTestID
-	return cfg
 }
 
 type testcb struct {

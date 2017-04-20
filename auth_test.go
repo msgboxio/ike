@@ -2,27 +2,11 @@ package ike
 
 import (
 	"net"
-	"os"
 	"testing"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/platform"
 )
-
-var localAddr, remoteAddr net.Addr
-
-var logger log.Logger
-
-func init() {
-	logger = level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
-	// logger = level.NewFilter(log.NewNopLogger(), level.AllowDebug())
-}
-
-var pskTestID = &PskIdentities{
-	Primary: "ak@msgbox.io",
-	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-}
 
 func TestPskAuth(t *testing.T) {
 	testWithIdentity(t, pskTestID, pskTestID, logger)
