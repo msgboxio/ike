@@ -145,18 +145,18 @@ func (t *Tkm) IkeSaKeys(spiI, spiR []byte, old_skD []byte) {
 
 	// SK_d, SK_pi, and SK_pr MUST be prfLength
 	offset := t.suite.Prf.Length
-	t.skD = KEYMAT[0:offset]
-	t.skAi = KEYMAT[offset : offset+t.suite.MacTruncLen]
+	t.skD = append([]byte{}, KEYMAT[0:offset]...)
+	t.skAi = append([]byte{}, KEYMAT[offset:offset+t.suite.MacTruncLen]...)
 	offset += t.suite.MacTruncLen
-	t.skAr = KEYMAT[offset : offset+t.suite.MacTruncLen]
+	t.skAr = append([]byte{}, KEYMAT[offset:offset+t.suite.MacTruncLen]...)
 	offset += t.suite.MacTruncLen
-	t.skEi = KEYMAT[offset : offset+t.suite.KeyLen]
+	t.skEi = append([]byte{}, KEYMAT[offset:offset+t.suite.KeyLen]...)
 	offset += t.suite.KeyLen
-	t.skEr = KEYMAT[offset : offset+t.suite.KeyLen]
+	t.skEr = append([]byte{}, KEYMAT[offset:offset+t.suite.KeyLen]...)
 	offset += t.suite.KeyLen
-	t.skPi = KEYMAT[offset : offset+t.suite.Prf.Length]
+	t.skPi = append([]byte{}, KEYMAT[offset:offset+t.suite.Prf.Length]...)
 	offset += t.suite.Prf.Length
-	t.skPr = KEYMAT[offset : offset+t.suite.Prf.Length]
+	t.skPr = append([]byte{}, KEYMAT[offset:offset+t.suite.Prf.Length]...)
 
 	// fmt.Printf("keymat length %d\n", len(KEYMAT))
 	// fmt.Printf("skD:\n%sskAi:\n%sskAr:\n%sskEi:\n%sskEr:\n%sskPi:\n%sskPr:\n%s",
@@ -210,12 +210,12 @@ func (t *Tkm) IpsecSaKeys(ni, nr, dhShared *big.Int) (espEi, espAi, espEr, espAr
 			append(dhShared.Bytes(), append(ni.Bytes(), nr.Bytes()...)...), kmLen)
 	}
 	offset := t.espSuite.KeyLen
-	espEi = KEYMAT[0:offset]
-	espAi = KEYMAT[offset : offset+t.espSuite.MacTruncLen]
+	espEi = append([]byte{}, KEYMAT[0:offset]...)
+	espAi = append([]byte{}, KEYMAT[offset:offset+t.espSuite.MacTruncLen]...)
 	offset += t.espSuite.MacTruncLen
-	espEr = KEYMAT[offset : offset+t.espSuite.KeyLen]
+	espEr = append([]byte{}, KEYMAT[offset:offset+t.espSuite.KeyLen]...)
 	offset += t.espSuite.KeyLen
-	espAr = KEYMAT[offset : offset+t.espSuite.MacTruncLen]
+	espAr = append([]byte{}, KEYMAT[offset:offset+t.espSuite.MacTruncLen]...)
 	// fmt.Printf("ESP keys :\nEi:\n%sAi:\n%sEr:\n%sAr\n%s",
 	// 	hex.Dump(espEi),
 	// 	hex.Dump(espAi),
