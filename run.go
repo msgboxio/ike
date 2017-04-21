@@ -116,7 +116,7 @@ func runIpsecRekey(o *Session) (err error) {
 	}
 	espSpiI := MakeSpi()[:4]
 	// closure with parameters for new SA
-	rekeyFn := func() (*OutgoingMessge, error) {
+	rekeyFn := func() (*outgoingMessge, error) {
 		return o.RekeyMsg(ChildSaFromSession(o, newTkm, true, espSpiI))
 	}
 	msg, err := o.SendMsgGetReply(rekeyFn)
@@ -188,17 +188,22 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 	return
 }
 
-func monitorSa(o *Session) error {
+func monitorSa(o *Session) (err error) {
 	// inform user
-	if err := o.InstallSa(); err != nil {
-		return err
+	err = o.AddSa(addSaParams(o.tkm,
+		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : use the original SA
+		o.EspSpiI, o.EspSpiR,
+		&o.cfg,
+		o.isInitiator))
+	if err != nil {
+		return
 	}
 	if o.isInitiator {
 		// send INFORMATIONAL, wait for INFORMATIONAL_reply
 		// if timeout, send AUTH_reply again
 		// monitor SA
-		if err := o.SendEmptyInformational(false); err != nil {
-			return err
+		if err = o.SendEmptyInformational(false); err != nil {
+			return
 		}
 	}
 	// check for duplicate SA, if found remove one with smaller nonce
@@ -257,6 +262,7 @@ func monitorSa(o *Session) error {
 	}
 }
 
+// RunSession starts and monitors the session returning when the session ends
 func RunSession(s *Session) error {
 	var err error
 	if s.isInitiator {

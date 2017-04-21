@@ -6,13 +6,15 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
+// ni, nr, dhShared can either be from the origianal Tkm
+// or from the rekeyed Tkm when Perfect Forward Secrecy is used
 func addSaParams(tkm *Tkm,
 	ni, nr, dhShared *big.Int,
 	espSpiI, espSpiR []byte,
 	cfg *Config,
 	forInitiator bool) *platform.SaParams {
 	// sa processing
-	espEi, espAi, espEr, espAr := tkm.IpsecSaCreate(ni, nr, dhShared)
+	espEi, espAi, espEr, espAr := tkm.IpsecSaKeys(ni, nr, dhShared)
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
 	tsI := cfg.TsI[0]

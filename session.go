@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -14,29 +13,17 @@ import (
 	"github.com/pkg/errors"
 )
 
-const REPLY_WAIT_TIMEOUT = 5 * time.Second
-
-type OutgoingMessge struct {
-	Data []byte
-}
-
+// SessionCallback holds the callbacks used by the session to notify the user
 type SessionCallback struct {
 	AddSa    func(*Session, *platform.SaParams) error
 	RemoveSa func(*Session, *platform.SaParams) error
 }
 
+// SessionData holds the data a session needs from the user
 type SessionData struct {
 	Conn          Conn
 	Local, Remote net.Addr
 	Cb            SessionCallback
-}
-
-var ReplyTimedoutError error = replyTimeout{}
-
-type replyTimeout struct{}
-
-func (r replyTimeout) Error() string {
-	return "Timed Out"
 }
 
 var SessionClosedError error = sessionClosed{}
@@ -45,18 +32,6 @@ type sessionClosed struct{}
 
 func (s sessionClosed) Error() string {
 	return "Session Closed"
-}
-
-func packetOrTimeOut(incoming <-chan *Message) (*Message, error) {
-	select {
-	case msg, ok := <-incoming:
-		if ok {
-			return msg, nil
-		}
-		return nil, SessionClosedError
-	case <-time.After(Jitter(REPLY_WAIT_TIMEOUT, 0.2)):
-		return nil, ReplyTimedoutError
-	}
 }
 
 // Session stores IKE session's local state
@@ -85,7 +60,11 @@ type Session struct {
 
 // Housekeeping
 
-func (o *Session) Tag() string {
+type outgoingMessge struct {
+	Data []byte
+}
+
+func (o *Session) tag() string {
 	ini := "[I]"
 	if !o.isInitiator {
 		ini = "[R]"
@@ -118,7 +97,7 @@ func (o *Session) CreateIkeSa(nonce, dhPublic *big.Int, spiI, spiR []byte) error
 		return err
 	}
 	// create rest of ike sa
-	o.tkm.IsaCreate(o.IkeSpiI, o.IkeSpiR, nil)
+	o.tkm.IkeSaKeys(o.IkeSpiI, o.IkeSpiR, nil)
 	o.Logger.Log("IKE_SA", "initialised", "session", o)
 	return nil
 }
@@ -145,12 +124,12 @@ func (o *Session) PostMessage(m *Message) {
 	o.incoming <- m
 }
 
-func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
+func (o *Session) encode(msg *Message) (*outgoingMessge, error) {
 	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
-	return &OutgoingMessge{buf}, err
+	return &outgoingMessge{buf}, err
 }
 
-func (o *Session) sendMsg(msg *OutgoingMessge, err error) error {
+func (o *Session) sendMsg(msg *outgoingMessge, err error) error {
 	if err != nil {
 		return err
 	}
@@ -178,8 +157,8 @@ func (o *Session) Close(err error) {
 	o.sendIkeSaDelete()
 }
 
-func (o *Session) InitMsg() (*OutgoingMessge, error) {
-	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
+func (o *Session) InitMsg() (*outgoingMessge, error) {
+	initMsg := func(msgId uint32) (*outgoingMessge, error) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgId = msgId
 		// encode
@@ -200,7 +179,7 @@ func (o *Session) InitMsg() (*OutgoingMessge, error) {
 }
 
 // AuthMsg generates IKE_AUTH
-func (o *Session) AuthMsg() (*OutgoingMessge, error) {
+func (o *Session) AuthMsg() (*outgoingMessge, error) {
 	o.Logger.Log("msg", "AUTH", "selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR))
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
@@ -208,7 +187,7 @@ func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 	}
 	auth, err := AuthFromSession(o)
 	if !o.isInitiator {
-		o.IkeAuth(err)
+		o.ikeAuthLog(err)
 	}
 	if err != nil {
 		o.Logger.Log("err", err)
@@ -218,14 +197,14 @@ func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 	return o.encode(auth)
 }
 
-func (o *Session) RekeyMsg(child *Message) (*OutgoingMessge, error) {
+func (o *Session) RekeyMsg(child *Message) (*outgoingMessge, error) {
 	child.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
 	// encode & send
 	return o.encode(child)
 }
 
 // SendMsgGetReply takes a message generator
-func (o *Session) SendMsgGetReply(genMsg func() (*OutgoingMessge, error)) (*Message, error) {
+func (o *Session) SendMsgGetReply(genMsg func() (*outgoingMessge, error)) (*Message, error) {
 	for {
 		// send initiator INIT after jittered wait
 		if err := o.sendMsg(genMsg()); err != nil {
@@ -249,23 +228,6 @@ func (o *Session) SendAuth() error {
 	return o.sendMsg(o.AuthMsg())
 }
 
-// InstallSa - adds a child SA
-func (o *Session) InstallSa() error {
-	return o.AddSa(addSaParams(o.tkm,
-		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : we use the original SA
-		o.EspSpiI, o.EspSpiR,
-		&o.cfg,
-		o.isInitiator))
-}
-
-// UnInstallSa removes the child SA
-func (o *Session) UnInstallSa() {
-	o.RemoveSa(removeSaParams(
-		o.EspSpiI, o.EspSpiR,
-		&o.cfg,
-		o.isInitiator))
-}
-
 // HandleClose will cleanly removes child SAs upon receiving a message from peer
 func (o *Session) HandleClose() error {
 	if o.isClosing {
@@ -277,8 +239,7 @@ func (o *Session) HandleClose() error {
 	return nil
 }
 
-// CheckError
-// if there is an error, then send to peer
+// CheckError checks error, then send to peer
 func (o *Session) CheckError(err error) error {
 	if iErr, ok := errors.Cause(err).(protocol.IkeErrorCode); ok {
 		o.Notify(iErr)
@@ -361,13 +322,15 @@ func saAddr(sa *platform.SaParams, local, remote net.Addr) {
 	}
 }
 
-func (o *Session) IkeAuth(err error) {
+func (o *Session) ikeAuthLog(err error) {
 	if err == nil {
 		o.Logger.Log("IKE_SA", "installed", "sa", o)
 	} else {
 		level.Warn(o.Logger).Log("IKE_SA", "failed", "err", err)
 	}
 }
+
+// AddSa adds Child SA
 func (o *Session) AddSa(sa *platform.SaParams) error {
 	saAddr(sa, o.Local, o.Remote)
 	err := o.Cb.AddSa(o, sa)
@@ -376,6 +339,8 @@ func (o *Session) AddSa(sa *platform.SaParams) error {
 		"err", err)
 	return err
 }
+
+// RemoveSa removes Child SA
 func (o *Session) RemoveSa(sa *platform.SaParams) error {
 	saAddr(sa, o.Local, o.Remote)
 	err := o.Cb.RemoveSa(o, sa)
@@ -383,4 +348,12 @@ func (o *Session) RemoveSa(sa *platform.SaParams) error {
 		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
 		"err", err)
 	return err
+}
+
+// UnInstallSa is convenience wrapper around RemoveSa
+func (o *Session) UnInstallSa() {
+	o.RemoveSa(removeSaParams(
+		o.EspSpiI, o.EspSpiR,
+		&o.cfg,
+		o.isInitiator))
 }

@@ -126,8 +126,8 @@ func (t *Tkm) skeySeedRekey(old_SK_D []byte) []byte {
 	return t.suite.Prf.Apply(old_SK_D, append(t.DhShared.Bytes(), append(t.Ni.Bytes(), t.Nr.Bytes()...)...))
 }
 
-// IsaCreate creates ike sa keys
-func (t *Tkm) IsaCreate(spiI, spiR []byte, old_skD []byte) {
+// IkeSaKeys creates ike sa keys
+func (t *Tkm) IkeSaKeys(spiI, spiR []byte, old_skD []byte) {
 	// fmt.Printf("key inputs: \nni:\n%snr:\n%sshared:\n%sspii:\n%sspir:\n%s",
 	// 	hex.Dump(t.Ni.Bytes()), hex.Dump(t.Nr.Bytes()), hex.Dump(t.DhShared.Bytes()),
 	// 	hex.Dump(spiI), hex.Dump(spiR))
@@ -199,7 +199,8 @@ func (t *Tkm) EncryptMac(ike []byte, forInitiator bool) (b []byte, err error) {
 	return
 }
 
-func (t *Tkm) IpsecSaCreate(ni, nr, dhShared *big.Int) (espEi, espAi, espEr, espAr []byte) {
+// IpsecSaKeys generates & returns Ipsec Sa keys
+func (t *Tkm) IpsecSaKeys(ni, nr, dhShared *big.Int) (espEi, espAi, espEr, espAr []byte) {
 	kmLen := 2*t.espSuite.KeyLen + 2*t.espSuite.MacTruncLen
 	// KEYMAT = prf+(SK_d, Ni | Nr)
 	KEYMAT := t.prfplus(t.skD, append(ni.Bytes(), nr.Bytes()...), kmLen)

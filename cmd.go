@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/msgboxio/ike/platform"
 	"github.com/pkg/errors"
 )
 
@@ -26,13 +25,6 @@ func NewCmd(conn Conn, cb SessionCallback) *Cmd {
 		conn:     conn,
 		cb:       cb,
 	}
-}
-
-func (i *Cmd) AddSa(sa *platform.SaParams) error {
-	return i.cb.AddSa(nil, sa)
-}
-func (i *Cmd) RemoveSa(sa *platform.SaParams) error {
-	return i.cb.RemoveSa(nil, sa)
 }
 
 // dont call cb.onError

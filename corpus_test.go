@@ -49,7 +49,7 @@ func TestIkeMsgGen(t *testing.T) {
 	cfg := newConfig()
 	tkm := initiatorTkm(t)
 	ikeSpi := MakeSpi()
-	params := &Session{
+	sess := &Session{
 		isInitiator: true,
 		tkm:         tkm,
 		cfg:         *cfg,
@@ -57,7 +57,7 @@ func TestIkeMsgGen(t *testing.T) {
 		IkeSpiR:     MakeSpi(),
 	}
 	// init msg
-	init := InitFromSession(params)
+	init := InitFromSession(sess)
 	init.IkeHeader.MsgId = 42
 	// encode & write init msg
 	initIb, err := init.Encode(tkm, true, logger)
@@ -71,8 +71,8 @@ func TestIkeMsgGen(t *testing.T) {
 	authI, err := makeAuth(&authParams{
 		false, true,
 		cfg.IsTransportMode,
-		params.IkeSpiI, params.IkeSpiR,
-		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, params.IkeSpiI),
+		sess.IkeSpiI, sess.IkeSpiR,
+		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, sess.IkeSpiI),
 		cfg.TsI, cfg.TsR,
 		&PskAuthenticator{tkm, true, pskTestID},
 		time.Hour,

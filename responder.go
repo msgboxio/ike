@@ -29,7 +29,7 @@ func NewResponder(cfg *Config, sd *SessionData, initI *Message, logger log.Logge
 		incoming:    make(chan *Message, 10),
 		SessionData: sd,
 	}
-	o.Logger = log.With(logger, "session", o.Tag())
+	o.Logger = log.With(logger, "session", o.tag())
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
 	return o, nil
