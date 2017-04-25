@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Cmd provides utilities for managing sessions
+// Cmd provides utilities for building simple command line apps
 type Cmd struct {
 	// map of initiator spi -> session
 	sessions Sessions
@@ -27,7 +27,6 @@ func NewCmd(conn Conn, cb SessionCallback) *Cmd {
 	}
 }
 
-// dont call cb.onError
 func (i *Cmd) onError(session *Session, err error) {
 	if err == ErrorRekeyDeadlineExceeded {
 		session.Close(context.DeadlineExceeded)
@@ -51,8 +50,8 @@ func (i *Cmd) runSession(spi uint64, s *Session) (err error) {
 	return
 }
 
-// newResponder handles IKE_SA_INIT requests & replies
-func (i *Cmd) newResponder(spi uint64, msg *Message, config *Config, log log.Logger) (session *Session, err error) {
+// onInitRequest handles IKE_SA_INIT requests & replies
+func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Logger) (session *Session, err error) {
 	// consider creating a new session
 	if err = HandleInitRequest(msg, i.conn, config, log); err != nil {
 		// dont create a new session
@@ -123,7 +122,7 @@ func (i *Cmd) Run(config *Config, log log.Logger) error {
 		session, found := i.sessions.Get(spi)
 		if !found {
 			var err error
-			session, err = i.newResponder(spi, msg, config, log)
+			session, err = i.onInitRequest(spi, msg, config, log)
 			if err != nil {
 				level.Warn(log).Log("msg", "drop packet: ", "err", err)
 				continue

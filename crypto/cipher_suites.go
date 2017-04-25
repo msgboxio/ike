@@ -1,13 +1,17 @@
 package crypto
 
 import (
-	"github.com/pkg/errors"
-
 	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
-var debugCrypto = false
+var DebugCrypto = false
+
+var (
+	IkeSuites = map[string]protocol.Transforms{}
+	EspSuites = map[string]protocol.Transforms{}
+)
 
 // Cipher interface provides Encryption & Integrity Protection
 type Cipher interface {
@@ -36,7 +40,7 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 	cs := &CipherSuite{}
 	// empty variables, filled in later
 	var aead *aeadCipher
-	var cipher *simpleCipher
+	simple := &simpleCipher{}
 
 	for _, tr := range trs {
 		switch tr.Transform.Type {
@@ -56,32 +60,34 @@ func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
 		case protocol.TRANSFORM_TYPE_ENCR:
 			keyLen := int(tr.KeyLength) / 8 // from attribute; in bits
 			var ok bool
-			if cipher, ok = cipherTransform(tr.Transform.TransformId, keyLen, cipher); !ok {
-				if aead, keyLen, ok = aeadTransform(tr.Transform.TransformId, keyLen, aead); !ok {
-					return nil, errors.Errorf("Unsupported cipher transfom %d", tr.Transform.TransformId)
+			if ok = cipherTransform(tr.Transform.TransformId, keyLen, simple); !ok {
+				var err error
+				if aead, err = aeadTransform(tr.Transform.TransformId, keyLen); err != nil {
+					return nil, err
 				}
+				keyLen = aead.keyLen + aead.saltLen
 			}
-			cs.KeyLen = keyLen // TODO - 2 places
+			cs.KeyLen = keyLen
 		case protocol.TRANSFORM_TYPE_INTEG:
 			var ok bool
-			if cipher, ok = integrityTransform(tr.Transform.TransformId, cipher); !ok {
+			if ok = integrityTransform(tr.Transform.TransformId, simple); !ok {
 				return nil, errors.Errorf("Unsupported mac transfom %d", tr.Transform.TransformId)
 			}
-			cs.MacTruncLen = cipher.macTruncLen // TODO - 2 places
+			cs.MacTruncLen = simple.macTruncLen // TODO - 2 places
 		case protocol.TRANSFORM_TYPE_ESN:
 		// nothing
 		default:
 			return nil, errors.Errorf("Unsupported transfom type %d", tr.Transform.Type)
 		} // end switch
 	} // end loop
-	if cipher == nil && aead == nil {
+	if simple.cipherFunc == nil && aead == nil {
 		return nil, errors.Errorf("cipher transfoms were not set")
 	}
-	if cipher != nil && aead != nil {
+	if simple.cipherFunc != nil && aead != nil {
 		return nil, errors.Errorf("invalid cipher transfoms combination")
 	}
-	if cipher != nil {
-		cs.Cipher = cipher
+	if simple != nil {
+		cs.Cipher = simple
 	}
 	if aead != nil {
 		cs.Cipher = aead

@@ -16,19 +16,16 @@ type macFunc func(key, data []byte) []byte
 
 func (macFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
 
-func integrityTransform(cipherId uint16, cipher *simpleCipher) (*simpleCipher, bool) {
+func integrityTransform(cipherId uint16, cipher *simpleCipher) bool {
 	macLen, truncLen, macFunc, ok := _integrityTransform(cipherId)
 	if !ok {
-		return nil, false
-	}
-	if cipher == nil {
-		cipher = &simpleCipher{}
+		return false
 	}
 	cipher.macFunc = macFunc
 	cipher.macTruncLen = truncLen
 	cipher.macLen = macLen
 	cipher.AuthTransformId = protocol.AuthTransformId(cipherId)
-	return cipher, true
+	return true
 }
 
 func _integrityTransform(trfId uint16) (macLen, truncLen int, macFunc macFunc, ok bool) {
@@ -41,6 +38,8 @@ func _integrityTransform(trfId uint16) (macLen, truncLen int, macFunc macFunc, o
 		return 16 /* truncated */, sha256.Size, hashMac(sha256.New, 16), true
 	case protocol.AUTH_HMAC_SHA1_96:
 		return 12 /* truncated */, sha1.Size, hashMac(sha1.New, 12), true
+	case protocol.AUTH_NONE:
+		return 0, 0, nil, true
 	default:
 		return 0, 0, nil, false
 	}

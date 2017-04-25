@@ -1,7 +1,6 @@
 package crypto
 
 import (
-	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
@@ -9,10 +8,12 @@ import (
 	"log"
 
 	"github.com/msgboxio/ike/protocol"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
 /*
+rfc5282
+Using Authenticated Encryption Algorithms with the Encrypted Payload
+        of the Internet Key Exchange version 2 (IKEv2) Protocol
 
 sk payload ->
                         1                   2                   3
@@ -50,53 +51,11 @@ A (additional data) ->
 
 length of SK_ai and SK_ar is 0
 SK_ei and SK_er include salt bytes
-if keyLen is 128, then 20 bytes (16B + 4B salt)
-
+if keyLen is 128, then 20 bits (16B + 4B salt)
+ICV is atag
 */
 
 type aeadFunc func(key []byte) (cipher.AEAD, error)
-
-// TODO - check if the parameters are valid
-func aeadTransform(cipherId uint16, keyLen int, cipher *aeadCipher) (*aeadCipher, int, bool) {
-	blockLen, saltLen, ivLen, icvLen, aeadFunc := _aeadTransform(cipherId)
-	if aeadFunc == nil {
-		return nil, 0, false
-	}
-	if cipher == nil {
-		cipher = &aeadCipher{aeadFunc: aeadFunc}
-	}
-	cipher.blockLen = blockLen
-	cipher.keyLen = keyLen
-	cipher.saltLen = saltLen
-	cipher.ivLen = ivLen
-	cipher.saltLen = saltLen
-	cipher.icvLen = icvLen
-	cipher.EncrTransformId = protocol.EncrTransformId(cipherId)
-	// return length of key that needs to be derived
-	return cipher, cipher.keyLen + cipher.saltLen, true
-}
-
-func _aeadTransform(cipherId uint16) (blockLen, saltLen, ivLen, icvLen int, aeadFunc aeadFunc) {
-	switch protocol.EncrTransformId(cipherId) {
-	case protocol.AEAD_AES_GCM_8:
-	case protocol.AEAD_AES_GCM_16:
-		return 16, 4, 8, 16, func(key []byte) (cipher.AEAD, error) {
-			// TODO - make sure key length is same as configured
-			block, err := aes.NewCipher(key)
-			if err != nil {
-				return nil, err
-			}
-			return cipher.NewGCM(block)
-		}
-	case protocol.AEAD_CHACHA20_POLY1305:
-		return 16, 4, 8, 16, func(key []byte) (cipher.AEAD, error) {
-			// TODO - make sure key length is same as configured
-			return chacha20poly1305.New(key)
-		}
-	default:
-	}
-	return
-}
 
 type aeadCipher struct {
 	aeadFunc
@@ -115,7 +74,7 @@ func (cs *aeadCipher) Overhead(clear []byte) int {
 	return padlen + cs.ivLen + cs.icvLen
 }
 
-const ADLEN = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
+const aadLen = protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
 
 func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
 	// Encryption key has salt appended to it
@@ -125,16 +84,15 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 	if err != nil {
 		return
 	}
-	ad := ike[:ADLEN]
-	iv := ike[ADLEN : ADLEN+cs.ivLen]
-	ct := ike[ADLEN+cs.ivLen : len(ike)-cs.icvLen]
-	icv := ike[len(ike)-cs.icvLen:]
+	aad := ike[:aadLen]
+	iv := ike[aadLen : aadLen+cs.ivLen]
+	ct := ike[aadLen+cs.ivLen:]
 	nonce := append(append([]byte{}, salt...), iv...) // 12B; 4B salt + 8B iv
-	if debugCrypto {
-		log.Printf("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%sICV:\n%s",
-			hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(ad), hex.Dump(ct), hex.Dump(icv))
+	if DebugCrypto {
+		log.Printf("aead Verify&Decrypt:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sCT:\n%s",
+			hex.Dump(key), hex.Dump(salt), hex.Dump(iv), hex.Dump(aad), hex.Dump(ct))
 	}
-	clear, err := aead.Open([]byte{}, nonce, append(ct, icv...), ad)
+	clear, err := aead.Open([]byte{}, nonce, ct, aad)
 	if err != nil {
 		return
 	}
@@ -145,27 +103,26 @@ func (cs *aeadCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	if debugCrypto {
-		log.Printf("Padlen:%d\nClear:\n%s", padlen, hex.Dump(clear))
+	if DebugCrypto {
+		log.Printf("Padlen:%d Clear:\n%s", padlen, hex.Dump(clear))
 	}
 	return
 }
 
 func (cs *aeadCipher) EncryptMac(ike, skA, skE []byte) (encr []byte, err error) {
-	hlen := protocol.IKE_HEADER_LEN + protocol.PAYLOAD_HEADER_LENGTH
-	headers := ike[:hlen] // additional data
-	payload := ike[hlen:]
 	key := skE[:cs.keyLen]
 	salt := skE[cs.keyLen : cs.keyLen+cs.saltLen]
 	aead, err := cs.aeadFunc(key)
 	if err != nil {
 		return
 	}
+	aad := ike[:aadLen]                            // additional data
 	iv, err := rand.Prime(rand.Reader, cs.ivLen*8) // bits
 	if err != nil {
 		return
 	}
 	ivBytes := iv.Bytes()
+	payload := ike[aadLen:]
 	nonce := append(append([]byte{}, salt...), ivBytes...)
 	// pad
 	padlen := cs.blockLen - len(payload)%cs.blockLen
@@ -174,11 +131,11 @@ func (cs *aeadCipher) EncryptMac(ike, skA, skE []byte) (encr []byte, err error) 
 		pad[padlen-1] = byte(padlen - 1) // write length
 		payload = append(append([]byte{}, payload...), pad...)
 	}
-	encr = aead.Seal([]byte{}, nonce, payload, headers)
-	if debugCrypto {
-		log.Printf("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nICV\n%s",
-			hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(headers), padlen, hex.Dump(encr[len(payload):]))
+	encr = aead.Seal([]byte{}, nonce, payload, aad)
+	if DebugCrypto {
+		log.Printf("aead encrypt&mac:\nKey:\n%sSalt:\n%sIV:\n%sAd:\n%sPadlen:%d\nencr\n%s",
+			hex.Dump(key), hex.Dump(salt), hex.Dump(ivBytes), hex.Dump(aad), padlen, hex.Dump(encr))
 	}
-	encr = append(append(append([]byte{}, headers...), ivBytes...), encr...)
+	encr = append(append(append([]byte{}, aad...), ivBytes...), encr...)
 	return
 }

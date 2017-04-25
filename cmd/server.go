@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike"
+	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/platform"
 )
 
@@ -103,6 +104,7 @@ func main() {
 	logger := log.NewLogfmtLogger(os.Stdout)
 	if isDebug {
 		logger = level.NewFilter(logger, level.AllowDebug())
+		crypto.DebugCrypto = true
 	} else {
 		logger = level.NewFilter(logger, level.AllowInfo())
 	}

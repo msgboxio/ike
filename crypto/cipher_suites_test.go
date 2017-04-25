@@ -11,18 +11,9 @@ import (
 
 func TestCipherSuite(t *testing.T) {
 	// create cipher suite for all transform
-	transforms := []protocol.Transforms{
-		protocol.IKE_AES_CBC_SHA1_96_MODP1024,
-		protocol.IKE_AES_CBC_SHA256_MODP2048,
-		protocol.IKE_AES_CBC_SHA256_MODP3072,
-		protocol.IKE_AES_CBC_SHA256_ECP256,
-
-		protocol.IKE_AES_GCM_16_MODP2048,
-		protocol.IKE_AES_GCM_16_MODP3072,
-		protocol.IKE_AES128GCM16_PRFSHA256_ECP256,
-		protocol.IKE_CHACHA20POLY1305_PRFSHA256_ECP256,
-	}
-	for _, trs := range transforms {
+	transforms := IkeSuites
+	for name, trs := range transforms {
+		t.Log(name)
 		cs, err := NewCipherSuite(trs)
 		if err != nil {
 			t.Error(err)

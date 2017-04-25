@@ -1,54 +1,18 @@
 package crypto
 
 import (
-	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"log"
 
-	"github.com/dgryski/go-camellia"
 	"github.com/msgboxio/ike/protocol"
 )
 
 // Must returm an interface
 // Interface can be either cipher.BlockMode or cipher.Stream
 type cipherFunc func(key, iv []byte, isRead bool) interface{}
-
-func (cipherFunc) MarshalJSON() ([]byte, error) { return []byte("{}"), nil }
-
-// TODO - check if the parameters are valid
-func cipherTransform(cipherId uint16, keyLen int, cipher *simpleCipher) (*simpleCipher, bool) {
-	blockSize, cipherFunc, ok := _cipherTransform(cipherId)
-	if !ok {
-		return nil, false
-	}
-	if cipher == nil {
-		cipher = &simpleCipher{}
-	}
-	cipher.keyLen = keyLen
-	cipher.blockLen = blockSize
-	cipher.ivLen = blockSize
-	cipher.cipherFunc = cipherFunc
-	cipher.EncrTransformId = protocol.EncrTransformId(cipherId)
-	return cipher, true
-}
-
-func _cipherTransform(cipherId uint16) (int, cipherFunc, bool) {
-	switch protocol.EncrTransformId(cipherId) {
-	case protocol.ENCR_CAMELLIA_CBC:
-		return camellia.BlockSize, cipherCamellia, true
-	case protocol.ENCR_AES_CBC:
-		return aes.BlockSize, cipherAES, true
-	case protocol.ENCR_NULL:
-		return 0, cipherNull, true
-	default:
-		return 0, nil, false
-	}
-}
-
-// Cipher interface implementation
 
 type simpleCipher struct {
 	macTruncLen, macLen int
@@ -69,7 +33,7 @@ func (cs *simpleCipher) Overhead(clear []byte) int {
 	return cs.blockLen - len(clear)%cs.blockLen + cs.macLen + cs.ivLen
 }
 func (cs *simpleCipher) VerifyDecrypt(ike, skA, skE []byte) (dec []byte, err error) {
-	if debugCrypto {
+	if DebugCrypto {
 		log.Printf("simple verify&decrypt:Clear:\n%sSkA:\n%sSkE\n%s",
 			hex.Dump(ike), hex.Dump(skA), hex.Dump(skE))
 	}
@@ -94,33 +58,12 @@ func (cs *simpleCipher) EncryptMac(ike, skA, skE []byte) (b []byte, err error) {
 	data := append(headers, encr...)
 	mac := cs.macFunc(skA, data)
 	b = append(data, mac...)
-	if debugCrypto {
+	if DebugCrypto {
 		log.Printf("simple encrypt&mac:\nMac:\n%sSkA\n%sSkE\n%s",
 			hex.Dump(mac), hex.Dump(skA), hex.Dump(skE))
 	}
 	return
 }
-
-// cipherFunc Implementations
-
-func cipherAES(key, iv []byte, isRead bool) interface{} {
-	block, _ := aes.NewCipher(key)
-	if isRead {
-		return cipher.NewCBCDecrypter(block, iv)
-	}
-	return cipher.NewCBCEncrypter(block, iv)
-}
-
-func cipherCamellia(key, iv []byte, isRead bool) interface{} {
-	block, _ := camellia.New(key)
-	if isRead {
-		return cipher.NewCBCDecrypter(block, iv)
-	}
-	return cipher.NewCBCEncrypter(block, iv)
-}
-
-// TODO - this needs a proper do nothing implementation
-func cipherNull([]byte, []byte, bool) interface{} { return nil }
 
 // decryption & encryption routines
 
@@ -147,7 +90,7 @@ func decrypt(b, key []byte, ivLen int, cipherFn cipherFunc) (dec []byte, err err
 		return
 	}
 	dec = clear[:len(clear)-int(padlen)]
-	if debugCrypto {
+	if DebugCrypto {
 		log.Printf("Pad %d: Clear:\n%sCyp:\n%sIV:\n%s", padlen, hex.Dump(clear), hex.Dump(ciphertext), hex.Dump(iv))
 	}
 	return
@@ -177,7 +120,7 @@ func encrypt(clear, key []byte, ivLen int, cipherFn cipherFunc) (b []byte, err e
 	ciphertext := make([]byte, len(clear))
 	block.CryptBlocks(ciphertext, clear)
 	b = append(iv.Bytes(), ciphertext...)
-	if debugCrypto {
+	if DebugCrypto {
 		log.Printf("Pad %d: Clear:\n%sIV:\n%sCyp:\n%s",
 			padlen, hex.Dump(clear), hex.Dump(iv.Bytes()), hex.Dump(ciphertext))
 	}
