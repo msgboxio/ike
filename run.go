@@ -208,8 +208,12 @@ func monitorSa(o *Session) (err error) {
 	}
 	// check for duplicate SA, if found remove one with smaller nonce
 	// setup SA REKEY timeout (jittered) & monitoring
-	saRekeyTimer := time.NewTimer(Jitter(SaRekeyTimeout, -0.2))
-	saRekeyDeadline := time.NewTimer(SaRekeyTimeout)
+	rekeyDelay := o.cfg.Lifetime
+	saRekeyDeadline := time.NewTimer(rekeyDelay)
+	o.Logger.Log("RekeyDeadline", rekeyDelay)
+	rekeyTimeout := Jitter(rekeyDelay, -0.2)
+	saRekeyTimer := time.NewTimer(rekeyTimeout)
+	o.Logger.Log("RekeyTimeout", rekeyTimeout)
 	for {
 		select {
 		case msg := <-o.incoming:
@@ -229,7 +233,7 @@ func monitorSa(o *Session) (err error) {
 				// ONLY :
 				// Accept SA rekey if responder
 				if o.isInitiator {
-					o.Logger.Log("warn", "Rekey Request: Currently only supported for responder")
+					level.Warn(o.Logger).Log("RekeyRequest", "Currently only supported for responder")
 					// send notification
 					o.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
 					continue
@@ -238,8 +242,8 @@ func monitorSa(o *Session) (err error) {
 					return err
 				}
 				// reset timers
-				saRekeyTimer.Reset(Jitter(SaRekeyTimeout, -0.2))
-				saRekeyDeadline.Reset(SaRekeyTimeout)
+				saRekeyTimer.Reset(rekeyTimeout)
+				saRekeyDeadline.Reset(rekeyDelay)
 			}
 		case <-saRekeyDeadline.C:
 			return ErrorRekeyDeadlineExceeded
@@ -247,19 +251,19 @@ func monitorSa(o *Session) (err error) {
 			// ONLY :
 			// Initiate SA rekey if initiator
 			if !o.isInitiator {
-				o.Logger.Log("warn", "Rekey Timeout: Currently only supported for initiator")
+				level.Warn(o.Logger).Log("RekeyTimeout", "Currently only supported for initiator")
 				continue
 			}
-			o.Logger.Log("note", "Rekey Timeout")
+			o.Logger.Log("Rekey", "Timeout")
 			if err := runIpsecRekey(o); err != nil {
-				o.Logger.Log("error:", err)
+				o.Logger.Log("RekeyError", err)
 				continue
 			}
 			// reset timers
-			saRekeyTimer.Reset(Jitter(SaRekeyTimeout, -0.2))
-			saRekeyDeadline.Reset(SaRekeyTimeout)
-		}
-	}
+			saRekeyTimer.Reset(rekeyTimeout)
+			saRekeyDeadline.Reset(rekeyDelay)
+		} // select
+	} // for
 }
 
 // RunSession starts and monitors the session returning when the session ends

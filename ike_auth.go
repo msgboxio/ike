@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/x509"
 	"encoding/hex"
-	"time"
-
 	"fmt"
 
 	"github.com/msgboxio/ike/protocol"
@@ -149,25 +147,17 @@ func HandleSaForSession(o *Session, m *Message) error {
 	if err != nil {
 		return err
 	}
-	// start Lifetime timer
 	if params.lifetime != 0 {
-		reauth := params.lifetime - 2*time.Second
-		if params.lifetime <= 2*time.Second {
-			reauth = 0
-		}
-		o.Logger.Log("Lifetime", params.lifetime, "reauth_in", reauth)
-		// TODO - start alarm for reauth
-		// time.AfterFunc(reauth, func() {
-		// 	o.Logger.Log("Lifetime Expired")
-		// 	o.PostEvent(&state.StateEvent{Event: state.REKEY_START})
-		// })
+		o.Logger.Log("Lifetime", params.lifetime)
+		o.cfg.Lifetime = params.lifetime
 	}
 	// transport mode
 	if params.isTransportMode && o.cfg.IsTransportMode {
-		o.Logger.Log("msg", "Using Transport Mode")
+		o.Logger.Log("Mode", "TRANSPORT")
 	} else {
+		o.Logger.Log("Mode", "TUNNEL")
 		if params.isTransportMode {
-			o.Logger.Log("msg", "Peer wanted Transport mode, forcing Tunnel mode")
+			o.Logger.Log("TransportMode", "Peer Requested, but forcing Tunnel mode")
 		} else if o.cfg.IsTransportMode {
 			return errors.New("Peer Rejected Transport Mode Config")
 		}
