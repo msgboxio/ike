@@ -35,7 +35,7 @@ func (s *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, log
 	if protocol.PacketLog {
 		stdlog.Println("rx:" + spew.Sprintf("%#v", s))
 	}
-	log.Log("rx", fmt.Sprintf("[%d] %s%s", s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags),
+	log.Log("rx", fmt.Sprintf("[%d] %s%s", s.IkeHeader.MsgID, s.IkeHeader.ExchangeType, s.IkeHeader.Flags),
 		"payloads", *s.Payloads)
 	return
 }
@@ -91,7 +91,7 @@ func (s *Message) Encode(tkm *Tkm, forInitiator bool, log log.Logger) (b []byte,
 	if protocol.PacketLog {
 		stdlog.Println("tx:" + spew.Sprintf("%#v", s))
 	}
-	log.Log("tx", fmt.Sprintf("[%d] %s%s", s.IkeHeader.MsgId, s.IkeHeader.ExchangeType, s.IkeHeader.Flags),
+	log.Log("tx", fmt.Sprintf("[%d] %s%s", s.IkeHeader.MsgID, s.IkeHeader.ExchangeType, s.IkeHeader.Flags),
 		"payloads", s.Payloads)
 	firstPayloadType := protocol.PayloadTypeNone // no payloads are one possibility
 	if len(s.Payloads.Array) > 0 {

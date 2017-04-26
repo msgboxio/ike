@@ -44,9 +44,9 @@ func DefaultConfig() *Config {
 }
 
 // CheckProposals checks if incoming proposals include our configuration
-func (cfg *Config) CheckProposals(prot protocol.ProtocolId, proposals protocol.Proposals) error {
+func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.Proposals) error {
 	for _, prop := range proposals {
-		if prop.ProtocolId != prot {
+		if prop.ProtocolID != prot {
 			continue
 		}
 		// select first acceptable one from the list
@@ -115,12 +115,12 @@ func (cfg *Config) AddHostBasedSelectors(local, remote net.IP, isInitiator bool)
 	return nil
 }
 
-func ProposalFromTransform(prot protocol.ProtocolId, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
+func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
 	return []*protocol.SaProposal{
 		&protocol.SaProposal{
 			IsLast:       true,
 			Number:       1,
-			ProtocolId:   prot,
+			ProtocolID:   prot,
 			Spi:          append([]byte{}, spi...),
 			SaTransforms: trs.AsList(),
 		},

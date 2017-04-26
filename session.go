@@ -160,7 +160,7 @@ func (o *Session) Close(err error) {
 func (o *Session) InitMsg() (*outgoingMessge, error) {
 	initMsg := func(msgId uint32) (*outgoingMessge, error) {
 		init := InitFromSession(o)
-		init.IkeHeader.MsgId = msgId
+		init.IkeHeader.MsgID = msgId
 		// encode
 		initB, err := o.encode(init)
 		if err != nil {
@@ -193,12 +193,12 @@ func (o *Session) AuthMsg() (*outgoingMessge, error) {
 		o.Logger.Log("err", err)
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
-	auth.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
+	auth.IkeHeader.MsgID = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
 	return o.encode(auth)
 }
 
 func (o *Session) RekeyMsg(child *Message) (*outgoingMessge, error) {
-	child.IkeHeader.MsgId = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
+	child.IkeHeader.MsgID = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
 	// encode & send
 	return o.encode(child)
 }
@@ -252,14 +252,14 @@ func (o *Session) CheckError(err error) error {
 
 func (o *Session) Notify(ie protocol.IkeErrorCode) {
 	info := NotifyFromSession(o, ie)
-	info.IkeHeader.MsgId = o.nextMsgID(false) // never a response
+	info.IkeHeader.MsgID = o.nextMsgID(false) // never a response
 	// encode & send
 	o.sendMsg(o.encode(info))
 }
 
 func (o *Session) sendIkeSaDelete() {
 	info := DeleteFromSession(o)
-	info.IkeHeader.MsgId = o.nextMsgID(false) // never a response
+	info.IkeHeader.MsgID = o.nextMsgID(false) // never a response
 	// encode & send
 	o.sendMsg(o.encode(info))
 }
@@ -267,7 +267,7 @@ func (o *Session) sendIkeSaDelete() {
 // SendEmptyInformational can be used for periodic keepalive
 func (o *Session) SendEmptyInformational(isResponse bool) error {
 	info := EmptyFromSession(o, isResponse)
-	info.IkeHeader.MsgId = o.nextMsgID(isResponse)
+	info.IkeHeader.MsgID = o.nextMsgID(isResponse)
 	// encode & send
 	return o.sendMsg(o.encode(info))
 }
@@ -282,7 +282,7 @@ func (o *Session) isMessageValid(m *Message) error {
 		// TODO -
 	}
 	// check sequence numbers
-	seq := m.IkeHeader.MsgId
+	seq := m.IkeHeader.MsgID
 	if m.IkeHeader.Flags.IsResponse() {
 		// response id ought to be the same as our request id
 		if seq != o.msgIDReq {

@@ -79,7 +79,7 @@ func makeInit(params *initParams) *Message {
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        flags,
-			MsgId:        0, // ALWAYS
+			MsgID:        0, // ALWAYS
 		},
 		Payloads: protocol.MakePayloads(),
 	}
@@ -135,7 +135,7 @@ func parseInit(m *Message) (*initParams, error) {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: incorrect type")
 	}
 	//
-	if m.IkeHeader.MsgId != 0 {
+	if m.IkeHeader.MsgID != 0 {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid Message Id")
 	}
 	if m.IkeHeader.Flags.IsInitiator() {

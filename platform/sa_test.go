@@ -5,6 +5,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/go-kit/kit/log"
 	"github.com/vishvananda/netlink"
 )
 
@@ -20,6 +21,7 @@ func key(len int) []byte {
 }
 
 func TestInstallSa(t *testing.T) {
+	log := log.NewNopLogger()
 	local, localNet, _ := net.ParseCIDR("192.168.20.1/24")
 	remote, remoteNet, _ := net.ParseCIDR("192.168.40.1/24")
 
@@ -41,7 +43,7 @@ func TestInstallSa(t *testing.T) {
 		SpiR:            makeSpi(),
 		IsTransportMode: true,
 	}
-	if err := InstallChildSa(sa); err != nil {
+	if err := InstallChildSa(sa, log); err != nil {
 		t.Error(err)
 	}
 
@@ -49,7 +51,6 @@ func TestInstallSa(t *testing.T) {
 	t.Log("state", state, err)
 	policy, err := netlink.XfrmPolicyList(0)
 	t.Log("policy", policy, err)
-
-	netlink.XfrmPolicyFlush()
-	netlink.XfrmStateFlush(0)
+	// netlink.XfrmPolicyDel()
+	// netlink.XfrmStateFlush(0)
 }

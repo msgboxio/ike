@@ -3,9 +3,9 @@ package protocol
 // Transforms store the configured crypto suite
 type Transforms map[TransformType]*SaTransform
 
-func (t Transforms) AsProposal(pID ProtocolId) (prop Proposals) {
+func (t Transforms) AsProposal(pID ProtocolID) (prop Proposals) {
 	prop = append(prop, &SaProposal{
-		ProtocolId:   pID,
+		ProtocolID:   pID,
 		SaTransforms: t.AsList(),
 	})
 	return

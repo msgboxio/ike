@@ -95,12 +95,12 @@ func (f IkeFlags) IsInitiator() bool {
 	return false
 }
 
-type ProtocolId uint8
+type ProtocolID uint8
 
 const (
-	IKE ProtocolId = 1
-	AH  ProtocolId = 2
-	ESP ProtocolId = 3
+	IKE ProtocolID = 1
+	AH  ProtocolID = 2
+	ESP ProtocolID = 3
 )
 
 type TransformType uint8
@@ -265,7 +265,7 @@ type IkeHeader struct {
 	MajorVersion, MinorVersion uint8 // 4 bits
 	ExchangeType               IkeExchangeType
 	Flags                      IkeFlags
-	MsgId                      uint32
+	MsgID                      uint32
 	MsgLength                  uint32
 }
 
@@ -331,7 +331,7 @@ type SaPayload struct {
 type SaProposal struct {
 	IsLast       bool
 	Number       uint8
-	ProtocolId   ProtocolId
+	ProtocolID   ProtocolID
 	Spi          []byte
 	SaTransforms []*SaTransform
 }
@@ -660,7 +660,7 @@ const (
 */
 type NotifyPayload struct {
 	*PayloadHeader
-	ProtocolId          ProtocolId
+	ProtocolId          ProtocolID
 	NotificationType    NotificationType
 	Spi                 []byte
 	NotificationMessage interface{}
@@ -680,7 +680,7 @@ type NotifyPayload struct {
 */
 type DeletePayload struct {
 	*PayloadHeader
-	ProtocolId ProtocolId
+	ProtocolId ProtocolID
 	Spis       []Spi
 }
 

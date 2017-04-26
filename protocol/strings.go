@@ -2,7 +2,7 @@ package protocol
 
 import "fmt"
 
-func (p ProtocolId) String() string {
+func (p ProtocolID) String() string {
 	switch p {
 	case IKE:
 		return "IKE"

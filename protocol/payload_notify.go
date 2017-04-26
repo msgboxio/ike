@@ -48,7 +48,7 @@ func (s *NotifyPayload) Decode(b []byte) (err error) {
 		return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload length")
 	}
 	pId, _ := packets.ReadB8(b, 0)
-	s.ProtocolId = ProtocolId(pId)
+	s.ProtocolId = ProtocolID(pId)
 	spiLen, _ := packets.ReadB8(b, 1)
 	if len(b) < 4+int(spiLen) {
 		return errors.Wrap(ERR_INVALID_SYNTAX, "Notify payload length")

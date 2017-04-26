@@ -10,7 +10,7 @@ import (
 //   Proposal Substructure
 
 func (prop *SaProposal) IsSpiSizeCorrect(spiSize int) bool {
-	switch prop.ProtocolId {
+	switch prop.ProtocolID {
 	case IKE:
 		if spiSize == 8 {
 			return true
@@ -34,8 +34,8 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 	}
 	propLength, _ := packets.ReadB16(b, 2)
 	prop.Number, _ = packets.ReadB8(b, 4)
-	pId, _ := packets.ReadB8(b, 5)
-	prop.ProtocolId = ProtocolId(pId)
+	pID, _ := packets.ReadB8(b, 5)
+	prop.ProtocolID = ProtocolID(pID)
 	spiSize, _ := packets.ReadB8(b, 6)
 	numTransforms, _ := packets.ReadB8(b, 7)
 	// variable parts
@@ -88,7 +88,7 @@ func (prop *SaProposal) encode(number int, isLast bool) (b []byte) {
 		packets.WriteB8(b, 0, 2)
 	}
 	packets.WriteB8(b, 4, prop.Number)
-	packets.WriteB8(b, 5, uint8(prop.ProtocolId))
+	packets.WriteB8(b, 5, uint8(prop.ProtocolID))
 	packets.WriteB8(b, 6, uint8(len(prop.Spi)))
 	packets.WriteB8(b, 7, uint8(len(prop.SaTransforms)))
 	b = append(b, prop.Spi...)

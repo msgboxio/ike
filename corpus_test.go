@@ -58,7 +58,7 @@ func TestIkeMsgGen(t *testing.T) {
 	}
 	// init msg
 	init := InitFromSession(sess)
-	init.IkeHeader.MsgId = 42
+	init.IkeHeader.MsgID = 42
 	// encode & write init msg
 	initIb, err := init.Encode(tkm, true, logger)
 	if err != nil {
@@ -82,7 +82,7 @@ func TestIkeMsgGen(t *testing.T) {
 	}
 	// overwrite NextPayload
 	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
-	authI.IkeHeader.MsgId = 43
+	authI.IkeHeader.MsgID = 43
 	// encode & write authI msg
 	authIb, err := authI.Encode(tkm, true, logger)
 	if err != nil {

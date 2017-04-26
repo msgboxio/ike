@@ -28,7 +28,7 @@ func DecodeIkeHeader(b []byte) (h *IkeHeader, err error) {
 	h.ExchangeType = IkeExchangeType(et)
 	flags, _ := packets.ReadB8(b, 16+3)
 	h.Flags = IkeFlags(flags)
-	h.MsgId, _ = packets.ReadB32(b, 16+4)
+	h.MsgID, _ = packets.ReadB32(b, 16+4)
 	h.MsgLength, _ = packets.ReadB32(b, 16+8)
 	if h.MsgLength < IKE_HEADER_LEN {
 		return nil, errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Bad Message Length in header : %d", h.MsgLength))
@@ -50,7 +50,7 @@ func (h *IkeHeader) Encode() (b []byte) {
 	packets.WriteB8(b, 17, h.MajorVersion<<4|h.MinorVersion)
 	packets.WriteB8(b, 18, uint8(h.ExchangeType))
 	packets.WriteB8(b, 19, uint8(h.Flags))
-	packets.WriteB32(b, 20, h.MsgId)
+	packets.WriteB32(b, 20, h.MsgID)
 	packets.WriteB32(b, 24, h.MsgLength)
 	if PacketLog {
 		log.Printf("Ike Header: %+v to \n%s", *h, hex.Dump(b))

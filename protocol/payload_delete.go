@@ -25,7 +25,7 @@ func (s *DeletePayload) Decode(b []byte) error {
 		return errors.Wrap(ERR_INVALID_SYNTAX, "Delete payload length")
 	}
 	pid, _ := packets.ReadB8(b, 0)
-	s.ProtocolId = ProtocolId(pid)
+	s.ProtocolId = ProtocolID(pid)
 	lspi, _ := packets.ReadB8(b, 1)
 	nspi, _ := packets.ReadB16(b, 2)
 	b = b[4:]
