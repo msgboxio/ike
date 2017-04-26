@@ -126,7 +126,7 @@ func encrTransform(tr *protocol.SaTransform) (crypt, aead *netlink.XfrmStateAlgo
 	case protocol.AEAD_CHACHA20_POLY1305:
 		return nil, &netlink.XfrmStateAlgo{
 			Name:   "rfc7539esp(chacha20,poly1305)",
-			ICVLen: 128,
+			ICVLen: int(tr.KeyLength),
 		}
 	case protocol.ENCR_AES_CBC:
 		return &netlink.XfrmStateAlgo{
@@ -228,9 +228,8 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 }
 
 func InstallChildSa(sa *SaParams, log log.Logger) error {
-	logger = log.With(logger, "do", "install")
 	for _, policy := range makeSaPolicies(256, 16, sa) {
-		level.Debug(log).Log("Policy", policy)
+		level.Debug(log).Log("InstallPolicy", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
@@ -242,7 +241,7 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
-		level.Debug(log).Log("State", state)
+		level.Debug(log).Log("InstallState", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
 			if err == syscall.EEXIST {
@@ -258,16 +257,15 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 }
 
 func RemoveChildSa(sa *SaParams, log log.Logger) error {
-	logger = log.With(logger, "do", "remove")
 	for _, policy := range makeSaPolicies(256, 16, sa) {
-		level.Debug(log).Log("Policy", policy)
+		level.Debug(log).Log("RemovePolicy", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {
 			return errors.Errorf("Failed to remove policy %v: %v", policy, err)
 		}
 	}
 	for _, state := range makeSaStates(256, sa) {
-		level.Debug(log).Log("State", state)
+		level.Debug(log).Log("RemoveState", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateDel(state); err != nil {
 			return errors.Errorf("Failed to remove state %+v: %v", state, err)

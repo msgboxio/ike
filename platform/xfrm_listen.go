@@ -7,7 +7,6 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netlink/nl"
 )
@@ -24,7 +23,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 		panic(err)
 	}
 
-	level.Debug(log).Log("note", "Started listening for xfrm messages from kernel")
+	log.Log("xfrm", "Started listening for xfrm messages from kernel")
 	go func() {
 	done:
 		for {
@@ -33,12 +32,12 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 				doneCh <- struct{}{}
 				break done
 			case err := <-errCh:
-				log.Warn("listener", err)
+				log.Log("xfrm", err)
 				break done
 			case msg := <-ch:
 				switch msg.Type() {
 				case nl.XFRM_MSG_EXPIRE:
-					level.Debug(log).Log("expire", spew.Sdump(msg.(*netlink.XfrmMsgExpire)))
+					log.Log("xfrm_expire", spew.Sdump(msg.(*netlink.XfrmMsgExpire)))
 				case nl.XFRM_MSG_ACQUIRE:
 				// case nl.XFRM_MSG_NEWPOLICY:
 				// case nl.XFRM_MSG_DELPOLICY:
@@ -48,7 +47,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 				}
 			}
 		}
-		level.Debug(log).Log("note", "Stopped listening for xfrm messages from kernel")
+		log.Log("xfrm", "Stopped listening for xfrm messages from kernel")
 		close(ch)
 		close(errCh)
 		close(doneCh)
