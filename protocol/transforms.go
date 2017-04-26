@@ -3,16 +3,24 @@ package protocol
 // Transforms store the configured crypto suite
 type Transforms map[TransformType]*SaTransform
 
+func (t Transforms) AsProposal(pID ProtocolId) (prop Proposals) {
+	prop = append(prop, &SaProposal{
+		ProtocolId:   pID,
+		SaTransforms: t.AsList(),
+	})
+	return
+}
+
 // AsList converts transforms to flat list
-func (configured Transforms) AsList() (trs []*SaTransform) {
-	for _, trsVal := range configured {
+func (t Transforms) AsList() (trs []*SaTransform) {
+	for _, trsVal := range t {
 		trs = append(trs, trsVal)
 	}
 	return
 }
 
-// Within checks if the configured set of transforms occurs within list of porposed transforms
-func (configured Transforms) Within(proposals []*SaTransform) bool {
+// Within checks if the conf set of transforms occurs within list of porposed transforms
+func (t Transforms) Within(proposals []*SaTransform) bool {
 	listHas := func(trsList []*SaTransform, trs *SaTransform) bool {
 		for _, tr := range trsList {
 			if trs.IsEqual(tr) {
@@ -22,7 +30,7 @@ func (configured Transforms) Within(proposals []*SaTransform) bool {
 		return false
 	}
 
-	for _, proposal := range configured {
+	for _, proposal := range t {
 		if !listHas(proposals, proposal) {
 			return false
 		}

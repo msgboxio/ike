@@ -4,6 +4,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
@@ -65,7 +66,7 @@ func TestInit2(t *testing.T) {
 	go runTestInitiator(cfg1, &testcb{chr, sa, cerr}, chi, logger)
 
 	var cfg2 = *cfg1
-	cfg2.ProposalIke = protocol.IKE_AES_GCM_16_MODP3072
+	cfg2.ProposalIke = crypto.Aes128Sha256Modp3072
 	go runTestResponder(&cfg2, &testcb{chi, sa, cerr}, chr, logger)
 	if err := waitFor2Sa(t, sa, cerr); errors.Cause(err) != protocol.ERR_INVALID_KE_PAYLOAD {
 		t.Fail()
