@@ -121,12 +121,12 @@ func encrTransform(tr *protocol.SaTransform) (crypt, aead *netlink.XfrmStateAlgo
 	case protocol.AEAD_AES_GCM_16:
 		return nil, &netlink.XfrmStateAlgo{
 			Name:   "rfc4106(gcm(aes))",
-			ICVLen: int(tr.KeyLength),
+			ICVLen: 128, // currenly only 16 octects ICV is supported
 		}
 	case protocol.AEAD_CHACHA20_POLY1305:
 		return nil, &netlink.XfrmStateAlgo{
 			Name:   "rfc7539esp(chacha20,poly1305)",
-			ICVLen: int(tr.KeyLength),
+			ICVLen: 128, // icv is always 16 octets
 		}
 	case protocol.ENCR_AES_CBC:
 		return &netlink.XfrmStateAlgo{
