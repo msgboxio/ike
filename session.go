@@ -167,17 +167,20 @@ func (o *Session) SetCookie(cn *protocol.NotifyPayload) {
 }
 
 func (o *Session) PostMessage(m *Message) {
-	if err := o.isMessageValid(m); err != nil {
-		level.Error(o.Logger).Log("Drop", err)
+	check := func() (err error) {
+		if err = o.isMessageValid(m); err != nil {
+			return
+		}
+		if err = DecryptMessage(m, o.tkm, o.isInitiator, o.Logger); err != nil {
+			return
+		}
+		if o.isClosing {
+			err = errors.New("closing")
+		}
 		return
 	}
-	if err := DecryptMessage(m, o.tkm, o.isInitiator, o.Logger); err != nil {
-		level.Warn(o.Logger).Log("Drop", err)
-		return
-	}
-	if o.isClosing {
-		level.Error(o.Logger).Log("Drop", "Closing")
-		return
+	if err := check(); err != nil {
+		level.Warn(o.Logger).Log("DROP", fmt.Sprintf("%+v", err))
 	}
 	// requestId has been confirmed, increment it for next request
 	o.msgIDReq++
@@ -215,6 +218,7 @@ func (o *Session) Close(err error) {
 	}
 	o.isClosing = true
 	o.sendIkeSaDelete()
+	o.UnInstallSa()
 }
 
 // InitMsg generates IKE_INIT
@@ -287,14 +291,13 @@ func (o *Session) SendAuth() error {
 }
 
 // HandleClose will cleanly removes child SAs upon receiving a message from peer
-func (o *Session) HandleClose() error {
+func (o *Session) HandleClose() {
 	if o.isClosing {
-		return nil
+		return
 	}
 	o.isClosing = true
 	o.SendEmptyInformational(true)
 	o.UnInstallSa()
-	return nil
 }
 
 // CheckError checks error, then send to peer
@@ -383,24 +386,23 @@ func saAddr(sa *platform.SaParams, local, remote net.Addr) {
 // AddSa adds Child SA
 func (o *Session) AddSa(sa *platform.SaParams) (err error) {
 	saAddr(sa, o.Local, o.Remote)
+	o.Logger.Log("CHILD_SA", "install",
+		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
 	if o.Cb.AddSa != nil {
 		err = o.Cb.AddSa(o, sa)
 	}
-	o.Logger.Log("CHILD_SA", "installed",
-		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
-		"err", err)
 	return
 }
 
 // RemoveSa removes Child SA
 func (o *Session) RemoveSa(sa *platform.SaParams) (err error) {
 	saAddr(sa, o.Local, o.Remote)
+	o.Logger.Log("CHILD_SA", "remove",
+		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
+		"err", err)
 	if o.Cb.RemoveSa != nil {
 		err = o.Cb.RemoveSa(o, sa)
 	}
-	o.Logger.Log("CHILD_SA", "removed",
-		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
-		"err", err)
 	return
 }
 

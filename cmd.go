@@ -72,7 +72,7 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) 
 			spi := SpiToInt64(initiator.IkeSpiI)
 			// TODO - currently this is break before make
 			if err = i.runSession(spi, initiator); err == context.DeadlineExceeded {
-				level.Info(initiator.Logger).Log("msg", "reKeying ")
+				initiator.Logger.Log("msg", "reKeying")
 				continue
 			} else if err == context.Canceled {
 				break

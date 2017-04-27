@@ -23,22 +23,22 @@ func waitForSignal(cancel context.CancelFunc, logger log.Logger) {
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel()
-	level.Error(logger).Log("signal", sig.String())
+	level.Warn(logger).Log("signal", sig.String())
 }
 
-var localID = &ike.PskIdentities{
+var localPskID = &ike.PskIdentities{
 	Primary: "ak@msgbox.io",
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-// var localID = &ike.CertIdentity{}
+var localID = &ike.CertIdentity{}
 
-var remoteID = &ike.PskIdentities{
+var remotePskID = &ike.PskIdentities{
 	Primary: "ak@msgbox.io",
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-// var remoteID = &ike.CertIdentity{}
+var remoteID = &ike.CertIdentity{}
 
 var isDebug bool
 
@@ -59,55 +59,50 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 
 	flag.Parse()
 
-	/*
-		// crypto keys & names
-		if caFile != "" {
-			roots, err := ike.LoadRoot(caFile)
-			if err != nil {
-				log.Fatal(err)
-			}
-			remoteId.Roots = roots
+	// crypto keys & names
+	if caFile != "" {
+		roots, err := ike.LoadRoot(caFile)
+		if err != nil {
+			panic(err)
 		}
-		if certFile != "" {
-			certs, err := ike.LoadCerts(certFile)
-			if err != nil {
-				level.Warn(log).Log("err", err)
-			}
-			localId.Certificate = certs[0]
+		remoteID.Roots = roots
+	}
+	if certFile != "" {
+		certs, err := ike.LoadCerts(certFile)
+		if err != nil {
+			panic(err)
 		}
-		if keyFile != "" {
-			key, err := ike.LoadKey(keyFile)
-			if err != nil {
-				level.Warn(log).Log("err", err)
-			}
-			localId.PrivateKey = key
+		localID.Certificate = certs[0]
+	}
+	if keyFile != "" {
+		key, err := ike.LoadKey(keyFile)
+		if err != nil {
+			panic(err)
 		}
-		if peerID != "" {
-			remoteId.Name = peerID
-		}
-	*/
+		localID.PrivateKey = key
+	}
+	if peerID != "" {
+		remoteID.Name = peerID
+	}
 
 	config = ike.DefaultConfig()
 	if !isTunnelMode {
 		config.IsTransportMode = true
 	}
-	config.LocalID = localID
-	config.RemoteID = remoteID
-
 	return
 }
 
 func main() {
 	config, localString, remoteString := loadConfig()
+	config.LocalID = localPskID
+	config.RemoteID = remotePskID
 
-	logger := log.NewLogfmtLogger(os.Stdout)
+	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	if isDebug {
 		logger = level.NewFilter(logger, level.AllowDebug())
 		// crypto.DebugCrypto = true
-	} else {
-		logger = level.NewFilter(logger, level.AllowInfo())
 	}
-	// logger = log.With(logger, "ts", log.DefaultTimestamp, "caller", log.DefaultCaller)
+	logger = log.With(logger, "ts", log.DefaultTimestamp, "caller", log.DefaultCaller)
 
 	cxt, cancel := context.WithCancel(context.Background())
 	go waitForSignal(cancel, logger)
@@ -150,23 +145,27 @@ func main() {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 
+	closing := false
 	go func() {
 		// wait for app shutdown
 		<-cxt.Done()
+		closing = true
 		cmd.ShutDown(cxt.Err())
 		pconn.Close()
 		wg.Done()
 	}()
 
-	err = cmd.Run(config, logger)
 	// this will return when there is a socket error
-	// usually caused by the close call above
-	if isDebug {
-		fmt.Printf("Error: %+v\n", err)
-	} else {
-		logger.Log("error", err)
+	err = cmd.Run(config, logger)
+	if !closing {
+		// ignore when caused by the close call above
+		if isDebug {
+			fmt.Printf("Error: %+v\n", err)
+		} else {
+			logger.Log("error", err)
+		}
+		cancel()
 	}
-	cancel()
 	// wait for remaining sessions to shutdown
 	wg.Wait()
 	fmt.Printf("shutdown: %v\n", cxt.Err())

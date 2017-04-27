@@ -141,7 +141,7 @@ func (p *pconnV6) ReadPacket() (b []byte, remoteAddr, localAddr net.Addr, err er
 	n, cm, remoteAddr, err := p.ReadFrom(b)
 	if err == nil {
 		b = b[:n]
-		if cm != nil { // nil on mac
+		if cm != nil { // can be nil on mac
 			port := p.Inner().LocalAddr().(*net.UDPAddr).Port
 			localAddr = &net.UDPAddr{
 				IP:   cm.Dst,

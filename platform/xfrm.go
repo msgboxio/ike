@@ -4,6 +4,7 @@ package platform
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"syscall"
 
@@ -233,7 +234,8 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
-				err = errors.Errorf("Skipped adding policy %v because it already exists", policy)
+				level.Warn(log).Log("msg", fmt.Sprintf("Skipped adding policy %v because it already exists", policy))
+				continue
 			} else {
 				err = errors.Errorf("Failed to add policy %v: %v", policy, err)
 			}
@@ -245,6 +247,7 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
 			if err == syscall.EEXIST {
+				// this should never happen
 				err = errors.Errorf("Skipped adding state %v because it already exists", state)
 			} else {
 				statejs, _ := json.Marshal(state)
