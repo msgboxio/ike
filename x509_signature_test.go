@@ -14,8 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"encoding/hex"
-
 	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 )
@@ -111,7 +109,6 @@ func TestSignature(test *testing.T) {
 		if err != nil {
 			test.Error(err)
 		}
-		test.Logf("\n%s", hex.Dump(sig))
 		err = VerifySignature(t.AuthMethod, data, sig, t.cert, log)
 		if t.checkSig {
 			if err != nil {

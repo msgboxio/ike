@@ -7,12 +7,10 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"net"
-	"os"
 	"sync"
 	"testing"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/platform"
 	"github.com/pkg/errors"
 )
@@ -22,8 +20,8 @@ var localAddr, remoteAddr net.Addr
 var logger log.Logger
 
 func init() {
-	logger = level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
-	// logger = level.NewFilter(log.NewNopLogger())
+	// logger = level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
+	logger = log.NewNopLogger()
 }
 
 var pskTestID = &PskIdentities{
@@ -103,23 +101,20 @@ func (t *testcb) WritePacket(reply []byte, remoteAddr net.Addr) error {
 func (t *testcb) Inner() net.Conn { return nil }
 func (t *testcb) Close() error    { return nil }
 
-func sdata(cbk *testcb) *SessionData {
-	return &SessionData{
-		Conn: cbk,
-		Cb: SessionCallback{
-			AddSa: func(_ *Session, sa *platform.SaParams) error {
-				cbk.saTo <- sa
-				return nil
-			},
-			RemoveSa: func(_ *Session, sa *platform.SaParams) error {
-				return nil
-			},
+func scb(cbk *testcb) *SessionCallback {
+	return &SessionCallback{
+		AddSa: func(_ *Session, sa *platform.SaParams) error {
+			cbk.saTo <- sa
+			return nil
+		},
+		RemoveSa: func(_ *Session, sa *platform.SaParams) error {
+			return nil
 		},
 	}
 }
 
 func runTestInitiator(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Logger) {
-	initiator, err := NewInitiator(cfg, sdata(cbk), log)
+	initiator, err := NewInitiator(cfg, nil, cbk, scb(cbk), log)
 	if err != nil {
 		cbk.errTo <- err
 	}
@@ -163,7 +158,7 @@ func runTestResponder(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Lo
 		return
 	}
 	// create responder
-	responder, err := NewResponder(cfg, sdata(cbk), initI, log)
+	responder, err := NewResponder(cfg, cbk, scb(cbk), initI, log)
 	if err != nil {
 		cbk.errTo <- err
 	}

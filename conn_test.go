@@ -60,7 +60,7 @@ func testCfg() *Config {
 
 func TestReadFragment(t *testing.T) {
 	conn := testConn()
-	sess, _ := NewInitiator(testCfg(), nil, logger)
+	sess, _ := NewInitiator(testCfg(), nil, conn, &SessionCallback{}, logger)
 	msg, _ := InitFromSession(sess).Encode(nil, false, sess.Logger)
 	conn.WritePacket(msg[:40], nil)
 	conn.WritePacket(msg[40:], nil)

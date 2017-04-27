@@ -123,14 +123,14 @@ func main() {
 
 	pconn, err := ike.Listen("udp", localString, logger)
 	if err != nil {
-		panic(err)
+		panic(spew.Sprintf("Listen: %+v", err))
 	}
 	// requires root
 	if err := platform.SetSocketBypas(pconn.Inner(), syscall.AF_INET6); err != nil {
-		panic(err)
+		panic(spew.Sprintf("Bypass: %+v", err))
 	}
 
-	cmd := ike.NewCmd(pconn, ike.SessionCallback{
+	cmd := ike.NewCmd(pconn, &ike.SessionCallback{
 		AddSa: func(session *ike.Session, sa *platform.SaParams) error {
 			return platform.InstallChildSa(sa, logger)
 		},
@@ -161,7 +161,11 @@ func main() {
 	err = cmd.Run(config, logger)
 	// this will return when there is a socket error
 	// usually caused by the close call above
-	logger.Log("error", err)
+	if isDebug {
+		fmt.Printf("Error: %+v\n", err)
+	} else {
+		logger.Log("error", err)
+	}
 	cancel()
 	// wait for remaining sessions to shutdown
 	wg.Wait()

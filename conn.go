@@ -180,7 +180,7 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 	for {
 		b, remoteAddr, localAddr, err := conn.ReadPacket()
 		if err != nil {
-			return nil, err
+			return nil, errors.WithStack(err)
 		}
 		log.Log("read", len(b), "from", remoteAddr)
 		if buf != nil {

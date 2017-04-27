@@ -16,10 +16,10 @@ type Cmd struct {
 	// map of initiator spi -> session
 	sessions Sessions
 	conn     Conn
-	cb       SessionCallback
+	cb       *SessionCallback
 }
 
-func NewCmd(conn Conn, cb SessionCallback) *Cmd {
+func NewCmd(conn Conn, cb *SessionCallback) *Cmd {
 	return &Cmd{
 		sessions: NewSessions(),
 		conn:     conn,
@@ -52,19 +52,7 @@ func (i *Cmd) runSession(spi uint64, s *Session) (err error) {
 
 // onInitRequest handles IKE_SA_INIT requests & replies
 func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Logger) (session *Session, err error) {
-	// consider creating a new session
-	if err = HandleInitRequest(msg, i.conn, config, log); err != nil {
-		// dont create a new session
-		return
-	}
-	// create and run session
-	sd := &SessionData{
-		Conn:   i.conn,
-		Local:  msg.LocalAddr,
-		Remote: msg.RemoteAddr,
-		Cb:     i.cb,
-	}
-	session, err = NewResponder(config, sd, msg, log)
+	session, err = NewResponder(config, i.conn, i.cb, msg, log)
 	if err != nil {
 		return nil, err
 	}
@@ -76,12 +64,7 @@ func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Lo
 func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) {
 	go func() {
 		for { // restart conn
-			sd := &SessionData{
-				Conn:   i.conn,
-				Remote: remoteAddr,
-				Cb:     i.cb,
-			}
-			initiator, err := NewInitiator(config, sd, log)
+			initiator, err := NewInitiator(config, remoteAddr, i.conn, i.cb, log)
 			if err != nil {
 				level.Error(log).Log("msg", "could not start Initiator", "err", err)
 				return

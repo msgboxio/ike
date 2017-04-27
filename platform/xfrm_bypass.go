@@ -31,7 +31,7 @@ func sysfd(c net.Conn) (int, error) {
 // bypass
 func setsockopt(fd, level, name int, v unsafe.Pointer, l int) error {
 	if _, _, errno := syscall.Syscall6(syscall.SYS_SETSOCKOPT, uintptr(fd), uintptr(level), uintptr(name), uintptr(v), uintptr(l), 0); errno != 0 {
-		return errors.Wrap(error(errno), "syscall")
+		return error(errno)
 	}
 	return nil
 }

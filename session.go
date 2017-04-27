@@ -19,20 +19,13 @@ type SessionCallback struct {
 	RemoveSa func(*Session, *platform.SaParams) error
 }
 
-// SessionData holds the data a session needs from the user
-type SessionData struct {
-	Conn          Conn
-	Local, Remote net.Addr
-	Cb            SessionCallback
-}
-
-var SessionClosedError error = sessionClosed{}
-
 type sessionClosed struct{}
 
 func (s sessionClosed) Error() string {
 	return "Session Closed"
 }
+
+var SessionClosedError error = sessionClosed{}
 
 // Session stores IKE session's local state
 type Session struct {
@@ -53,14 +46,81 @@ type Session struct {
 	initIb, initRb  []byte
 	responderCookie []byte // TODO - remove this from session
 
-	*SessionData
+	// data from client
+	Conn          Conn
+	Local, Remote net.Addr
+	Cb            SessionCallback
 
 	Logger log.Logger
 }
 
+// Constructors
+
+// NewInitiator creates an initiator session
+func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallback, logger log.Logger) (*Session, error) {
+	tkm, err := NewTkm(cfg, nil)
+	if err != nil {
+		return nil, err
+	}
+	o := &Session{
+		isInitiator: true,
+		tkm:         tkm,
+		cfg:         *cfg,
+		IkeSpiI:     MakeSpi(),
+		EspSpiI:     MakeSpi()[:4],
+		incoming:    make(chan *Message, 10),
+		Conn:        conn,
+		Remote:      remoteAddr,
+		Cb:          *cb,
+	}
+	o.Logger = log.With(logger, "session", o.tag())
+	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	return o, nil
+}
+
+// NewResponder creates a Responder session if incoming message looks OK
+func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, logger log.Logger) (*Session, error) {
+	// consider creating a new session
+	if err := HandleInitRequest(initI, conn, cfg, logger); err != nil {
+		// dont create a new session
+		return nil, err
+	}
+	// get spi
+	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
+	if err != nil {
+		return nil, err
+	}
+	// cast is safe since we already checked for presence of payloads
+	// assert ?
+	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	// creating tkm is expensive, should come after checks are positive
+	tkm, err := NewTkm(cfg, noI.Nonce)
+	if err != nil {
+		return nil, err
+	}
+	// create and run session
+	o := &Session{
+		tkm:      tkm,
+		cfg:      *cfg,
+		IkeSpiI:  ikeSpiI,
+		IkeSpiR:  MakeSpi(),
+		EspSpiR:  MakeSpi()[:4],
+		incoming: make(chan *Message, 10),
+		Conn:     conn,
+		Local:    initI.LocalAddr,
+		Remote:   initI.RemoteAddr,
+		Cb:       *cb,
+	}
+	o.Logger = log.With(logger, "session", o.tag())
+	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
+	return o, nil
+}
+
 // Housekeeping
 
-type outgoingMessge struct {
+type OutgoingMessge struct {
 	Data []byte
 }
 
@@ -124,12 +184,12 @@ func (o *Session) PostMessage(m *Message) {
 	o.incoming <- m
 }
 
-func (o *Session) encode(msg *Message) (*outgoingMessge, error) {
+func (o *Session) encode(msg *Message) (*OutgoingMessge, error) {
 	buf, err := msg.Encode(o.tkm, o.isInitiator, o.Logger)
-	return &outgoingMessge{buf}, err
+	return &OutgoingMessge{buf}, err
 }
 
-func (o *Session) sendMsg(msg *outgoingMessge, err error) error {
+func (o *Session) sendMsg(msg *OutgoingMessge, err error) error {
 	if err != nil {
 		return err
 	}
@@ -157,8 +217,9 @@ func (o *Session) Close(err error) {
 	o.sendIkeSaDelete()
 }
 
-func (o *Session) InitMsg() (*outgoingMessge, error) {
-	initMsg := func(msgId uint32) (*outgoingMessge, error) {
+// InitMsg generates IKE_INIT
+func (o *Session) InitMsg() (*OutgoingMessge, error) {
+	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
 		init := InitFromSession(o)
 		init.IkeHeader.MsgID = msgId
 		// encode
@@ -179,32 +240,29 @@ func (o *Session) InitMsg() (*outgoingMessge, error) {
 }
 
 // AuthMsg generates IKE_AUTH
-func (o *Session) AuthMsg() (*outgoingMessge, error) {
+func (o *Session) AuthMsg() (*OutgoingMessge, error) {
 	o.Logger.Log("msg", "AUTH", "selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR))
 	// make sure selectors are present
 	if o.cfg.TsI == nil || o.cfg.TsR == nil {
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth, err := AuthFromSession(o)
-	if !o.isInitiator {
-		o.ikeAuthLog(err)
-	}
 	if err != nil {
 		o.Logger.Log("err", err)
-		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
+		return nil, err
 	}
 	auth.IkeHeader.MsgID = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
 	return o.encode(auth)
 }
 
-func (o *Session) RekeyMsg(child *Message) (*outgoingMessge, error) {
+func (o *Session) RekeyMsg(child *Message) (*OutgoingMessge, error) {
 	child.IkeHeader.MsgID = o.nextMsgID(!o.isInitiator) // is a response if not an initiator
 	// encode & send
 	return o.encode(child)
 }
 
 // SendMsgGetReply takes a message generator
-func (o *Session) SendMsgGetReply(genMsg func() (*outgoingMessge, error)) (*Message, error) {
+func (o *Session) SendMsgGetReply(genMsg func() (*OutgoingMessge, error)) (*Message, error) {
 	for {
 		// send initiator INIT after jittered wait
 		if err := o.sendMsg(genMsg()); err != nil {
@@ -322,32 +380,28 @@ func saAddr(sa *platform.SaParams, local, remote net.Addr) {
 	}
 }
 
-func (o *Session) ikeAuthLog(err error) {
-	if err == nil {
-		o.Logger.Log("IKE_SA", "installed", "sa", o)
-	} else {
-		level.Warn(o.Logger).Log("IKE_SA", "failed", "err", err)
-	}
-}
-
 // AddSa adds Child SA
-func (o *Session) AddSa(sa *platform.SaParams) error {
+func (o *Session) AddSa(sa *platform.SaParams) (err error) {
 	saAddr(sa, o.Local, o.Remote)
-	err := o.Cb.AddSa(o, sa)
+	if o.Cb.AddSa != nil {
+		err = o.Cb.AddSa(o, sa)
+	}
 	o.Logger.Log("CHILD_SA", "installed",
 		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
 		"err", err)
-	return err
+	return
 }
 
 // RemoveSa removes Child SA
-func (o *Session) RemoveSa(sa *platform.SaParams) error {
+func (o *Session) RemoveSa(sa *platform.SaParams) (err error) {
 	saAddr(sa, o.Local, o.Remote)
-	err := o.Cb.RemoveSa(o, sa)
+	if o.Cb.RemoveSa != nil {
+		err = o.Cb.RemoveSa(o, sa)
+	}
 	o.Logger.Log("CHILD_SA", "removed",
 		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
 		"err", err)
-	return err
+	return
 }
 
 // UnInstallSa is convenience wrapper around RemoveSa

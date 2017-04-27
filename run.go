@@ -116,7 +116,7 @@ func runIpsecRekey(o *Session) (err error) {
 	}
 	espSpiI := MakeSpi()[:4]
 	// closure with parameters for new SA
-	rekeyFn := func() (*outgoingMessge, error) {
+	rekeyFn := func() (*OutgoingMessge, error) {
 		return o.RekeyMsg(ChildSaFromSession(o, newTkm, true, espSpiI))
 	}
 	msg, err := o.SendMsgGetReply(rekeyFn)
