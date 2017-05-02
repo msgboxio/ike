@@ -11,34 +11,34 @@ import (
 )
 
 // SendAuth creates IKE_AUTH messages
-func AuthFromSession(o *Session) (*Message, error) {
+func AuthFromSession(sess *Session) (*Message, error) {
 	// proposal
 	var prop []*protocol.SaProposal
 	// part of signed octet
 	var initB []byte
-	if o.isInitiator {
-		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiI)
+	if sess.isInitiator {
+		prop = ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiI)
 		// intiators's signed octet
 		// initI | Nr | prf(sk_pi | IDi )
-		initB = o.initIb
+		initB = sess.initIb
 	} else {
-		prop = ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, o.EspSpiR)
+		prop = ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiR)
 		// responder's signed octet
 		// initR | Ni | prf(sk_pr | IDr )
-		initB = o.initRb
+		initB = sess.initRb
 	}
 	return makeAuth(
 		&authParams{
-			isInitiator:     o.isInitiator,
-			isTransportMode: o.cfg.IsTransportMode,
-			spiI:            o.IkeSpiI,
-			spiR:            o.IkeSpiR,
+			isInitiator:     sess.isInitiator,
+			isTransportMode: sess.cfg.IsTransportMode,
+			spiI:            sess.IkeSpiI,
+			spiR:            sess.IkeSpiR,
 			proposals:       prop,
-			tsI:             o.cfg.TsI,
-			tsR:             o.cfg.TsR,
-			authenticator:   o.authLocal,
-			lifetime:        o.cfg.Lifetime,
-		}, initB, o.Logger)
+			tsI:             sess.cfg.TsI,
+			tsR:             sess.cfg.TsR,
+			authenticator:   sess.authLocal,
+			lifetime:        sess.cfg.Lifetime,
+		}, initB, sess.Logger)
 }
 
 // HandleAuthForSession currently supports signature authenticaiton using
@@ -48,38 +48,38 @@ func AuthFromSession(o *Session) (*Message, error) {
 // tkm.Auth always uses the hash negotiated with prf
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
-func HandleAuthForSession(o *Session, m *Message) (err error) {
-	if err = checkAuth(m, o.isInitiator); err != nil {
+func HandleAuthForSession(sess *Session, m *Message) (err error) {
+	if err = checkAuth(m, sess.isInitiator); err != nil {
 		return err
 	}
 	// authenticate peer
 	var idP *protocol.IdPayload
 	var initB []byte
-	if o.isInitiator {
-		initB = o.initRb
+	if sess.isInitiator {
+		initB = sess.initRb
 		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	} else {
-		initB = o.initIb
+		initB = sess.initIb
 		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
 	authP := m.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		o.Logger.Log("msg", "Ike Auth", "SHARED_KEY", string(idP.Data))
-		return o.authRemote.Verify(initB, idP, authP.Data, o.Logger)
+		sess.Logger.Log("msg", "Ike Auth", "SHARED_KEY", string(idP.Data))
+		return sess.authRemote.Verify(initB, idP, authP.Data, sess.Logger)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		chain, err := m.Payloads.GetCertchain()
 		if err != nil {
 			return err
 		}
 		cert := FormatCert(chain[0])
-		o.Logger.Log("msg", "Ike Auth", "PEER_CERT", cert.String())
+		sess.Logger.Log("msg", "Ike Auth", "PEER_CERT", cert.String())
 		// ensure key used to compute a digital signature belongs to the name in the ID payload
 		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
 			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
 		}
 		// find authenticator
-		certAuth, ok := o.authRemote.(*CertAuthenticator)
+		certAuth, ok := sess.authRemote.(*CertAuthenticator)
 		if !ok {
 			return errors.New("Certificate authentication is required")
 		}
@@ -103,13 +103,13 @@ func HandleAuthForSession(o *Session, m *Message) (err error) {
 		}
 		// verify signature
 		certAuth.SetUserCertificate(chain[0])
-		return certAuth.Verify(initB, idP, authP.Data, o.Logger)
+		return certAuth.Verify(initB, idP, authP.Data, sess.Logger)
 	default:
 		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
 	}
 }
 
-func HandleSaForSession(o *Session, m *Message) error {
+func HandleSaForSession(sess *Session, m *Message) error {
 	params, err := parseSa(m)
 	if err != nil {
 		return err
@@ -122,25 +122,25 @@ func HandleSaForSession(o *Session, m *Message) error {
 		}
 	}
 	// level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
-	if err = o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
+	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
 		return err
 	}
 	// TODO - check selector
-	o.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", o.cfg.TsI, o.cfg.TsR))
-	o.Logger.Log("offered_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
+	sess.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+	sess.Logger.Log("offered_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
 	// message looks OK
-	if o.isInitiator {
+	if sess.isInitiator {
 		if params.isResponse {
-			o.EspSpiR = append([]byte{}, params.spiR...)
+			sess.EspSpiR = append([]byte{}, params.spiR...)
 		}
-		if o.EspSpiR == nil {
+		if sess.EspSpiR == nil {
 			err = errors.New("Missing responder SPI")
 		}
 	} else {
 		if !params.isResponse {
-			o.EspSpiI = append([]byte{}, params.spiI...)
+			sess.EspSpiI = append([]byte{}, params.spiI...)
 		}
-		if o.EspSpiI == nil {
+		if sess.EspSpiI == nil {
 			err = errors.New("Missing initiator SPI")
 		}
 	}
@@ -148,17 +148,17 @@ func HandleSaForSession(o *Session, m *Message) error {
 		return err
 	}
 	if params.lifetime != 0 {
-		o.Logger.Log("Lifetime", params.lifetime)
-		o.cfg.Lifetime = params.lifetime
+		sess.Logger.Log("Lifetime", params.lifetime)
+		sess.cfg.Lifetime = params.lifetime
 	}
 	// transport mode
-	if params.isTransportMode && o.cfg.IsTransportMode {
-		o.Logger.Log("Mode", "TRANSPORT")
+	if params.isTransportMode && sess.cfg.IsTransportMode {
+		sess.Logger.Log("Mode", "TRANSPORT")
 	} else {
-		o.Logger.Log("Mode", "TUNNEL")
+		sess.Logger.Log("Mode", "TUNNEL")
 		if params.isTransportMode {
-			o.Logger.Log("TransportMode", "Peer Requested, but forcing Tunnel mode")
-		} else if o.cfg.IsTransportMode {
+			sess.Logger.Log("TransportMode", "Peer Requested, but forcing Tunnel mode")
+		} else if sess.cfg.IsTransportMode {
 			return errors.New("Peer Rejected Transport Mode Config")
 		}
 	}

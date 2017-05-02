@@ -16,3 +16,18 @@ go run cmd/server.go -ca test/cert/cacert.pem -key test/cert/hostkey.der -cert t
 ipsec pki --gen --type rsa --size 2048 --outform der > cert/hostkey.der
 ## cert request & sign key
 ipsec pki --pub --in cert/hostkey.der --type rsa | ipsec pki --issue --lifetime 730 --cacert cert/cacert.pem --cakey cert/cakey.pem --dn "C=NL, O=Example Company, CN=172.17.0.1" --flag serverAuth --flag ikeIntermediate --outform der > cert/hostcert.der
+
+# multihost 
+docker network create --subnet 172.30.1.0/24 --gateway=172.30.1.1 \
+            --opt com.docker.network.bridge.name=net2 \
+			--opt com.docker.network.bridge.enable_icc=true \
+			net2
+ip route add 172.30.2.0/24 via 172.28.128.4
+docker run -v `pwd`/server.elf:/server -it --rm --privileged --net=net2 alpine sh
+
+docker network create --subnet 172.30.2.0/24 --gateway=172.30.2.1 \
+            --opt com.docker.network.bridge.name=net2 \
+			--opt com.docker.network.bridge.enable_icc=true \
+			net2
+ip route add 172.30.1.0/24 via 172.28.128.3
+docker run -v `pwd`/server.elf:/server -it --rm --privileged --net=net2 alpine sh            

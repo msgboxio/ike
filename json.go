@@ -19,15 +19,15 @@ func (t *Tkm) MarshalJSON() ([]byte, error) {
 	return json.Marshal(suite)
 }
 
-func (o *Session) MarshalJSON() ([]byte, error) {
+func (sess *Session) MarshalJSON() ([]byte, error) {
 	session := struct {
 		INI    protocol.Spi
 		RES    protocol.Spi
 		Suites *Tkm
 	}{
-		INI:    o.IkeSpiI,
-		RES:    o.IkeSpiR,
-		Suites: o.tkm,
+		INI:    sess.IkeSpiI,
+		RES:    sess.IkeSpiR,
+		Suites: sess.tkm,
 	}
 	return json.Marshal(session)
 }

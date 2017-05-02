@@ -10,23 +10,23 @@ import (
 // HDR, SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr}   -->
 // <--  HDR, SK {SA, Nr, [KEr,] TSi, TSr}
 // ChildSaFromSession creates CREATE_CHILD_SA messages
-func ChildSaFromSession(o *Session, newTkm *Tkm, isInitiator bool, espSpi []byte) *Message {
+func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []byte) *Message {
 	no := newTkm.Nr
-	targetEspSpi := o.EspSpiR
+	targetEspSpi := sess.EspSpiR
 	if isInitiator {
 		no = newTkm.Ni
-		targetEspSpi = o.EspSpiI
+		targetEspSpi = sess.EspSpiI
 	}
-	prop := ProposalFromTransform(protocol.ESP, o.cfg.ProposalEsp, espSpi)
+	prop := ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, espSpi)
 	return makeChildSa(&childSaParams{
 		isResponse:    !isInitiator,
 		isInitiator:   isInitiator,
-		ikeSpiI:       o.IkeSpiI,
-		ikeSpiR:       o.IkeSpiR,
+		ikeSpiI:       sess.IkeSpiI,
+		ikeSpiR:       sess.IkeSpiR,
 		proposals:     prop,
-		tsI:           o.cfg.TsI,
-		tsR:           o.cfg.TsR,
-		lifetime:      o.cfg.Lifetime,
+		tsI:           sess.cfg.TsI,
+		tsR:           sess.cfg.TsR,
+		lifetime:      sess.cfg.Lifetime,
 		targetEspSpi:  targetEspSpi,
 		nonce:         no,
 		dhTransformId: newTkm.suite.DhGroup.TransformId(),
@@ -35,12 +35,12 @@ func ChildSaFromSession(o *Session, newTkm *Tkm, isInitiator bool, espSpi []byte
 }
 
 // HandleChildSaForSession currently suppports CREATE_CHILD_SA messages for creating child sa
-func HandleChildSaForSession(o *Session, newTkm *Tkm, asInitiator bool, params *childSaParams) (protocol.Spi, error) {
+func HandleChildSaForSession(sess *Session, newTkm *Tkm, asInitiator bool, params *childSaParams) (protocol.Spi, error) {
 	// check spi if CREATE_CHILD_SA request received as responder
 	if !asInitiator {
-		if !bytes.Equal(params.targetEspSpi, o.EspSpiI) {
+		if !bytes.Equal(params.targetEspSpi, sess.EspSpiI) {
 			return nil, errors.Errorf("REKEY child SA request: incorrect target ESP Spi: 0x%x, rx 0x%x",
-				params.targetEspSpi, o.EspSpiI)
+				params.targetEspSpi, sess.EspSpiI)
 		}
 	}
 	if params.dhPublic == nil {
@@ -52,7 +52,7 @@ func HandleChildSaForSession(o *Session, newTkm *Tkm, asInitiator bool, params *
 		}
 	}
 	// proposal should be identical
-	if err := o.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
+	if err := sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
 		return nil, err
 	}
 	// set Nr

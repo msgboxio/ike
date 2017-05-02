@@ -108,7 +108,7 @@ func main() {
 	go waitForSignal(cancel, logger)
 
 	ifs, _ := net.InterfaceAddrs()
-	logger.Log("interfaces", spew.Sprintf("%#v", ifs))
+	logger.Log("interfaces", fmt.Sprintf("%v", ifs))
 	// this should load the xfrm modules
 	// requires root
 	cb := func(msg interface{}) {

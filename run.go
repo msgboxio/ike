@@ -12,13 +12,13 @@ var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
 
 const SaRekeyTimeout = 5 * time.Second
 
-func runInitiator(o *Session) (err error) {
+func runInitiator(sess *Session) (err error) {
 	// send initiator INIT after jittered wait and wait for reply
 	time.Sleep(Jitter(2*time.Second, -0.5))
 	var msg *Message
 	var init *initParams
 	for {
-		msg, err = o.SendMsgGetReply(o.InitMsg)
+		msg, err = sess.SendMsgGetReply(sess.InitMsg)
 		if err != nil {
 			return
 		}
@@ -30,10 +30,10 @@ func runInitiator(o *Session) (err error) {
 				return
 			}
 		}
-		if err = CheckInitResponseForSession(o, init); err != nil {
+		if err = CheckInitResponseForSession(sess, init); err != nil {
 			if ce, ok := err.(PeerRequestsCookieError); ok {
 				// session is always returned for CookieError
-				o.SetCookie(ce.Cookie)
+				sess.SetCookie(ce.Cookie)
 				// This will keep going if peer keeps sending COOKIE
 				// TODO -fix
 				continue
@@ -44,24 +44,24 @@ func runInitiator(o *Session) (err error) {
 		break
 	}
 	// rewrite LocalAddr
-	if err = o.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
+	if err = sess.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
 		return
 	}
 	// COOKIE is handled within cmd.newSession
-	if err = HandleInitForSession(o, init, msg); err != nil {
-		level.Error(o.Logger).Log("init", err)
+	if err = HandleInitForSession(sess, init, msg); err != nil {
+		level.Error(sess.Logger).Log("init", err)
 		return
 	}
 	// on send AUTH and wait for reply
-	if msg, err = o.SendMsgGetReply(o.AuthMsg); err != nil {
+	if msg, err = sess.SendMsgGetReply(sess.AuthMsg); err != nil {
 		return
 	}
-	if err = HandleAuthForSession(o, msg); err != nil {
+	if err = HandleAuthForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
 		err = errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 		return
 	}
-	if err = HandleSaForSession(o, msg); err != nil {
+	if err = HandleSaForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
 		err = errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
@@ -69,57 +69,57 @@ func runInitiator(o *Session) (err error) {
 }
 
 // got new INIT
-func runResponder(o *Session) error {
+func runResponder(sess *Session) error {
 	// wait for INIT
 	// send COOKIE, wait - handled by cmd:newSession
 	// get INIT
-	msg := <-o.incoming
+	msg := <-sess.incoming
 	init, err := parseInit(msg)
 	if err != nil {
 		return err
 	}
-	if err = HandleInitForSession(o, init, msg); err != nil {
+	if err = HandleInitForSession(sess, init, msg); err != nil {
 		return err
 	}
 	// not really necessary
-	if err = o.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
+	if err = sess.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
 		return err
 	}
 	// send INIT_reply & wait for AUTH
-	msg, err = o.SendMsgGetReply(o.InitMsg)
+	msg, err = sess.SendMsgGetReply(sess.InitMsg)
 	if err != nil {
 		return err
 	}
-	if err := HandleAuthForSession(o, msg); err != nil {
+	if err := HandleAuthForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
 	// install SA;
-	if err := HandleSaForSession(o, msg); err != nil {
+	if err := HandleSaForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
 		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
 	}
 	// send AUTH_reply
-	if err := o.SendAuth(); err != nil {
+	if err := sess.SendAuth(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func runIpsecRekey(o *Session) (err error) {
+func runIpsecRekey(sess *Session) (err error) {
 	// if REKEY timeout
 	//  create new tkm, send REKEY, wait for REKEY_reply,
 	//  retry on timeout
-	newTkm, err := NewTkm(&o.cfg, nil)
+	newTkm, err := NewTkm(&sess.cfg, nil)
 	if err != nil {
 		return
 	}
 	espSpiI := MakeSpi()[:4]
 	// closure with parameters for new SA
 	rekeyFn := func() (*OutgoingMessge, error) {
-		return o.RekeyMsg(ChildSaFromSession(o, newTkm, true, espSpiI))
+		return sess.RekeyMsg(ChildSaFromSession(sess, newTkm, true, espSpiI))
 	}
-	msg, err := o.SendMsgGetReply(rekeyFn)
+	msg, err := sess.SendMsgGetReply(rekeyFn)
 	if err != nil {
 		return
 	}
@@ -128,103 +128,103 @@ func runIpsecRekey(o *Session) (err error) {
 		return
 	}
 	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiR, err := HandleChildSaForSession(o, newTkm, true, params)
+	espSpiR, err := HandleChildSaForSession(sess, newTkm, true, params)
 	if err != nil {
 		return
 	}
 	// install new SA - [espSpiI, espSpiR, nI, nR & dhShared]
-	err = o.AddSa(addSaParams(o.tkm,
+	err = sess.AddSa(addSaParams(sess.tkm,
 		newTkm.Ni, newTkm.Nr, newTkm.DhShared,
 		espSpiI, espSpiR,
-		&o.cfg, true))
+		&sess.cfg, true))
 	if err != nil {
 		return
 	}
 	// remove old sa
-	o.RemoveSa()
+	sess.RemoveSa()
 	// replace espSpiI & espSpiR
-	o.EspSpiI = espSpiI
-	o.EspSpiR = espSpiR
+	sess.EspSpiI = espSpiI
+	sess.EspSpiR = espSpiR
 	return
 }
 
-func onIpsecRekey(o *Session, msg *Message) (err error) {
+func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	// if REKEY rx :
 	params, err := parseChildSa(msg)
 	if err != nil {
 		return
 	}
-	newTkm, err := NewTkm(&o.cfg, params.nonce)
+	newTkm, err := NewTkm(&sess.cfg, params.nonce)
 	if err != nil {
 		return
 	}
 	//  send REKEY_reply
 	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiI, err := HandleChildSaForSession(o, newTkm, false, params)
+	espSpiI, err := HandleChildSaForSession(sess, newTkm, false, params)
 	if err != nil {
 		return
 	}
 	espSpiR := MakeSpi()[:4]
 	// closure with parameters for new SA
-	err = o.sendMsg(o.RekeyMsg(ChildSaFromSession(o, newTkm, false, espSpiR)))
+	err = sess.sendMsg(sess.RekeyMsg(ChildSaFromSession(sess, newTkm, false, espSpiR)))
 	if err != nil {
 		return
 	}
 	// install new SA - [espSpiI, espSpiR, nI, nR & dhShared]
-	err = o.AddSa(addSaParams(o.tkm,
+	err = sess.AddSa(addSaParams(sess.tkm,
 		newTkm.Ni, newTkm.Nr, newTkm.DhShared,
 		espSpiI, espSpiR,
-		&o.cfg, true))
+		&sess.cfg, true))
 	if err != nil {
 		return
 	}
 	// remove old sa
-	o.RemoveSa()
+	sess.RemoveSa()
 	// replace espSpiI & espSpiR
-	o.EspSpiI = espSpiI
-	o.EspSpiR = espSpiR
+	sess.EspSpiI = espSpiI
+	sess.EspSpiR = espSpiR
 	//  send INFORMATIONAL, wait for INFORMATIONAL_reply
 	//  if timeout, send REKEY_reply again
 	return
 }
 
-func monitorSa(o *Session) (err error) {
-	sa := addSaParams(o.tkm,
-		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : use the original SA
-		o.EspSpiI, o.EspSpiR,
-		&o.cfg,
-		o.isInitiator)
+func monitorSa(sess *Session) (err error) {
+	sa := addSaParams(sess.tkm,
+		sess.tkm.Ni, sess.tkm.Nr, nil, // NOTE : use the original SA
+		sess.EspSpiI, sess.EspSpiR,
+		&sess.cfg,
+		sess.isInitiator)
 	// add sa
-	err = o.AddSa(sa)
+	err = sess.AddSa(sa)
 	if err != nil {
 		return
 	}
-	if o.isInitiator {
+	if sess.isInitiator {
 		// send INFORMATIONAL, wait for INFORMATIONAL_reply
 		// if timeout, send AUTH_reply again
 		// monitor SA
-		if err = o.SendEmptyInformational(false); err != nil {
+		if err = sess.SendEmptyInformational(false); err != nil {
 			return
 		}
 	}
 	// check for duplicate SA, if found remove one with smaller nonce
 	// setup SA REKEY timeout (jittered) & monitoring
-	rekeyDelay := o.cfg.Lifetime
+	rekeyDelay := sess.cfg.Lifetime
 	saRekeyDeadline := time.NewTimer(rekeyDelay)
-	o.Logger.Log("RekeyDeadline", rekeyDelay)
+	sess.Logger.Log("RekeyDeadline", rekeyDelay)
 	rekeyTimeout := Jitter(rekeyDelay, -0.2)
 	saRekeyTimer := time.NewTimer(rekeyTimeout)
-	o.Logger.Log("RekeyTimeout", rekeyTimeout)
+	sess.Logger.Log("RekeyTimeout", rekeyTimeout)
 	for {
 		select {
-		case msg := <-o.incoming:
+		case msg := <-sess.incoming:
 			switch msg.IkeHeader.ExchangeType {
 			// if INFORMATIONAL, send INFORMATIONAL_reply
 			case protocol.INFORMATIONAL:
-				evt := HandleInformationalForSession(o, msg)
-				switch evt.NotificationType {
+				evt := HandleInformationalForSession(sess, msg)
+				switch evt.SessionNotificationType {
 				case MSG_EMPTY_REQUEST:
-					if err := o.SendEmptyInformational(true); err != nil {
+					if err := sess.SendEmptyInformational(true); err != nil {
 						return err
 					}
 				case MSG_DELETE_IKE_SA:
@@ -233,13 +233,13 @@ func monitorSa(o *Session) (err error) {
 			case protocol.CREATE_CHILD_SA:
 				// ONLY :
 				// Accept SA rekey if responder
-				if o.isInitiator {
-					level.Warn(o.Logger).Log("RekeyRequest", "Currently only supported for responder")
+				if sess.isInitiator {
+					level.Warn(sess.Logger).Log("RekeyRequest", "Currently only supported for responder")
 					// send notification
-					o.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
+					sess.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
 					continue
 				}
-				if err := onIpsecRekey(o, msg); err != nil {
+				if err := onIpsecRekey(sess, msg); err != nil {
 					return err
 				}
 				// reset timers
@@ -251,13 +251,13 @@ func monitorSa(o *Session) (err error) {
 		case <-saRekeyTimer.C:
 			// ONLY :
 			// Initiate SA rekey if initiator
-			if !o.isInitiator {
-				level.Warn(o.Logger).Log("RekeyTimeout", "Currently only supported for initiator")
+			if !sess.isInitiator {
+				level.Warn(sess.Logger).Log("RekeyTimeout", "Currently only supported for initiator")
 				continue
 			}
-			o.Logger.Log("Rekey", "Timeout")
-			if err := runIpsecRekey(o); err != nil {
-				o.Logger.Log("RekeyError", err)
+			sess.Logger.Log("Rekey", "Timeout")
+			if err := runIpsecRekey(sess); err != nil {
+				sess.Logger.Log("RekeyError", err)
 				continue
 			}
 			// reset timers
@@ -268,15 +268,15 @@ func monitorSa(o *Session) (err error) {
 }
 
 // RunSession starts and monitors the session returning when the session ends
-func RunSession(s *Session) error {
+func RunSession(sess *Session) error {
 	var err error
-	if s.isInitiator {
-		err = runInitiator(s)
+	if sess.isInitiator {
+		err = runInitiator(sess)
 	} else {
-		err = runResponder(s)
+		err = runResponder(sess)
 	}
 	if err == nil {
-		err = monitorSa(s)
+		err = monitorSa(sess)
 	}
 	return err
 }

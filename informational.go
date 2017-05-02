@@ -12,10 +12,10 @@ type InfoParams struct {
 	Payload     protocol.Payload
 }
 
-type NotificationType int
+type SessionNotificationType int
 
 const (
-	MSG_DELETE_IKE_SA NotificationType = iota
+	MSG_DELETE_IKE_SA SessionNotificationType = iota
 	MSG_DELETE_ESP_SA
 	MSG_EMPTY_REQUEST
 	MSG_EMPTY_RESPONSE
@@ -23,7 +23,7 @@ const (
 )
 
 type InformationalEvent struct {
-	NotificationType
+	SessionNotificationType
 	Message interface{}
 }
 
@@ -63,15 +63,15 @@ func makeInformational(p InfoParams) *Message {
 }
 
 // NotifyFromSession builds a Notification Request
-func NotifyFromSession(o *Session, ie protocol.IkeErrorCode) *Message {
-	spi := o.IkeSpiI
-	if o.isInitiator {
-		spi = o.IkeSpiR
+func NotifyFromSession(sess *Session, ie protocol.IkeErrorCode) *Message {
+	spi := sess.IkeSpiI
+	if sess.isInitiator {
+		spi = sess.IkeSpiR
 	}
 	return makeInformational(InfoParams{
-		IsInitiator: o.isInitiator,
-		SpiI:        o.IkeSpiI,
-		SpiR:        o.IkeSpiR,
+		IsInitiator: sess.isInitiator,
+		SpiI:        sess.IkeSpiI,
+		SpiR:        sess.IkeSpiR,
 		Payload: &protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			ProtocolId:       protocol.IKE,
@@ -82,13 +82,13 @@ func NotifyFromSession(o *Session, ie protocol.IkeErrorCode) *Message {
 }
 
 // DeleteFromSession builds an IKE delete Request
-func DeleteFromSession(o *Session) *Message {
+func DeleteFromSession(sess *Session) *Message {
 	// ike protocol ID, but no spi
 	// always a request
 	return makeInformational(InfoParams{
-		IsInitiator: o.isInitiator,
-		SpiI:        o.IkeSpiI,
-		SpiR:        o.IkeSpiR,
+		IsInitiator: sess.isInitiator,
+		SpiI:        sess.IkeSpiI,
+		SpiR:        sess.IkeSpiR,
 		Payload: &protocol.DeletePayload{
 			PayloadHeader: &protocol.PayloadHeader{},
 			ProtocolId:    protocol.IKE,
@@ -98,16 +98,16 @@ func DeleteFromSession(o *Session) *Message {
 }
 
 // EmptyFromSession can build an empty Request or a Response
-func EmptyFromSession(o *Session, isResponse bool) *Message {
+func EmptyFromSession(sess *Session, isResponse bool) *Message {
 	return makeInformational(InfoParams{
-		IsInitiator: o.isInitiator,
+		IsInitiator: sess.isInitiator,
 		IsResponse:  isResponse,
-		SpiI:        o.IkeSpiI,
-		SpiR:        o.IkeSpiR,
+		SpiI:        sess.IkeSpiI,
+		SpiR:        sess.IkeSpiR,
 	})
 }
 
-func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent {
+func HandleInformationalForSession(sess *Session, msg *Message) *InformationalEvent {
 	plds := msg.Payloads
 	// Empty
 	if len(plds.Array) == 0 {
@@ -116,7 +116,7 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 			evt = MSG_EMPTY_RESPONSE
 		}
 		return &InformationalEvent{
-			NotificationType: evt,
+			SessionNotificationType: evt,
 		}
 	}
 	// Delete
@@ -124,16 +124,16 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 		dp := del.(*protocol.DeletePayload)
 		if dp.ProtocolId == protocol.IKE {
 			return &InformationalEvent{
-				NotificationType: MSG_DELETE_IKE_SA,
-				Message:          errors.Wrapf(errPeerRemovedIkeSa, "SA: %#x", msg.IkeHeader.SpiI),
+				SessionNotificationType: MSG_DELETE_IKE_SA,
+				Message:                 errors.Wrapf(errPeerRemovedIkeSa, "SA: %#x", msg.IkeHeader.SpiI),
 			}
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
-				o.Logger.Log("msg", "Peer removed ESP SA", "spi", spi)
+				sess.Logger.Log("msg", "Peer removed ESP SA", "spi", spi)
 				return &InformationalEvent{
-					NotificationType: MSG_DELETE_ESP_SA,
-					Message:          errors.Wrapf(errPeerRemovedEspSa, "SA: %#x", spi),
+					SessionNotificationType: MSG_DELETE_ESP_SA,
+					Message:                 errors.Wrapf(errPeerRemovedEspSa, "SA: %#x", spi),
 				}
 			}
 		}
@@ -144,17 +144,17 @@ func HandleInformationalForSession(o *Session, msg *Message) *InformationalEvent
 	if note := plds.Get(protocol.PayloadTypeN); note != nil {
 		np := note.(*protocol.NotifyPayload)
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-			o.Logger.Log("msg", "Received Informational Error", "err", err)
+			sess.Logger.Log("msg", "Received Informational Error", "err", err)
 			return &InformationalEvent{
-				NotificationType: MSG_ERROR,
-				Message:          err,
+				SessionNotificationType: MSG_ERROR,
+				Message:                 err,
 			}
 		}
 	}
 	// Configuration
 	if cfg := plds.Get(protocol.PayloadTypeCP); cfg != nil {
 		cp := cfg.(*protocol.ConfigurationPayload)
-		o.Logger.Log("config", cp)
+		sess.Logger.Log("config", cp)
 		// TODO
 	}
 	return nil

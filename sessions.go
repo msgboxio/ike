@@ -20,10 +20,10 @@ type sessions struct {
 	mtx       sync.Mutex
 }
 
-func (s *sessions) Add(spi uint64, session *Session) {
+func (s *sessions) Add(spi uint64, sess *Session) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	s._sessions[spi] = session
+	s._sessions[spi] = sess
 }
 
 func (s *sessions) Remove(spi uint64) {

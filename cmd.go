@@ -27,36 +27,36 @@ func NewCmd(conn Conn, cb *SessionCallback) *Cmd {
 	}
 }
 
-func (i *Cmd) onError(session *Session, err error) {
+func (i *Cmd) onError(sess *Session, err error) {
 	if err == ErrorRekeyDeadlineExceeded {
-		session.Close(context.DeadlineExceeded)
+		sess.Close(context.DeadlineExceeded)
 	} else {
-		session.Close(context.Canceled)
+		sess.Close(context.Canceled)
 	}
 }
 
-func (i *Cmd) runSession(spi uint64, s *Session) (err error) {
-	i.sessions.Add(spi, s)
+func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
+	i.sessions.Add(spi, sess)
 	// wait for session to finish
-	err = RunSession(s)
+	err = RunSession(sess)
 	switch errors.Cause(err) {
 	case errPeerRemovedIkeSa:
-		s.HandleClose()
+		sess.HandleClose()
 	default:
-		level.Warn(s.Logger).Log("err", err)
+		level.Warn(sess.Logger).Log("err", err)
 	}
 	i.sessions.Remove(spi)
-	s.Logger.Log("IKE_SA", "removed", "session", fmt.Sprintf("%s<=>%s", s.IkeSpiI, s.IkeSpiR))
+	sess.Logger.Log("IKE_SA", "removed", "session", fmt.Sprintf("%s<=>%s", sess.IkeSpiI, sess.IkeSpiR))
 	return
 }
 
 // onInitRequest handles IKE_SA_INIT requests & replies
-func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Logger) (session *Session, err error) {
-	session, err = NewResponder(config, i.conn, i.cb, msg, log)
+func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Logger) (sess *Session, err error) {
+	sess, err = NewResponder(config, i.conn, i.cb, msg, log)
 	if err != nil {
 		return nil, err
 	}
-	go i.runSession(spi, session)
+	go i.runSession(spi, sess)
 	return
 }
 
@@ -85,9 +85,9 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) 
 // ShutDown closes all active IKE sessions
 func (i *Cmd) ShutDown(err error) {
 	// shutdown sessions
-	i.sessions.ForEach(func(session *Session) {
+	i.sessions.ForEach(func(sess *Session) {
 		// rely on this to drain replies
-		session.Close(err)
+		sess.Close(err)
 	})
 }
 

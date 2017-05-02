@@ -13,21 +13,21 @@ import (
 var errMissingCookie = errors.New("COOKIE")
 
 // InitFromSession creates IKE_SA_INIT messages
-func InitFromSession(o *Session) *Message {
-	nonce := o.tkm.Nr
-	if o.isInitiator {
-		nonce = o.tkm.Ni
+func InitFromSession(sess *Session) *Message {
+	nonce := sess.tkm.Nr
+	if sess.isInitiator {
+		nonce = sess.tkm.Ni
 	}
 	return makeInit(&initParams{
-		isInitiator:       o.isInitiator,
-		spiI:              o.IkeSpiI,
-		spiR:              o.IkeSpiR,
-		proposals:         ProposalFromTransform(protocol.IKE, o.cfg.ProposalIke, o.IkeSpiI),
-		cookie:            o.responderCookie,
-		dhTransformID:     o.tkm.suite.DhGroup.TransformId(),
-		dhPublic:          o.tkm.DhPublic,
+		isInitiator:       sess.isInitiator,
+		spiI:              sess.IkeSpiI,
+		spiR:              sess.IkeSpiR,
+		proposals:         ProposalFromTransform(protocol.IKE, sess.cfg.ProposalIke, sess.IkeSpiI),
+		cookie:            sess.responderCookie,
+		dhTransformID:     sess.tkm.suite.DhGroup.TransformId(),
+		dhPublic:          sess.tkm.DhPublic,
 		nonce:             nonce,
-		rfc7427Signatures: o.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE,
+		rfc7427Signatures: sess.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE,
 	})
 }
 
@@ -98,7 +98,7 @@ func initErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err 
 // response handling
 //
 
-func CheckInitResponseForSession(o *Session, init *initParams) error {
+func CheckInitResponseForSession(sess *Session, init *initParams) error {
 	if init.isInitiator { // id must be zero
 		return protocol.ERR_INVALID_SYNTAX
 	}
@@ -127,10 +127,10 @@ func CheckInitResponseForSession(o *Session, init *initParams) error {
 }
 
 // return error secure signatures are configured, but not proposed by peer
-func checkSignatureAlgo(o *Session, isEnabled bool) error {
+func checkSignatureAlgo(sess *Session, isEnabled bool) error {
 	if !isEnabled {
-		level.Warn(o.Logger).Log("msg", "Not using secure signatures")
-		if o.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
+		level.Warn(sess.Logger).Log("msg", "Not using secure signatures")
+		if sess.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
 			return errors.New("Peer is not using secure signatures")
 		}
 	}
@@ -138,30 +138,30 @@ func checkSignatureAlgo(o *Session, isEnabled bool) error {
 }
 
 // HandleInitForSession expects the message given to it to be well formatted
-func HandleInitForSession(o *Session, init *initParams, m *Message) error {
+func HandleInitForSession(sess *Session, init *initParams, m *Message) error {
 	// process notifications
 	// check NAT-T payload to determine if there is a NAT between the two peers
 	var rfc7427Signatures = false
 	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			o.Logger.Log("secure", protocol.AUTH_DIGITAL_SIGNATURE)
+			sess.Logger.Log("secure", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.LocalAddr) {
-				o.Logger.Log("HOST_NAT", m.LocalAddr)
+				sess.Logger.Log("HOST_NAT", m.LocalAddr)
 			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.RemoteAddr) {
-				o.Logger.Log("PEER_NAT", m.RemoteAddr)
+				sess.Logger.Log("PEER_NAT", m.RemoteAddr)
 			}
 		}
 	}
 	// returns error if secure signatures are configured, but not proposed by peer
-	if err := checkSignatureAlgo(o, rfc7427Signatures); err != nil {
+	if err := checkSignatureAlgo(sess, rfc7427Signatures); err != nil {
 		return err
 	}
-	if err := o.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
+	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
 		return err
 	}
 	// TODO
@@ -169,10 +169,10 @@ func HandleInitForSession(o *Session, init *initParams, m *Message) error {
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	// MUTATION
 	// save Data
-	if o.isInitiator {
-		o.initRb = m.Data
+	if sess.isInitiator {
+		sess.initRb = m.Data
 	} else {
-		o.initIb = m.Data
+		sess.initIb = m.Data
 	}
 	return nil
 }
