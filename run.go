@@ -141,7 +141,7 @@ func runIpsecRekey(o *Session) (err error) {
 		return
 	}
 	// remove old sa
-	o.UnInstallSa()
+	o.RemoveSa()
 	// replace espSpiI & espSpiR
 	o.EspSpiI = espSpiI
 	o.EspSpiR = espSpiR
@@ -179,7 +179,7 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 		return
 	}
 	// remove old sa
-	o.UnInstallSa()
+	o.RemoveSa()
 	// replace espSpiI & espSpiR
 	o.EspSpiI = espSpiI
 	o.EspSpiR = espSpiR
@@ -189,12 +189,13 @@ func onIpsecRekey(o *Session, msg *Message) (err error) {
 }
 
 func monitorSa(o *Session) (err error) {
-	// inform user
-	err = o.AddSa(addSaParams(o.tkm,
+	sa := addSaParams(o.tkm,
 		o.tkm.Ni, o.tkm.Nr, nil, // NOTE : use the original SA
 		o.EspSpiI, o.EspSpiR,
 		&o.cfg,
-		o.isInitiator))
+		o.isInitiator)
+	// add sa
+	err = o.AddSa(sa)
 	if err != nil {
 		return
 	}

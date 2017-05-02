@@ -51,6 +51,25 @@ func TestInstallSa(t *testing.T) {
 	t.Log("state", state, err)
 	policy, err := netlink.XfrmPolicyList(0)
 	t.Log("policy", policy, err)
-	// netlink.XfrmPolicyDel()
-	// netlink.XfrmStateFlush(0)
+	netlink.XfrmPolicyFlush()
+	netlink.XfrmStateFlush(0)
+}
+
+// adding this policy should drop outgoing packets from src to dst
+func TestAddPolicy(t *testing.T) {
+	src, snet, _ := net.ParseCIDR("172.28.128.3/32")
+	dst, dnet, _ := net.ParseCIDR("172.28.128.4/32")
+	sa := &SaParams{
+		IniNet:          snet,
+		Ini:             src.To4(),
+		ResNet:          dnet,
+		Res:             dst.To4(),
+		IsTransportMode: true,
+		IsInitiator:     true,
+	}
+	err := InstallPolicy(sa, log.NewNopLogger())
+	if err != nil {
+		t.Error(err)
+	}
+	netlink.XfrmPolicyFlush()
 }

@@ -118,6 +118,29 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 	return o, nil
 }
 
+// Destructors
+
+// Close is called to initiate a session shutdown
+func (o *Session) Close(err error) {
+	o.Logger.Log("msg", "Close Session", "err", err)
+	if o.isClosing {
+		return
+	}
+	o.isClosing = true
+	o.sendIkeSaDelete()
+	o.RemoveSa()
+}
+
+// HandleClose will cleanly removes child SAs upon receiving a message from peer
+func (o *Session) HandleClose() {
+	if o.isClosing {
+		return
+	}
+	o.isClosing = true
+	o.SendEmptyInformational(true)
+	o.RemoveSa()
+}
+
 // Housekeeping
 
 type OutgoingMessge struct {
@@ -210,17 +233,6 @@ func (o *Session) nextMsgID(isResponse bool) (msgID uint32) {
 	return
 }
 
-// Close is called to shutdown this session
-func (o *Session) Close(err error) {
-	o.Logger.Log("msg", "Close Session", "err", err)
-	if o.isClosing {
-		return
-	}
-	o.isClosing = true
-	o.sendIkeSaDelete()
-	o.UnInstallSa()
-}
-
 // InitMsg generates IKE_INIT
 func (o *Session) InitMsg() (*OutgoingMessge, error) {
 	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
@@ -288,16 +300,6 @@ func (o *Session) SendMsgGetReply(genMsg func() (*OutgoingMessge, error)) (*Mess
 // SendAuth sends IKE_AUTH
 func (o *Session) SendAuth() error {
 	return o.sendMsg(o.AuthMsg())
-}
-
-// HandleClose will cleanly removes child SAs upon receiving a message from peer
-func (o *Session) HandleClose() {
-	if o.isClosing {
-		return
-	}
-	o.isClosing = true
-	o.SendEmptyInformational(true)
-	o.UnInstallSa()
 }
 
 // CheckError checks error, then send to peer
@@ -395,21 +397,20 @@ func (o *Session) AddSa(sa *platform.SaParams) (err error) {
 }
 
 // RemoveSa removes Child SA
-func (o *Session) RemoveSa(sa *platform.SaParams) (err error) {
+func (o *Session) RemoveSa() (err error) {
+	if (o.Local == nil) || o.Remote == nil {
+		// sa was not started
+		return
+	}
+	sa := removeSaParams(
+		o.EspSpiI, o.EspSpiR,
+		&o.cfg,
+		o.isInitiator)
 	saAddr(sa, o.Local, o.Remote)
 	o.Logger.Log("CHILD_SA", "remove",
-		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res),
-		"err", err)
+		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
 	if o.Cb.RemoveSa != nil {
 		err = o.Cb.RemoveSa(o, sa)
 	}
 	return
-}
-
-// UnInstallSa is convenience wrapper around RemoveSa
-func (o *Session) UnInstallSa() {
-	o.RemoveSa(removeSaParams(
-		o.EspSpiI, o.EspSpiR,
-		&o.cfg,
-		o.isInitiator))
 }

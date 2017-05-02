@@ -118,18 +118,20 @@ func main() {
 
 	pconn, err := ike.Listen("udp", localString, logger)
 	if err != nil {
-		panic(spew.Sprintf("Listen: %+v", err))
+		panic(fmt.Sprintf("Listen: %+v", err))
 	}
 	// requires root
 	if err := platform.SetSocketBypas(pconn.Inner(), syscall.AF_INET6); err != nil {
-		panic(spew.Sprintf("Bypass: %+v", err))
+		panic(fmt.Sprintf("Bypass: %+v", err))
 	}
 
 	cmd := ike.NewCmd(pconn, &ike.SessionCallback{
 		AddSa: func(session *ike.Session, sa *platform.SaParams) error {
+			platform.InstallPolicy(sa, logger)
 			return platform.InstallChildSa(sa, logger)
 		},
 		RemoveSa: func(session *ike.Session, sa *platform.SaParams) error {
+			platform.RemovePolicy(sa, logger)
 			return platform.RemoveChildSa(sa, logger)
 		},
 	})

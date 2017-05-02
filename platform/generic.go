@@ -9,6 +9,13 @@ import (
 	"github.com/go-kit/kit/log"
 )
 
+func InstallPolicy(*SaParams, log.Logger) error {
+	return nil
+}
+func RemovePolicy(*SaParams, log.Logger) error {
+	return nil
+}
+
 func InstallChildSa(*SaParams, log.Logger) error {
 	return nil
 }
