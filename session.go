@@ -203,7 +203,8 @@ func (sess *Session) PostMessage(m *Message) {
 		return
 	}
 	if err := check(); err != nil {
-		level.Warn(sess.Logger).Log("DROP", fmt.Sprintf("%+v", err))
+		level.Warn(sess.Logger).Log("DROP", err)
+		return
 	}
 	// requestId has been confirmed, increment it for next request
 	sess.msgIDReq++

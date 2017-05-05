@@ -42,12 +42,13 @@ var remoteID = &ike.CertIdentity{}
 
 var isDebug bool
 
-func loadConfig() (config *ike.Config, localString string, remoteString string) {
+func loadConfig() (config *ike.Config, localString string, remoteString string, err error) {
 	flag.StringVar(&localString, "local", "0.0.0.0:4500", "address to bind to")
 	flag.StringVar(&remoteString, "remote", "", "address to connect to")
 
-	var isTunnelMode bool
-	flag.BoolVar(&isTunnelMode, "tunnel", false, "use tunnel mode?")
+	var localTunnel, remoteTunnel string
+	flag.StringVar(&localTunnel, "localnet", "", "local network")
+	flag.StringVar(&remoteTunnel, "remotenet", "", "remote network")
 
 	var caFile, certFile, keyFile, peerID string
 	flag.StringVar(&caFile, "ca", "", "PEM encoded ca certificate")
@@ -61,23 +62,26 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 
 	// crypto keys & names
 	if caFile != "" {
-		roots, err := ike.LoadRoot(caFile)
+		roots, _err := ike.LoadRoot(caFile)
+		err = _err
 		if err != nil {
-			panic(err)
+			return
 		}
 		remoteID.Roots = roots
 	}
 	if certFile != "" {
-		certs, err := ike.LoadCerts(certFile)
+		certs, _err := ike.LoadCerts(certFile)
+		err = _err
 		if err != nil {
-			panic(err)
+			return
 		}
 		localID.Certificate = certs[0]
 	}
 	if keyFile != "" {
-		key, err := ike.LoadKey(keyFile)
+		key, _err := ike.LoadKey(keyFile)
+		err = _err
 		if err != nil {
-			panic(err)
+			return
 		}
 		localID.PrivateKey = key
 	}
@@ -86,14 +90,34 @@ func loadConfig() (config *ike.Config, localString string, remoteString string) 
 	}
 
 	config = ike.DefaultConfig()
-	if !isTunnelMode {
+
+	if (localTunnel == "") && (remoteTunnel == "") {
 		config.IsTransportMode = true
+	} else {
+		_, localnet, _err := net.ParseCIDR(localTunnel)
+		err = _err
+		if err != nil {
+			return
+		}
+		_, remotenet, _err := net.ParseCIDR(remoteTunnel)
+		err = _err
+		if err != nil {
+			return
+		}
+		if remoteString == "" {
+			err = config.AddSelector(remotenet, localnet)
+		} else {
+			err = config.AddSelector(localnet, remotenet)
+		}
 	}
 	return
 }
 
 func main() {
-	config, localString, remoteString := loadConfig()
+	config, localString, remoteString, err := loadConfig()
+	if err != nil {
+		panic(err)
+	}
 	config.LocalID = localPskID
 	config.RemoteID = remotePskID
 

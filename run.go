@@ -58,46 +58,49 @@ func runInitiator(sess *Session) (err error) {
 	}
 	if err = HandleAuthForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
-		err = errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
+		sess.CheckError(err)
 		return
 	}
 	if err = HandleSaForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
-		err = errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		sess.CheckError(err)
 	}
 	return
 }
 
 // got new INIT
-func runResponder(sess *Session) error {
+func runResponder(sess *Session) (err error) {
 	// wait for INIT
 	// send COOKIE, wait - handled by cmd:newSession
 	// get INIT
 	msg := <-sess.incoming
 	init, err := parseInit(msg)
 	if err != nil {
-		return err
+		return
 	}
 	if err = HandleInitForSession(sess, init, msg); err != nil {
-		return err
+		return
 	}
 	// not really necessary
 	if err = sess.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
-		return err
+		return
 	}
 	// send INIT_reply & wait for AUTH
 	msg, err = sess.SendMsgGetReply(sess.InitMsg)
 	if err != nil {
-		return err
+		return
 	}
-	if err := HandleAuthForSession(sess, msg); err != nil {
+	if err = HandleAuthForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
-		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
+		sess.CheckError(err)
+		return
 	}
-	// install SA;
-	if err := HandleSaForSession(sess, msg); err != nil {
+	if err = HandleSaForSession(sess, msg); err != nil {
 		// send notification to peer & end IKE SA
-		return errors.Wrapf(protocol.ERR_AUTHENTICATION_FAILED, "%s", err)
+		sess.CheckError(err)
+		return
 	}
 	// send AUTH_reply
 	if err := sess.SendAuth(); err != nil {
@@ -194,7 +197,7 @@ func monitorSa(sess *Session) (err error) {
 		sess.EspSpiI, sess.EspSpiR,
 		&sess.cfg,
 		sess.isInitiator)
-	// add sa
+	// add INITIAL sa
 	err = sess.AddSa(sa)
 	if err != nil {
 		return

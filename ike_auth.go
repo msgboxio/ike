@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// SendAuth creates IKE_AUTH messages
+// AuthFromSession creates IKE_AUTH messages
 func AuthFromSession(sess *Session) (*Message, error) {
 	// proposal
 	var prop []*protocol.SaProposal
@@ -41,7 +41,7 @@ func AuthFromSession(sess *Session) (*Message, error) {
 		}, initB, sess.Logger)
 }
 
-// HandleAuthForSession currently supports signature authenticaiton using
+// HandleAuthForSession supports signature authentication using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
 // RFC 7427 - Signature Authentication in IKEv2
@@ -109,6 +109,7 @@ func HandleAuthForSession(sess *Session, m *Message) (err error) {
 	}
 }
 
+// HandleSaForSession handles the remaining tasks after authentication succeeded
 func HandleSaForSession(sess *Session, m *Message) error {
 	params, err := parseSa(m)
 	if err != nil {
@@ -123,7 +124,7 @@ func HandleSaForSession(sess *Session, m *Message) error {
 	}
 	// level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		return err
+		return errors.Wrap(protocol.ERR_INVALID_SELECTORS, err.Error())
 	}
 	// TODO - check selector
 	sess.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
@@ -134,14 +135,14 @@ func HandleSaForSession(sess *Session, m *Message) error {
 			sess.EspSpiR = append([]byte{}, params.spiR...)
 		}
 		if sess.EspSpiR == nil {
-			err = errors.New("Missing responder SPI")
+			err = errors.Wrap(protocol.ERR_INVALID_KE_PAYLOAD, "Missing responder SPI")
 		}
 	} else {
 		if !params.isResponse {
 			sess.EspSpiI = append([]byte{}, params.spiI...)
 		}
 		if sess.EspSpiI == nil {
-			err = errors.New("Missing initiator SPI")
+			err = errors.Wrap(protocol.ERR_INVALID_KE_PAYLOAD, "Missing initiator SPI")
 		}
 	}
 	if err != nil {
@@ -155,11 +156,15 @@ func HandleSaForSession(sess *Session, m *Message) error {
 	if params.isTransportMode && sess.cfg.IsTransportMode {
 		sess.Logger.Log("Mode", "TRANSPORT")
 	} else {
-		sess.Logger.Log("Mode", "TUNNEL")
+		// one side wants tunnel mode
 		if params.isTransportMode {
-			sess.Logger.Log("TransportMode", "Peer Requested, but forcing Tunnel mode")
+			sess.Logger.Log("Mode", "Peer Requested TRANSPORT, configured TUNNEL")
+			return errors.Wrap(protocol.ERR_INVALID_SELECTORS, "Reject TRANSPORT Mode Request")
 		} else if sess.cfg.IsTransportMode {
-			return errors.New("Peer Rejected Transport Mode Config")
+			sess.Logger.Log("Mode", "Peer Requested TUNNEL, configured TRANSPORT")
+			return errors.Wrap(protocol.ERR_INVALID_SELECTORS, "Reject TUNNEL Mode Request")
+		} else {
+			sess.Logger.Log("Mode", "TUNNEL")
 		}
 	}
 	return nil

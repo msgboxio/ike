@@ -19,15 +19,28 @@ ipsec pki --pub --in cert/hostkey.der --type rsa | ipsec pki --issue --lifetime 
 
 # multihost 
 docker network create --subnet 172.30.1.0/24 --gateway=172.30.1.1 \
-            --opt com.docker.network.bridge.name=net2 \
-			--opt com.docker.network.bridge.enable_icc=true \
-			net2
+        --opt com.docker.network.bridge.name=net2 \
+        --opt com.docker.network.bridge.enable_ip_masquerade=false \
+		net2
+
 ip route add 172.30.2.0/24 via 172.28.128.4
 docker run -v `pwd`/server.elf:/server -it --rm --privileged --net=net2 alpine sh
 
 docker network create --subnet 172.30.2.0/24 --gateway=172.30.2.1 \
-            --opt com.docker.network.bridge.name=net2 \
-			--opt com.docker.network.bridge.enable_icc=true \
-			net2
+        --opt com.docker.network.bridge.name=net2 \
+        --opt com.docker.network.bridge.enable_ip_masquerade=false \
+		net2
 ip route add 172.30.1.0/24 via 172.28.128.3
-docker run -v `pwd`/server.elf:/server -it --rm --privileged --net=net2 alpine sh            
+docker run -v `pwd`/server.elf:/server -it --rm --privileged --net=net2 alpine sh
+
+# manual settings for multihost tunnel
+./doipsec.sh '172.28.128.3|172.30.1.0/24|172.30.1.1|enp0s8' \
+    '172.28.128.4|172.30.2.0/24|172.30.2.1|enp0s8'
+
+route only needed for host originated packets
+
+# bugs
+> message IDs get messed up
+ - when responder deletes SA
+ - when responder rejects
+> errors need to be looked at more closely
