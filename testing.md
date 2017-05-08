@@ -32,6 +32,13 @@ docker network create --subnet 172.30.2.0/24 --gateway=172.30.2.1 \
 
 docker run -it --rm --privileged --net=net2 alpine sh
 
+> client
+sudo ./server.elf -remote=172.28.128.4:4500 -localnet=172.30.1.0/24 \
+-remotenet=172.30.2.0/24
+
+> server
+sudo ./server.elf -remotenet=172.30.1.0/24 -localnet=172.30.2.0/24
+
 # manual settings for multihost tunnel
 ./doipsec.sh '172.28.128.3|172.30.1.0/24|172.30.1.1|enp0s8' \
     '172.28.128.4|172.30.2.0/24|172.30.2.1|enp0s8'
@@ -39,8 +46,6 @@ docker run -it --rm --privileged --net=net2 alpine sh
 route is only needed for host originated packets
 
 # bugs
-> message IDs get messed up
- - when responder deletes SA
- - when responder rejects
 > errors need to be looked at more closely
 > policy is not installed on rekey
+> cookie handling does not work

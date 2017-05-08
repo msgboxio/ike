@@ -63,13 +63,14 @@ func makeInformational(p InfoParams) *Message {
 }
 
 // NotifyFromSession builds a Notification Request
-func NotifyFromSession(sess *Session, ie protocol.IkeErrorCode) *Message {
+func NotifyFromSession(sess *Session, ie protocol.IkeErrorCode, isResponse bool) *Message {
 	spi := sess.IkeSpiI
 	if sess.isInitiator {
 		spi = sess.IkeSpiR
 	}
 	return makeInformational(InfoParams{
 		IsInitiator: sess.isInitiator,
+		IsResponse:  isResponse,
 		SpiI:        sess.IkeSpiI,
 		SpiR:        sess.IkeSpiR,
 		Payload: &protocol.NotifyPayload{

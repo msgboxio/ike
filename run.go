@@ -226,7 +226,7 @@ func monitorSa(sess *Session) (err error) {
 				if sess.isInitiator {
 					level.Warn(sess.Logger).Log("RekeyRequest", "Currently only supported for responder")
 					// send notification
-					sess.Notify(protocol.ERR_NO_ADDITIONAL_SAS)
+					sess.Notify(protocol.ERR_NO_ADDITIONAL_SAS, true)
 					continue
 				}
 				if err := onIpsecRekey(sess, msg); err != nil {

@@ -36,10 +36,11 @@ type Session struct {
 	tkm                   *Tkm
 	authRemote, authLocal Authenticator
 
-	isInitiator         bool
-	IkeSpiI, IkeSpiR    protocol.Spi
-	EspSpiI, EspSpiR    protocol.Spi
-	msgIDReq, msgIDResp uint32
+	isInitiator      bool
+	IkeSpiI, IkeSpiR protocol.Spi
+	EspSpiI, EspSpiR protocol.Spi
+
+	msgIDReq, msgIDResp *msgID
 
 	incoming chan *Message
 
@@ -72,6 +73,8 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		Conn:        conn,
 		Remote:      remoteAddr,
 		Cb:          *cb,
+		msgIDReq:    &msgID{id: 0},
+		msgIDResp:   &msgID{id: -1},
 	}
 	o.Logger = log.With(logger, "session", o.tag())
 	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
@@ -93,16 +96,18 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 	}
 	// create and run session
 	sess := &Session{
-		tkm:      tkm,
-		cfg:      *cfg,
-		IkeSpiI:  ikeSpiI,
-		IkeSpiR:  MakeSpi(),
-		EspSpiR:  MakeSpi()[:4],
-		incoming: make(chan *Message, 10),
-		Conn:     conn,
-		Local:    initI.LocalAddr,
-		Remote:   initI.RemoteAddr,
-		Cb:       *cb,
+		tkm:       tkm,
+		cfg:       *cfg,
+		IkeSpiI:   ikeSpiI,
+		IkeSpiR:   MakeSpi(),
+		EspSpiR:   MakeSpi()[:4],
+		incoming:  make(chan *Message, 10),
+		Conn:      conn,
+		Local:     initI.LocalAddr,
+		Remote:    initI.RemoteAddr,
+		Cb:        *cb,
+		msgIDReq:  &msgID{id: 0},
+		msgIDResp: &msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
 	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
@@ -198,8 +203,6 @@ func (sess *Session) PostMessage(msg *Message) {
 		level.Warn(sess.Logger).Log("DROP", err)
 		return
 	}
-	// requestId has been confirmed, increment it for next request
-	sess.msgIDReq++
 	sess.incoming <- msg
 }
 
@@ -215,37 +218,31 @@ func (sess *Session) sendMsg(msg *OutgoingMessage, err error) error {
 	return WriteData(sess.Conn, msg.Data, sess.Remote, sess.Logger)
 }
 
-// nextMsgID increments and returns response ids for responses, returns request ids as is
-func (sess *Session) nextMsgID(isResponse bool) (msgID uint32) {
-	if isResponse {
-		msgID = sess.msgIDResp
-		sess.msgIDResp++
-	} else {
-		msgID = sess.msgIDReq
-	}
-	return
-}
-
 // InitMsg generates IKE_INIT
 func (sess *Session) InitMsg() (*OutgoingMessage, error) {
-	initMsg := func(msgId uint32) (*OutgoingMessage, error) {
-		init := InitFromSession(sess)
-		init.IkeHeader.MsgID = msgId
-		// encode
-		initB, err := sess.encode(init)
-		if err != nil {
-			return nil, err
-		}
-		if sess.isInitiator {
-			sess.initIb = initB.Data
-		} else {
-			sess.initRb = initB.Data
-		}
-		return initB, nil
+	init := InitFromSession(sess)
+	init.IkeHeader.MsgID = sess.nextID()
+	// encode
+	initB, err := sess.encode(init)
+	if err != nil {
+		return nil, err
 	}
-	// reset request ID to 0 - needed when resending with COOKIE
-	sess.msgIDReq = 0
-	return initMsg(sess.nextMsgID(!sess.isInitiator)) // is a response if not an initiator
+	if sess.isInitiator {
+		sess.initIb = initB.Data
+	} else {
+		sess.initRb = initB.Data
+	}
+	return initB, nil
+}
+
+// this can be used in genreal case, but not for INFO requests from responders -- TODO
+func (sess *Session) nextID() (id uint32) {
+	if sess.isInitiator {
+		id = sess.msgIDReq.next()
+	} else {
+		id = sess.msgIDResp.next()
+	}
+	return
 }
 
 // AuthMsg generates IKE_AUTH
@@ -260,12 +257,12 @@ func (sess *Session) AuthMsg() (*OutgoingMessage, error) {
 		sess.Logger.Log("err", err)
 		return nil, err
 	}
-	auth.IkeHeader.MsgID = sess.nextMsgID(!sess.isInitiator) // is a response if not an initiator
+	auth.IkeHeader.MsgID = sess.nextID()
 	return sess.encode(auth)
 }
 
 func (sess *Session) RekeyMsg(child *Message) (*OutgoingMessage, error) {
-	child.IkeHeader.MsgID = sess.nextMsgID(!sess.isInitiator) // is a response if not an initiator
+	child.IkeHeader.MsgID = sess.nextID()
 	// encode & send
 	return sess.encode(child)
 }
@@ -298,23 +295,23 @@ func (sess *Session) SendAuth() error {
 // CheckError checks error, then send to peer
 func (sess *Session) CheckError(err error) error {
 	if iErr, ok := errors.Cause(err).(protocol.IkeErrorCode); ok {
-		sess.Notify(iErr)
+		sess.Notify(iErr, true)
 	}
 	return err
 }
 
 // utilities
 
-func (sess *Session) Notify(ie protocol.IkeErrorCode) {
-	info := NotifyFromSession(sess, ie)
-	info.IkeHeader.MsgID = sess.nextMsgID(false) // never a response
+func (sess *Session) Notify(ie protocol.IkeErrorCode, isResponse bool) {
+	info := NotifyFromSession(sess, ie, isResponse)
+	info.IkeHeader.MsgID = sess.nextID()
 	// encode & send
 	sess.sendMsg(sess.encode(info))
 }
 
 func (sess *Session) sendIkeSaDelete() {
 	info := DeleteFromSession(sess)
-	info.IkeHeader.MsgID = sess.nextMsgID(false) // never a response
+	info.IkeHeader.MsgID = sess.msgIDReq.next()
 	// encode & send
 	sess.sendMsg(sess.encode(info))
 }
@@ -322,7 +319,11 @@ func (sess *Session) sendIkeSaDelete() {
 // SendEmptyInformational can be used for periodic keepalive
 func (sess *Session) SendEmptyInformational(isResponse bool) error {
 	info := EmptyFromSession(sess, isResponse)
-	info.IkeHeader.MsgID = sess.nextMsgID(isResponse)
+	if isResponse {
+		info.IkeHeader.MsgID = sess.msgIDResp.next()
+	} else {
+		info.IkeHeader.MsgID = sess.msgIDReq.next()
+	}
 	// encode & send
 	return sess.sendMsg(sess.encode(info))
 }
@@ -339,18 +340,19 @@ func (sess *Session) isMessageValid(msg *Message) error {
 	// check sequence numbers
 	seq := msg.IkeHeader.MsgID
 	if msg.IkeHeader.Flags.IsResponse() {
-		// response id ought to be the same as our request id
-		if seq != sess.msgIDReq {
+		// response id ought to be same as our request id
+		if seq != uint32(sess.msgIDReq.get()) {
 			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
-				fmt.Sprintf("unexpected response id %d, expected %d", seq, sess.msgIDReq))
+				fmt.Sprintf("unexpected response id %d, expected %+v", seq, sess.msgIDReq))
 		}
-	} else { // request
-		// TODO - does not handle our responses getting lost
-		if seq != sess.msgIDResp {
+		sess.msgIDReq.confirm()
+	} else {
+		// request id ought to be one larger than the prev response
+		if seq != uint32(sess.msgIDResp.get()+1) {
 			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,
-				fmt.Sprintf("unexpected request id %d, expected %d", seq, sess.msgIDResp))
+				fmt.Sprintf("unexpected request id %d, expected %+v", seq, sess.msgIDResp))
 		}
-		// incremented by sender
+		sess.msgIDResp.confirm()
 	}
 	return nil
 }
