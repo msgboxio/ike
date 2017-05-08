@@ -143,7 +143,7 @@ func runTestResponder(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Lo
 			if err != nil {
 				cbk.errTo <- err
 			}
-			if err = HandleInitRequest(initI, cbk, cfg, log); errors.Cause(err) == errMissingCookie {
+			if err = checkInitRequest(initI, cbk, cfg, log); errors.Cause(err) == errMissingCookie {
 				continue
 			} else if err != nil {
 				cbk.errTo <- err

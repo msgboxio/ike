@@ -53,6 +53,7 @@ var (
 // 	SAr1, KEr, Nr, [CERTREQ]
 type initParams struct {
 	isInitiator bool
+	isResponse  bool
 	spiI, spiR  protocol.Spi
 
 	nonce         *big.Int
@@ -79,7 +80,7 @@ func makeInit(params *initParams) *Message {
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
 			ExchangeType: protocol.IKE_SA_INIT,
 			Flags:        flags,
-			MsgID:        0, // ALWAYS
+			// MsgID:        0, // ALWAYS
 		},
 		Payloads: protocol.MakePayloads(),
 	}
@@ -129,43 +130,41 @@ func makeInit(params *initParams) *Message {
 	return init
 }
 
-func parseInit(m *Message) (*initParams, error) {
+func parseInit(msg *Message) (*initParams, error) {
 	params := &initParams{}
-	if m.IkeHeader.ExchangeType != protocol.IKE_SA_INIT {
+	if msg.IkeHeader.ExchangeType != protocol.IKE_SA_INIT {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: incorrect type")
 	}
-	//
-	if m.IkeHeader.MsgID != 0 {
+	// Message ID must always be 0
+	if msg.IkeHeader.MsgID != 0 {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid Message Id")
 	}
-	if m.IkeHeader.Flags.IsInitiator() {
-		if m.IkeHeader.Flags.IsResponse() {
-			return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
-		}
-		params.isInitiator = true
-	} else if !m.IkeHeader.Flags.IsResponse() {
-		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid flag")
+	if msg.IkeHeader.Flags&protocol.RESPONSE != 0 {
+		params.isResponse = true
 	}
-	params.spiI = m.IkeHeader.SpiI
-	params.spiR = m.IkeHeader.SpiR
-	params.ns = m.Payloads.GetNotifications()
+	if msg.IkeHeader.Flags&protocol.INITIATOR != 0 {
+		params.isInitiator = true
+	}
+	params.spiI = msg.IkeHeader.SpiI
+	params.spiR = msg.IkeHeader.SpiR
+	params.ns = msg.Payloads.GetNotifications()
 	// did we get a COOKIE ?
-	if cookie := m.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
+	if cookie := msg.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
 		params.cookie = cookie.NotificationMessage.([]byte)
 	}
 	// if we got a COOKIE request, then there are no more payloads
-	if err := m.EnsurePayloads(initPayloads); err != nil {
+	if err := msg.EnsurePayloads(initPayloads); err != nil {
 		return params, err
 	}
 	// check if transforms are usable
-	keI := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	keI := msg.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 	params.dhTransformID = keI.DhTransformId
 	params.dhPublic = keI.KeyData
 	// get SA payload
-	ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	ikeSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 	params.proposals = ikeSa.Proposals
 	// nonce payload
-	nonce := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	nonce := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 	params.nonce = nonce.Nonce
 	return params, nil
 }
@@ -282,30 +281,30 @@ func makeAuth(params *authParams, initB []byte, logger log.Logger) (*Message, er
 	return auth, nil
 }
 
-func checkAuth(m *Message, forInitiator bool) error {
-	if m.IkeHeader.ExchangeType != protocol.IKE_AUTH {
+func checkAuth(msg *Message, forInitiator bool) error {
+	if msg.IkeHeader.ExchangeType != protocol.IKE_AUTH {
 		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
 	}
 	payloads := authIPayloads
 	if forInitiator {
 		payloads = authRPayloads
 	}
-	if err := m.EnsurePayloads(payloads); err != nil {
+	if err := msg.EnsurePayloads(payloads); err != nil {
 		return err
 	}
 	return nil
 }
 
-func parseSa(m *Message) (*authParams, error) {
+func parseSa(msg *Message) (*authParams, error) {
 	params := &authParams{}
-	if m.IkeHeader.Flags&protocol.RESPONSE != 0 {
+	if msg.IkeHeader.Flags&protocol.RESPONSE != 0 {
 		params.isResponse = true
 	}
-	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
+	if msg.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	if err := m.EnsurePayloads(saPayloads); err == nil {
-		espSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	if err := msg.EnsurePayloads(saPayloads); err == nil {
+		espSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 		if espSa.Proposals == nil {
 			return nil, errors.New("proposals are missing")
 		}
@@ -320,8 +319,8 @@ func parseSa(m *Message) (*authParams, error) {
 			params.spiR = spi
 		}
 		// get selectors
-		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
+		tsI := msg.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
+		tsR := msg.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
 		if len(tsI) == 0 || len(tsR) == 0 {
 			return nil, errors.New("acceptable traffic selectors are missing")
 		}
@@ -330,7 +329,7 @@ func parseSa(m *Message) (*authParams, error) {
 	}
 	// notifications
 	wantsTransportMode := false
-	for _, ns := range m.Payloads.GetNotifications() {
+	for _, ns := range msg.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case protocol.AUTH_LIFETIME:
 			params.lifetime = ns.NotificationMessage.(time.Duration)
@@ -440,18 +439,18 @@ func makeChildSa(params *childSaParams) *Message {
 	return child
 }
 
-func parseChildSa(m *Message) (*childSaParams, error) {
-	if m.IkeHeader.ExchangeType != protocol.CREATE_CHILD_SA {
+func parseChildSa(msg *Message) (*childSaParams, error) {
+	if msg.IkeHeader.ExchangeType != protocol.CREATE_CHILD_SA {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "CREATE_CHILD_SA: incorrect type")
 	}
 	params := &childSaParams{}
-	if m.IkeHeader.Flags&protocol.RESPONSE != 0 {
+	if msg.IkeHeader.Flags&protocol.RESPONSE != 0 {
 		params.isResponse = true
 	}
-	if m.IkeHeader.Flags&protocol.INITIATOR != 0 {
+	if msg.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	rekeySA := m.Payloads.GetNotification(protocol.REKEY_SA)
+	rekeySA := msg.Payloads.GetNotification(protocol.REKEY_SA)
 	if rekeySA != nil {
 		// received CREATE_CHILD_SA request
 		// make sure protocol id is correct
@@ -460,14 +459,14 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 		}
 		params.targetEspSpi = rekeySA.Spi
 	}
-	if err := m.EnsurePayloads(rekeyChildSaPaylods); err == nil {
+	if err := msg.EnsurePayloads(rekeyChildSaPaylods); err == nil {
 		// rekeying IPSEC SA
-		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+		no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		params.nonce = no.Nonce
-		ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+		ikeSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 		params.proposals = ikeSa.Proposals
-		tsI := m.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-		tsR := m.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
+		tsI := msg.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
+		tsR := msg.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
 		if len(tsI) == 0 || len(tsR) == 0 {
 			return nil,
 				errors.New("REKEY child SA: acceptable traffic selectors are missing")
@@ -475,19 +474,19 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 		params.tsI = tsI
 		params.tsR = tsR
 		// check for optional KE payload
-		if kep := m.Payloads.Get(protocol.PayloadTypeKE); kep != nil {
+		if kep := msg.Payloads.Get(protocol.PayloadTypeKE); kep != nil {
 			keR := kep.(*protocol.KePayload)
 			params.dhPublic = keR.KeyData
 			params.dhTransformId = keR.DhTransformId
 		}
-	} else if err := m.EnsurePayloads(rekeyIkeSaPaylods); err == nil {
+	} else if err := msg.EnsurePayloads(rekeyIkeSaPaylods); err == nil {
 		// rekeying IKE SA
 		// get sa & nonce
-		no := m.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+		no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
 		params.nonce = no.Nonce
-		ikeSa := m.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+		ikeSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
 		params.proposals = ikeSa.Proposals
-		keR := m.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+		keR := msg.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
 		params.dhPublic = keR.KeyData
 		params.dhTransformId = keR.DhTransformId
 	} else {
@@ -495,7 +494,7 @@ func parseChildSa(m *Message) (*childSaParams, error) {
 	}
 	// notifications
 	wantsTransportMode := false
-	for _, ns := range m.Payloads.GetNotifications() {
+	for _, ns := range msg.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case protocol.AUTH_LIFETIME:
 			params.lifetime = ns.NotificationMessage.(time.Duration)

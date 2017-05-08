@@ -12,6 +12,10 @@ import (
 
 var errMissingCookie = errors.New("COOKIE")
 
+//
+// outgoing request
+//
+
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(sess *Session) *Message {
 	nonce := sess.tkm.Nr
@@ -32,17 +36,19 @@ func InitFromSession(sess *Session) *Message {
 }
 
 //
-// rquest handling
+// incoming request
 //
 
-// HandleInitRequest will handle sending cookie requests to the initiator
-func HandleInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) error {
-	// is it a IKE_SA_INIT req ?
+// checkInitRequest will handle sending cookie requests to the initiator
+func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) error {
+	if err := msg.CheckFlags(); err != nil {
+		return err
+	}
 	init, err := parseInit(msg)
 	if err != nil {
 		return err
 	}
-	if err := checkInitRequest(config, init, msg.RemoteAddr); err != nil {
+	if err := doCheckInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
 		if reply := initErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
 			WriteMessage(conn, reply, nil, false, log)
@@ -52,10 +58,14 @@ func HandleInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) 
 	return nil
 }
 
-// checkInitRequest checks IKE_SA_INIT requests
-func checkInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
+// doCheckInitRequest checks IKE_SA_INIT requests
+func doCheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	if !init.isInitiator {
-		return protocol.ERR_INVALID_SYNTAX
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: request from responder")
+	}
+	// check SPI
+	if SpiToInt64(init.spiI) == 0 {
+		return errors.Wrap(protocol.ERR_INVALID_IKE_SPI, "IKE_SA_INIT: missing SPI")
 	}
 	// did we get a COOKIE ?
 	if cookie := init.cookie; cookie != nil {
@@ -71,8 +81,8 @@ func checkInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
 	if dh := protocol.DhTransformId(tr); dh != init.dhTransformID {
 		return errors.Wrapf(protocol.ERR_INVALID_KE_PAYLOAD,
-			"Using different DH transform [%s] vs the one configured [%s]",
-			init.dhTransformID, dh)
+			"IKE_SA_INIT: Using different DH transform [%s] vs the one configured [%s]",
+			init.dhTransformID, dh) // C.1
 	}
 	// check ike proposal
 	if err := cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {
@@ -95,10 +105,10 @@ func initErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err 
 }
 
 //
-// response handling
+// incoming response
 //
 
-func CheckInitResponseForSession(sess *Session, init *initParams) error {
+func checkInitResponseForSession(sess *Session, init *initParams) error {
 	if init.isInitiator { // id must be zero
 		return protocol.ERR_INVALID_SYNTAX
 	}
@@ -126,7 +136,7 @@ func CheckInitResponseForSession(sess *Session, init *initParams) error {
 	return nil
 }
 
-// return error secure signatures are configured, but not proposed by peer
+// return error if secure signatures are configured, but not proposed by peer
 func checkSignatureAlgo(sess *Session, isEnabled bool) error {
 	if !isEnabled {
 		level.Warn(sess.Logger).Log("msg", "Not using secure signatures")
@@ -137,8 +147,9 @@ func checkSignatureAlgo(sess *Session, isEnabled bool) error {
 	return nil
 }
 
-// HandleInitForSession expects the message given to it to be well formatted
-func HandleInitForSession(sess *Session, init *initParams, m *Message) error {
+// handleInitForSession is called for requests & responses both
+// expects the message given to it to be well formatted
+func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	// process notifications
 	// check NAT-T payload to determine if there is a NAT between the two peers
 	var rfc7427Signatures = false
@@ -148,12 +159,12 @@ func HandleInitForSession(sess *Session, init *initParams, m *Message) error {
 			sess.Logger.Log("secure", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.LocalAddr) {
-				sess.Logger.Log("HOST_NAT", m.LocalAddr)
+			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.LocalAddr) {
+				sess.Logger.Log("HOST_NAT", msg.LocalAddr)
 			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, m.RemoteAddr) {
-				sess.Logger.Log("PEER_NAT", m.RemoteAddr)
+			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.RemoteAddr) {
+				sess.Logger.Log("PEER_NAT", msg.RemoteAddr)
 			}
 		}
 	}
@@ -165,14 +176,14 @@ func HandleInitForSession(sess *Session, init *initParams, m *Message) error {
 		return err
 	}
 	// TODO
-	// If there is NAT , then all the further communication is perfomed over port 4500 instead of the default port 500
+	// If there is NAT , then all the further communication is performed over port 4500 instead of the default port 500
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	// MUTATION
 	// save Data
 	if sess.isInitiator {
-		sess.initRb = m.Data
+		sess.initRb = msg.Data
 	} else {
-		sess.initIb = m.Data
+		sess.initIb = msg.Data
 	}
 	return nil
 }

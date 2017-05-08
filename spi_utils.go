@@ -23,19 +23,6 @@ func MakeSpi() (ret protocol.Spi) {
 	return spi.Bytes()
 }
 
-func getPeerSpi(m *Message, pid protocol.ProtocolID) (peerSpi protocol.Spi, err error) {
-	// first exchange contains peer spi // TODO - MAJOR hack
-	if m.IkeHeader.MsgID == 0 && (pid == protocol.IKE) {
-		peerSpi = m.IkeHeader.SpiI
-		return
-	}
-	if peerSpi == nil {
-		err = errors.New("Unknown Peer SPI")
-		return
-	}
-	return
-}
-
 func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolID) (protocol.Spi, error) {
 	for _, p := range props {
 		if !p.IsSpiSizeCorrect(len(p.Spi)) {

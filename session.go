@@ -79,18 +79,10 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 	return o, nil
 }
 
-// NewResponder creates a Responder session if incoming message looks OK
+// NewResponder creates a Responder session
 func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, logger log.Logger) (*Session, error) {
-	// consider creating a new session
-	if err := HandleInitRequest(initI, conn, cfg, logger); err != nil {
-		// dont create a new session
-		return nil, err
-	}
 	// get spi
-	ikeSpiI, err := getPeerSpi(initI, protocol.IKE)
-	if err != nil {
-		return nil, err
-	}
+	ikeSpiI := initI.IkeHeader.SpiI
 	// cast is safe since we already checked for presence of payloads
 	// assert ?
 	noI := initI.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
@@ -143,7 +135,7 @@ func (sess *Session) HandleClose() {
 
 // Housekeeping
 
-type OutgoingMessge struct {
+type OutgoingMessage struct {
 	Data []byte
 }
 
@@ -189,12 +181,12 @@ func (sess *Session) SetCookie(cn *protocol.NotifyPayload) {
 	sess.responderCookie = cn.NotificationMessage.([]byte)
 }
 
-func (sess *Session) PostMessage(m *Message) {
+func (sess *Session) PostMessage(msg *Message) {
 	check := func() (err error) {
-		if err = sess.isMessageValid(m); err != nil {
+		if err = sess.isMessageValid(msg); err != nil {
 			return
 		}
-		if err = DecryptMessage(m, sess.tkm, sess.isInitiator, sess.Logger); err != nil {
+		if err = DecryptMessage(msg, sess.tkm, sess.isInitiator, sess.Logger); err != nil {
 			return
 		}
 		if sess.isClosing {
@@ -208,15 +200,15 @@ func (sess *Session) PostMessage(m *Message) {
 	}
 	// requestId has been confirmed, increment it for next request
 	sess.msgIDReq++
-	sess.incoming <- m
+	sess.incoming <- msg
 }
 
-func (sess *Session) encode(msg *Message) (*OutgoingMessge, error) {
+func (sess *Session) encode(msg *Message) (*OutgoingMessage, error) {
 	buf, err := msg.Encode(sess.tkm, sess.isInitiator, sess.Logger)
-	return &OutgoingMessge{buf}, err
+	return &OutgoingMessage{buf}, err
 }
 
-func (sess *Session) sendMsg(msg *OutgoingMessge, err error) error {
+func (sess *Session) sendMsg(msg *OutgoingMessage, err error) error {
 	if err != nil {
 		return err
 	}
@@ -235,8 +227,8 @@ func (sess *Session) nextMsgID(isResponse bool) (msgID uint32) {
 }
 
 // InitMsg generates IKE_INIT
-func (sess *Session) InitMsg() (*OutgoingMessge, error) {
-	initMsg := func(msgId uint32) (*OutgoingMessge, error) {
+func (sess *Session) InitMsg() (*OutgoingMessage, error) {
+	initMsg := func(msgId uint32) (*OutgoingMessage, error) {
 		init := InitFromSession(sess)
 		init.IkeHeader.MsgID = msgId
 		// encode
@@ -257,13 +249,13 @@ func (sess *Session) InitMsg() (*OutgoingMessge, error) {
 }
 
 // AuthMsg generates IKE_AUTH
-func (sess *Session) AuthMsg() (*OutgoingMessge, error) {
+func (sess *Session) AuthMsg() (*OutgoingMessage, error) {
 	sess.Logger.Log("msg", "AUTH", "selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
 	// make sure selectors are present
 	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
-	auth, err := AuthFromSession(sess)
+	auth, err := authFromSession(sess)
 	if err != nil {
 		sess.Logger.Log("err", err)
 		return nil, err
@@ -272,14 +264,14 @@ func (sess *Session) AuthMsg() (*OutgoingMessge, error) {
 	return sess.encode(auth)
 }
 
-func (sess *Session) RekeyMsg(child *Message) (*OutgoingMessge, error) {
+func (sess *Session) RekeyMsg(child *Message) (*OutgoingMessage, error) {
 	child.IkeHeader.MsgID = sess.nextMsgID(!sess.isInitiator) // is a response if not an initiator
 	// encode & send
 	return sess.encode(child)
 }
 
 // SendMsgGetReply takes a message generator
-func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessge, error)) (*Message, error) {
+func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessage, error)) (*Message, error) {
 	for {
 		// send initiator INIT after jittered wait
 		if err := sess.sendMsg(genMsg()); err != nil {
@@ -307,7 +299,6 @@ func (sess *Session) SendAuth() error {
 func (sess *Session) CheckError(err error) error {
 	if iErr, ok := errors.Cause(err).(protocol.IkeErrorCode); ok {
 		sess.Notify(iErr)
-		return nil
 	}
 	return err
 }
@@ -336,18 +327,18 @@ func (sess *Session) SendEmptyInformational(isResponse bool) error {
 	return sess.sendMsg(sess.encode(info))
 }
 
-func (sess *Session) isMessageValid(m *Message) error {
-	if spi := m.IkeHeader.SpiI; !bytes.Equal(spi, sess.IkeSpiI) {
+func (sess *Session) isMessageValid(msg *Message) error {
+	if spi := msg.IkeHeader.SpiI; !bytes.Equal(spi, sess.IkeSpiI) {
 		return errors.Errorf("different initiator Spi %s", spi)
 	}
 	// Dont check Responder SPI. initiator IKE_SA_INIT does not have it
 	// for un-encrypted payloads, make sure that the state is correct
-	if m.IkeHeader.NextPayload != protocol.PayloadTypeSK {
+	if msg.IkeHeader.NextPayload != protocol.PayloadTypeSK {
 		// TODO -
 	}
 	// check sequence numbers
-	seq := m.IkeHeader.MsgID
-	if m.IkeHeader.Flags.IsResponse() {
+	seq := msg.IkeHeader.MsgID
+	if msg.IkeHeader.Flags.IsResponse() {
 		// response id ought to be the same as our request id
 		if seq != sess.msgIDReq {
 			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID,

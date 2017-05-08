@@ -10,15 +10,15 @@ import (
 	"github.com/pkg/errors"
 )
 
-// AuthFromSession creates IKE_AUTH messages
-func AuthFromSession(sess *Session) (*Message, error) {
+// authFromSession creates IKE_AUTH messages
+func authFromSession(sess *Session) (*Message, error) {
 	// proposal
 	var prop []*protocol.SaProposal
 	// part of signed octet
 	var initB []byte
 	if sess.isInitiator {
 		prop = ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiI)
-		// intiators's signed octet
+		// initiators's signed octet
 		// initI | Nr | prf(sk_pi | IDi )
 		initB = sess.initIb
 	} else {
@@ -41,15 +41,33 @@ func AuthFromSession(sess *Session) (*Message, error) {
 		}, initB, sess.Logger)
 }
 
-// HandleAuthForSession supports signature authentication using
+func handleAuthForSession(sess *Session, msg *Message) (err error) {
+	if err := msg.CheckFlags(); err != nil {
+		return err
+	}
+	if err = authenticateSession(sess, msg); err != nil {
+		// send notification to peer & end IKE SA
+		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
+		sess.CheckError(err)
+		return
+	}
+	if err = handleSaForSession(sess, msg); err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
+		return
+	}
+	return
+}
+
+// authenticateSession supports signature authentication using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
 // RFC 7427 - Signature Authentication in IKEv2
 // tkm.Auth always uses the hash negotiated with prf
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
-func HandleAuthForSession(sess *Session, m *Message) (err error) {
-	if err = checkAuth(m, sess.isInitiator); err != nil {
+func authenticateSession(sess *Session, msg *Message) (err error) {
+	if err = checkAuth(msg, sess.isInitiator); err != nil {
 		return err
 	}
 	// authenticate peer
@@ -57,18 +75,18 @@ func HandleAuthForSession(sess *Session, m *Message) (err error) {
 	var initB []byte
 	if sess.isInitiator {
 		initB = sess.initRb
-		idP = m.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
+		idP = msg.Payloads.Get(protocol.PayloadTypeIDr).(*protocol.IdPayload)
 	} else {
 		initB = sess.initIb
-		idP = m.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
+		idP = msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
-	authP := m.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
+	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
 		sess.Logger.Log("msg", "Ike Auth", "SHARED_KEY", string(idP.Data))
 		return sess.authRemote.Verify(initB, idP, authP.Data, sess.Logger)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		chain, err := m.Payloads.GetCertchain()
+		chain, err := msg.Payloads.GetCertchain()
 		if err != nil {
 			return err
 		}
@@ -109,13 +127,13 @@ func HandleAuthForSession(sess *Session, m *Message) (err error) {
 	}
 }
 
-// HandleSaForSession handles the remaining tasks after authentication succeeded
-func HandleSaForSession(sess *Session, m *Message) error {
-	params, err := parseSa(m)
+// handleSaForSession handles the remaining tasks after authentication succeeded
+func handleSaForSession(sess *Session, msg *Message) error {
+	params, err := parseSa(msg)
 	if err != nil {
 		return err
 	}
-	for _, n := range m.Payloads.GetNotifications() {
+	for _, n := range msg.Payloads.GetNotifications() {
 		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
 			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
 			// TODO - for now, we should simply end the IKE_SA

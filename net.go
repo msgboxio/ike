@@ -24,7 +24,7 @@ func FirstLastAddressToIPNet(start, end net.IP) *net.IPNet {
 	return &net.IPNet{IP: start, Mask: mask}
 }
 
-// copy of the incredbly useful function from ip.go
+// copy of a useful function from ip.go
 func networkNumberAndMask(n *net.IPNet) (ip net.IP, m net.IPMask) {
 	if ip = n.IP.To4(); ip == nil {
 		ip = n.IP
@@ -48,7 +48,7 @@ func networkNumberAndMask(n *net.IPNet) (ip net.IP, m net.IPMask) {
 	return
 }
 
-// Returns the first & last derived from the ipnet notation
+// IPNetToFirstLastAddress returns the first & last address derived from the IPNet notation
 func IPNetToFirstLastAddress(n *net.IPNet) (first, last net.IP, err error) {
 	ip, m := networkNumberAndMask(n)
 	if ip == nil {

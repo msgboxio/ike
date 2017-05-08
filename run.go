@@ -30,7 +30,7 @@ func runInitiator(sess *Session) (err error) {
 				return
 			}
 		}
-		if err = CheckInitResponseForSession(sess, init); err != nil {
+		if err = checkInitResponseForSession(sess, init); err != nil {
 			if ce, ok := err.(PeerRequestsCookieError); ok {
 				// session is always returned for CookieError
 				sess.SetCookie(ce.Cookie)
@@ -48,7 +48,7 @@ func runInitiator(sess *Session) (err error) {
 		return
 	}
 	// COOKIE is handled within cmd.newSession
-	if err = HandleInitForSession(sess, init, msg); err != nil {
+	if err = handleInitForSession(sess, init, msg); err != nil {
 		level.Error(sess.Logger).Log("init", err)
 		return
 	}
@@ -56,15 +56,8 @@ func runInitiator(sess *Session) (err error) {
 	if msg, err = sess.SendMsgGetReply(sess.AuthMsg); err != nil {
 		return
 	}
-	if err = HandleAuthForSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
-		sess.CheckError(err)
+	if err = handleAuthForSession(sess, msg); err != nil {
 		return
-	}
-	if err = HandleSaForSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
 	}
 	return
 }
@@ -75,11 +68,13 @@ func runResponder(sess *Session) (err error) {
 	// send COOKIE, wait - handled by cmd:newSession
 	// get INIT
 	msg := <-sess.incoming
+	// NOTE - the message is parsed again
+	// this is not ideal, but simplifies other processing
 	init, err := parseInit(msg)
 	if err != nil {
 		return
 	}
-	if err = HandleInitForSession(sess, init, msg); err != nil {
+	if err = handleInitForSession(sess, init, msg); err != nil {
 		return
 	}
 	// not really necessary
@@ -91,15 +86,7 @@ func runResponder(sess *Session) (err error) {
 	if err != nil {
 		return
 	}
-	if err = HandleAuthForSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
-		sess.CheckError(err)
-		return
-	}
-	if err = HandleSaForSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
+	if err = handleAuthForSession(sess, msg); err != nil {
 		return
 	}
 	// send AUTH_reply
@@ -119,7 +106,7 @@ func runIpsecRekey(sess *Session) (err error) {
 	}
 	espSpiI := MakeSpi()[:4]
 	// closure with parameters for new SA
-	rekeyFn := func() (*OutgoingMessge, error) {
+	rekeyFn := func() (*OutgoingMessage, error) {
 		return sess.RekeyMsg(ChildSaFromSession(sess, newTkm, true, espSpiI))
 	}
 	msg, err := sess.SendMsgGetReply(rekeyFn)
