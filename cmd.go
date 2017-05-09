@@ -11,7 +11,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Cmd provides utilities for building simple command line apps
+// Cmd provides utilities for building ike apps
 type Cmd struct {
 	// map of initiator spi -> session
 	sessions Sessions
@@ -28,7 +28,7 @@ func NewCmd(conn Conn, cb *SessionCallback) *Cmd {
 }
 
 func (i *Cmd) onError(sess *Session, err error) {
-	if err == ErrorRekeyDeadlineExceeded {
+	if err == errorRekeyDeadlineExceeded {
 		sess.Close(context.DeadlineExceeded)
 	} else {
 		sess.Close(context.Canceled)
@@ -53,14 +53,14 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 // RunInitiator starts & watches over on initiator session in a separate goroutine
 func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) {
 	go func() {
-		for { // restart conn
+		for {
 			initiator, err := NewInitiator(config, remoteAddr, i.conn, i.cb, log)
 			if err != nil {
 				level.Error(log).Log("msg", "could not start Initiator", "err", err)
 				return
 			}
 			spi := SpiToInt64(initiator.IkeSpiI)
-			// TODO - currently this is break before make
+			// in case peer does not support rekeying
 			if err = i.runSession(spi, initiator); err == context.DeadlineExceeded {
 				initiator.Logger.Log("msg", "reKeying")
 				continue

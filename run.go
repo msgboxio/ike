@@ -5,10 +5,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
-	"github.com/pkg/errors"
 )
-
-var ErrorRekeyDeadlineExceeded = errors.New("Rekey Deadline Exceeded")
 
 const SaRekeyTimeout = 5 * time.Second
 
@@ -67,7 +64,10 @@ func runResponder(sess *Session) (err error) {
 	// wait for INIT
 	// send COOKIE, wait - handled by cmd:newSession
 	// get INIT
-	msg := <-sess.incoming
+	msg, ok := <-sess.incoming
+	if !ok {
+		return errorSessionClosed
+	}
 	// NOTE - the message is parsed again
 	// this is not ideal, but simplifies other processing
 	init, err := parseInit(msg)
@@ -207,7 +207,11 @@ func monitorSa(sess *Session) (err error) {
 	sess.Logger.Log("RekeyTimeout", rekeyTimeout)
 	for {
 		select {
-		case msg := <-sess.incoming:
+		// TODO - use a timeout here
+		case msg, ok := <-sess.incoming:
+			if !ok {
+				return errorSessionClosed
+			}
 			switch msg.IkeHeader.ExchangeType {
 			// if INFORMATIONAL, send INFORMATIONAL_reply
 			case protocol.INFORMATIONAL:
@@ -237,7 +241,7 @@ func monitorSa(sess *Session) (err error) {
 				saRekeyDeadline.Reset(rekeyDelay)
 			}
 		case <-saRekeyDeadline.C:
-			return ErrorRekeyDeadlineExceeded
+			return errorRekeyDeadlineExceeded
 		case <-saRekeyTimer.C:
 			// ONLY :
 			// Initiate SA rekey if initiator
@@ -271,5 +275,6 @@ func RunSession(sess *Session) error {
 		err = monitorSa(sess)
 	}
 	sess.removePolicy(pol)
+	sess.cancel()
 	return err
 }

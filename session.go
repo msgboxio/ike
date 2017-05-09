@@ -2,6 +2,7 @@ package ike
 
 import (
 	"bytes"
+	"context"
 	stderror "errors"
 	"fmt"
 	"math/big"
@@ -14,6 +15,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	errorReplyTimedout         = stderror.New("Timed Out")
+	errorSessionClosed         = stderror.New("Session Closed")
+	errorRekeyDeadlineExceeded = stderror.New("Rekey Deadline Exceeded")
+)
+
 // SessionCallback holds the callbacks used by the session to notify the user
 type SessionCallback struct {
 	Initialize func(*Session, *platform.PolicyParams) error
@@ -23,10 +30,10 @@ type SessionCallback struct {
 	RemoveSa func(*Session, *platform.SaParams) error
 }
 
-var sessionClosedError = stderror.New("Session Closed")
-
 // Session stores IKE session's local state
 type Session struct {
+	cxt       context.Context
+	cancel    context.CancelFunc
 	isClosing bool
 
 	cfg Config // copy of Config given to us
@@ -61,7 +68,10 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 	if err != nil {
 		return nil, err
 	}
+	cxt, cancel := context.WithCancel(context.Background())
 	o := &Session{
+		cxt:         cxt,
+		cancel:      cancel,
 		isInitiator: true,
 		tkm:         tkm,
 		cfg:         *cfg,
@@ -92,8 +102,11 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 	if err != nil {
 		return nil, err
 	}
+	cxt, cancel := context.WithCancel(context.Background())
 	// create and run session
 	sess := &Session{
+		cxt:       cxt,
+		cancel:    cancel,
 		tkm:       tkm,
 		cfg:       *cfg,
 		IkeSpiI:   ikeSpiI,
@@ -117,13 +130,15 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 
 // Close is called to initiate a session shutdown
 func (sess *Session) Close(err error) {
-	sess.Logger.Log("msg", "Close Session", "err", err)
+	sess.Logger.Log("CLOSE", err)
 	if sess.isClosing {
 		return
 	}
 	sess.isClosing = true
 	sess.sendIkeSaDelete()
 	sess.RemoveSa()
+	close(sess.incoming)
+	<-sess.cxt.Done()
 }
 
 // HandleClose will cleanly removes child SAs upon receiving a message from peer
@@ -134,6 +149,8 @@ func (sess *Session) HandleClose() {
 	sess.isClosing = true
 	sess.SendEmptyInformational(true)
 	sess.RemoveSa()
+	close(sess.incoming)
+	<-sess.cxt.Done()
 }
 
 // Housekeeping
@@ -276,7 +293,7 @@ func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessage, error)) (*
 		msg, err := packetOrTimeOut(sess.incoming)
 		if err != nil {
 			// on timeout, send INIT again, and loop
-			if err == ReplyTimedoutError {
+			if err == errorReplyTimedout {
 				continue
 			}
 			return nil, err

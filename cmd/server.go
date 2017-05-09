@@ -181,6 +181,7 @@ func main() {
 		<-cxt.Done()
 		closing = true
 		cmd.ShutDown(cxt.Err())
+		// this will cause cmd.Run to return
 		pconn.Close()
 		wg.Done()
 	}()
@@ -189,10 +190,9 @@ func main() {
 	err = cmd.Run(config, logger)
 	if !closing {
 		// ignore when caused by the close call above
+		logger.Log("Error", err)
 		if isDebug {
-			fmt.Printf("Error: %+v\n", err)
-		} else {
-			logger.Log("error", err)
+			fmt.Printf("Stack: %+v\n", err)
 		}
 		cancel()
 	}
