@@ -50,19 +50,6 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 	return
 }
 
-// onInitRequest handles IKE_SA_INIT requests & replies
-func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Logger) (sess *Session, err error) {
-	if err = checkInitRequest(msg, i.conn, config, log); err != nil {
-		return nil, err
-	}
-	sess, err = NewResponder(config, i.conn, i.cb, msg, log)
-	if err != nil {
-		return nil, err
-	}
-	go i.runSession(spi, sess)
-	return
-}
-
 // RunInitiator starts & watches over on initiator session in a separate goroutine
 func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) {
 	go func() {
@@ -96,6 +83,19 @@ func (i *Cmd) ShutDown(err error) {
 
 // Run loops until there is a socket error
 func (i *Cmd) Run(config *Config, log log.Logger) error {
+	onInitRequest := func(spi uint64, msg *Message) (sess *Session, err error) {
+		// handle IKE_SA_INIT requests
+		if err = checkInitRequest(msg, i.conn, config, log); err != nil {
+			return nil, err
+		}
+		sess, err = NewResponder(config, i.conn, i.cb, msg, log)
+		if err != nil {
+			return nil, err
+		}
+		go i.runSession(spi, sess)
+		return
+	}
+
 	for {
 		// this will return with error when there is a socket error
 		msg, err := ReadMessage(i.conn, log)
@@ -108,7 +108,7 @@ func (i *Cmd) Run(config *Config, log log.Logger) error {
 		session, found := i.sessions.Get(spi)
 		if !found {
 			var err error
-			session, err = i.onInitRequest(spi, msg, config, log)
+			session, err = onInitRequest(spi, msg)
 			if err != nil {
 				level.Warn(log).Log("DROP", err)
 				continue
