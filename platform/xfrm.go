@@ -32,14 +32,14 @@ func makeTemplate(src, dst net.IP, reqId int, isTransportMode bool) netlink.Xfrm
 	}
 }
 
-func makeSaPolicies(reqId, priority int, sa *SaParams) (policies []*netlink.XfrmPolicy) {
+func makeSaPolicies(reqId, priority int, pol *PolicyParams) (policies []*netlink.XfrmPolicy) {
 	// initiator
 	iniP := &netlink.XfrmPolicy{
-		Src:     sa.IniNet,
-		Dst:     sa.ResNet,
+		Src:     pol.IniNet,
+		Dst:     pol.ResNet,
 		Proto:   0,
-		SrcPort: sa.IniPort,
-		DstPort: sa.ResPort,
+		SrcPort: pol.IniPort,
+		DstPort: pol.ResPort,
 		Dir:     netlink.XFRM_DIR_IN,
 		// Mark: &netlink.XfrmMark{
 		// Value: 0xabff22,
@@ -47,19 +47,19 @@ func makeSaPolicies(reqId, priority int, sa *SaParams) (policies []*netlink.Xfrm
 		// },
 		Priority: priority,
 	}
-	iniT := makeTemplate(sa.Ini, sa.Res, reqId, sa.IsTransportMode)
+	iniT := makeTemplate(pol.Ini, pol.Res, reqId, pol.IsTransportMode)
 	iniP.Tmpls = append(iniP.Tmpls, iniT)
-	if sa.IsInitiator {
+	if pol.IsInitiator {
 		iniP.Dir = netlink.XFRM_DIR_OUT
 	}
 	policies = append(policies, iniP)
 	// responder
 	resP := &netlink.XfrmPolicy{
-		Src:     sa.ResNet,
-		Dst:     sa.IniNet,
+		Src:     pol.ResNet,
+		Dst:     pol.IniNet,
 		Proto:   0,
-		SrcPort: sa.ResPort,
-		DstPort: sa.IniPort,
+		SrcPort: pol.ResPort,
+		DstPort: pol.IniPort,
 		Dir:     netlink.XFRM_DIR_OUT,
 		// Mark: &netlink.XfrmMark{
 		// Value: 0xabff22,
@@ -67,17 +67,17 @@ func makeSaPolicies(reqId, priority int, sa *SaParams) (policies []*netlink.Xfrm
 		// },
 		Priority: priority,
 	}
-	if sa.IsInitiator {
+	if pol.IsInitiator {
 		resP.Dir = netlink.XFRM_DIR_IN
 	}
-	resT := makeTemplate(sa.Res, sa.Ini, reqId, sa.IsTransportMode)
+	resT := makeTemplate(pol.Res, pol.Ini, reqId, pol.IsTransportMode)
 	resP.Tmpls = append(resP.Tmpls, resT)
 	policies = append(policies, resP)
-	if !sa.IsTransportMode {
+	if !pol.IsTransportMode {
 		// fwd for local tunnel endpoint
 		fwdP := iniP
 		fwdT := iniT
-		if sa.IsInitiator {
+		if pol.IsInitiator {
 			fwdP = resP
 			fwdT = resT
 		}
@@ -122,7 +122,7 @@ func encrTransform(tr *protocol.SaTransform) (crypt, aead *netlink.XfrmStateAlgo
 	case protocol.AEAD_AES_GCM_16:
 		return nil, &netlink.XfrmStateAlgo{
 			Name:   "rfc4106(gcm(aes))",
-			ICVLen: 128, // currenly only 16 octects ICV is supported
+			ICVLen: 128, // only 16 octet ICV is supported
 		}
 	case protocol.AEAD_CHACHA20_POLY1305:
 		return nil, &netlink.XfrmStateAlgo{
@@ -230,13 +230,13 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	return
 }
 
-func InstallPolicy(sa *SaParams, log log.Logger) error {
-	for _, policy := range makeSaPolicies(256, 16, sa) {
-		level.Debug(log).Log("InstallPolicy", policy)
+func InstallPolicy(pol *PolicyParams, log log.Logger) error {
+	for _, policy := range makeSaPolicies(256, 16, pol) {
+		level.Debug(log).Log("INSTALL_POLICY", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
-				level.Warn(log).Log("msg", fmt.Sprintf("Skipped adding policy %v because it already exists", policy))
+				level.Warn(log).Log("POLICY", fmt.Sprintf("Skipped adding %v: already exists", policy))
 				continue
 			} else {
 				err = errors.Errorf("Failed to add policy %v: %v", policy, err)
@@ -247,9 +247,20 @@ func InstallPolicy(sa *SaParams, log log.Logger) error {
 	return nil
 }
 
+func RemovePolicy(pol *PolicyParams, log log.Logger) error {
+	for _, policy := range makeSaPolicies(256, 16, pol) {
+		level.Debug(log).Log("REMOVE_POLICY", policy)
+		// create xfrm policy rules
+		if err := netlink.XfrmPolicyDel(policy); err != nil {
+			return errors.Errorf("Failed to remove policy %v: %v", policy, err)
+		}
+	}
+	return nil
+}
+
 func InstallChildSa(sa *SaParams, log log.Logger) error {
 	for _, state := range makeSaStates(256, sa) {
-		level.Debug(log).Log("InstallState", state)
+		level.Debug(log).Log("ADD_STATE", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
 			if err == syscall.EEXIST {
@@ -265,20 +276,9 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 	return nil
 }
 
-func RemovePolicy(sa *SaParams, log log.Logger) error {
-	for _, policy := range makeSaPolicies(256, 16, sa) {
-		level.Debug(log).Log("RemovePolicy", policy)
-		// create xfrm policy rules
-		if err := netlink.XfrmPolicyDel(policy); err != nil {
-			return errors.Errorf("Failed to remove policy %v: %v", policy, err)
-		}
-	}
-	return nil
-}
-
 func RemoveChildSa(sa *SaParams, log log.Logger) error {
 	for _, state := range makeSaStates(0, sa) {
-		level.Debug(log).Log("RemoveState", state)
+		level.Debug(log).Log("REMOVE_STATE", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateDel(state); err != nil {
 			return errors.Errorf("Failed to remove state %+v: %v", state, err)

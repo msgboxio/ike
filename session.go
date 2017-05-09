@@ -2,6 +2,7 @@ package ike
 
 import (
 	"bytes"
+	stderror "errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -15,17 +16,14 @@ import (
 
 // SessionCallback holds the callbacks used by the session to notify the user
 type SessionCallback struct {
+	Initialize func(*Session, *platform.PolicyParams) error
+	Delete     func(*Session, *platform.PolicyParams) error
+
 	AddSa    func(*Session, *platform.SaParams) error
 	RemoveSa func(*Session, *platform.SaParams) error
 }
 
-type sessionClosed struct{}
-
-func (s sessionClosed) Error() string {
-	return "Session Closed"
-}
-
-var SessionClosedError error = sessionClosed{}
+var sessionClosedError = stderror.New("Session Closed")
 
 // Session stores IKE session's local state
 type Session struct {
@@ -368,22 +366,20 @@ func (sess *Session) SetAddresses(local, remote net.Addr) error {
 	return sess.cfg.AddHostBasedSelectors(AddrToIp(local), AddrToIp(remote), sess.isInitiator)
 }
 
-func saAddr(sa *platform.SaParams, local, remote net.Addr) {
-	remoteIP := AddrToIp(remote)
-	localIP := AddrToIp(local)
-	sa.Ini = remoteIP
-	sa.Res = localIP
-	if sa.IsInitiator {
-		sa.Ini = localIP
-		sa.Res = remoteIP
+func (sess *Session) saAddr() (net.IP, net.IP) {
+	remoteIP := AddrToIp(sess.Remote)
+	localIP := AddrToIp(sess.Local)
+	if sess.isInitiator {
+		return localIP, remoteIP
 	}
+	return remoteIP, localIP
 }
 
 // AddSa adds Child SA
 func (sess *Session) AddSa(sa *platform.SaParams) (err error) {
-	saAddr(sa, sess.Local, sess.Remote)
-	sess.Logger.Log("CHILD_SA", "install",
-		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
+	sa.Ini, sa.Res = sess.saAddr()
+	sess.Logger.Log("INSTALL_SA",
+		fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
 	if sess.Cb.AddSa != nil {
 		err = sess.Cb.AddSa(sess, sa)
 	}
@@ -393,18 +389,42 @@ func (sess *Session) AddSa(sa *platform.SaParams) (err error) {
 // RemoveSa removes Child SA
 func (sess *Session) RemoveSa() (err error) {
 	if (sess.Local == nil) || sess.Remote == nil {
-		// sa was not started
+		sess.Logger.Log("REMOVE_SA", "sa was not started")
 		return
 	}
 	sa := removeSaParams(
 		sess.EspSpiI, sess.EspSpiR,
 		&sess.cfg,
 		sess.isInitiator)
-	saAddr(sa, sess.Local, sess.Remote)
-	sess.Logger.Log("CHILD_SA", "remove",
-		"sa", fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
+	sa.Ini, sa.Res = sess.saAddr()
+	sess.Logger.Log("REMOVE_SA",
+		fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
 	if sess.Cb.RemoveSa != nil {
 		err = sess.Cb.RemoveSa(sess, sa)
+	}
+	return
+}
+
+func (sess *Session) installPolicy(pol *platform.PolicyParams) (err error) {
+	pol.Ini, pol.Res = sess.saAddr()
+	sess.Logger.Log("INSTALL_POLICY",
+		fmt.Sprintf("[%s]%s<=>%s[%s]", pol.Ini, pol.IniNet, pol.ResNet, pol.Res))
+	if sess.Cb.Initialize != nil {
+		err = sess.Cb.Initialize(sess, pol)
+	}
+	return
+}
+
+func (sess *Session) removePolicy(pol *platform.PolicyParams) (err error) {
+	if (sess.Local == nil) || sess.Remote == nil {
+		sess.Logger.Log("REMOVE_POLICY", "sa was not started")
+		return
+	}
+	pol.Ini, pol.Res = sess.saAddr()
+	sess.Logger.Log("REMOVE_POLICY",
+		fmt.Sprintf("[%s]%s<=>%s[%s]", pol.Ini, pol.IniNet, pol.ResNet, pol.Res))
+	if sess.Cb.Delete != nil {
+		err = sess.Cb.Delete(sess, pol)
 	}
 	return
 }

@@ -6,7 +6,7 @@ import (
 	"github.com/msgboxio/ike/platform"
 )
 
-// ni, nr, dhShared can either be from the origianal Tkm
+// ni, nr, dhShared can either be from the original Tkm
 // or from the rekeyed Tkm when Perfect Forward Secrecy is used
 func addSaParams(tkm *Tkm,
 	ni, nr, dhShared *big.Int,
@@ -17,29 +17,16 @@ func addSaParams(tkm *Tkm,
 	espEi, espAi, espEr, espAr := tkm.IpsecSaKeys(ni, nr, dhShared)
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
-	tsI := cfg.TsI[0]
-	tsR := cfg.TsR[0]
-	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
-	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	sa := &platform.SaParams{
-		// src, dst for initiator
-		IniPort:         0,
-		ResPort:         0,
-		IniNet:          iNet,
-		ResNet:          rNet,
-		EspEi:           espEi,
-		EspAi:           espAi,
-		EspEr:           espEr,
-		EspAr:           espAr,
-		SpiI:            int(SpiI),
-		SpiR:            int(SpiR),
-		IsTransportMode: cfg.IsTransportMode,
-		EspTransforms:   cfg.ProposalEsp,
+	return &platform.SaParams{
+		PolicyParams:  policyParameters(cfg, forInitiator),
+		EspEi:         espEi,
+		EspAi:         espAi,
+		EspEr:         espEr,
+		EspAr:         espAr,
+		SpiI:          int(SpiI),
+		SpiR:          int(SpiR),
+		EspTransforms: cfg.ProposalEsp,
 	}
-	if forInitiator {
-		sa.IsInitiator = true
-	}
-	return sa
 }
 
 func removeSaParams(espSpiI, espSpiR []byte,
@@ -48,21 +35,24 @@ func removeSaParams(espSpiI, espSpiR []byte,
 	// sa processing
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
+	return &platform.SaParams{
+		PolicyParams: policyParameters(cfg, forInitiator),
+		SpiI:         int(SpiI),
+		SpiR:         int(SpiR),
+	}
+}
+
+func policyParameters(cfg *Config, forInitiator bool) *platform.PolicyParams {
 	tsI := cfg.TsI[0]
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	sa := &platform.SaParams{
+	return &platform.PolicyParams{
 		IniPort:         0,
 		ResPort:         0,
 		IniNet:          iNet,
 		ResNet:          rNet,
-		SpiI:            int(SpiI),
-		SpiR:            int(SpiR),
 		IsTransportMode: cfg.IsTransportMode,
+		IsInitiator:     forInitiator,
 	}
-	if forInitiator {
-		sa.IsInitiator = true
-	}
-	return sa
 }

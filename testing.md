@@ -47,7 +47,7 @@ route is only needed for host originated packets
 
 # bugs
 > errors need to be looked at more closely
-> policy is not installed on rekey
+> policy is not removed on shutdown
 
 # tests needed
 > cookie handling

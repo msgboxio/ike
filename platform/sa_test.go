@@ -67,7 +67,7 @@ func TestAddPolicy(t *testing.T) {
 		IsTransportMode: true,
 		IsInitiator:     true,
 	}
-	err := InstallPolicy(sa, log.NewNopLogger())
+	err := InstallPolicy(&sa.PolicyParams, log.NewNopLogger())
 	if err != nil {
 		t.Error(err)
 	}

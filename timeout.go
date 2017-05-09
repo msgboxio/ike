@@ -18,7 +18,7 @@ func packetOrTimeOut(incoming <-chan *Message) (*Message, error) {
 		if ok {
 			return msg, nil
 		}
-		return nil, SessionClosedError
+		return nil, sessionClosedError
 	case <-time.After(Jitter(REPLY_WAIT_TIMEOUT, 0.2)):
 		return nil, ReplyTimedoutError
 	}

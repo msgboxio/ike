@@ -83,7 +83,7 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		sess.Logger.Log("msg", "Ike Auth", "SHARED_KEY", string(idP.Data))
+		sess.Logger.Log("AUTH", fmt.Sprintf("SHARED_KEY[%s]", string(idP.Data)))
 		return sess.authRemote.Verify(initB, idP, authP.Data, sess.Logger)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		chain, err := msg.Payloads.GetCertchain()
@@ -91,7 +91,7 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 			return err
 		}
 		cert := FormatCert(chain[0])
-		sess.Logger.Log("msg", "Ike Auth", "PEER_CERT", cert.String())
+		sess.Logger.Log("AUTH", fmt.Sprintf("PEER_CERT[%s]", cert.String()))
 		// ensure key used to compute a digital signature belongs to the name in the ID payload
 		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
 			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
