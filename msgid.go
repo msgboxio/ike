@@ -33,3 +33,7 @@ func (m *msgID) next() uint32 {
 func (m *msgID) get() int {
 	return m.id
 }
+
+func (m *msgID) reset(to int) {
+	m.id = to
+}

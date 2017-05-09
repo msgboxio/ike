@@ -31,9 +31,9 @@ func runInitiator(sess *Session) (err error) {
 			}
 		}
 		if err = checkInitResponseForSession(sess, init); err != nil {
-			if ce, ok := err.(PeerRequestsCookieError); ok {
-				// session is always returned for CookieError
+			if ce, ok := err.(peerRequestsCookieError); ok {
 				sess.SetCookie(ce.Cookie)
+				sess.msgIDReq.reset(0)
 				// This will keep going if peer keeps sending COOKIE
 				// TODO -fix
 				continue

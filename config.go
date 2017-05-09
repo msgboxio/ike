@@ -37,9 +37,9 @@ func DefaultConfig() *Config {
 		// ProposalEsp: crypto.Aes128Sha256,
 		// ProposalEsp: crypto.Aes256gcm16,
 
-		AuthMethod: protocol.AUTH_DIGITAL_SIGNATURE,
-		// ThrottleInitRequests: true,
-		Lifetime: time.Hour,
+		AuthMethod:           protocol.AUTH_DIGITAL_SIGNATURE,
+		ThrottleInitRequests: true,
+		Lifetime:             time.Hour,
 	}
 }
 

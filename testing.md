@@ -48,4 +48,7 @@ route is only needed for host originated packets
 # bugs
 > errors need to be looked at more closely
 > policy is not installed on rekey
-> cookie handling does not work
+
+# tests needed
+> cookie handling
+> requestid handling

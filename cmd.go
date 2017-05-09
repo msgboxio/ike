@@ -52,25 +52,14 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 
 // onInitRequest handles IKE_SA_INIT requests & replies
 func (i *Cmd) onInitRequest(spi uint64, msg *Message, config *Config, log log.Logger) (sess *Session, err error) {
-	// consider creating a new session
-	init, err := parseInit(msg)
-	if err != nil {
-		return
-	}
-	if err := checkInitRequest(msg, i.conn, config, log); err != nil {
-		// dont create a new session
+	if err = checkInitRequest(msg, i.conn, config, log); err != nil {
 		return nil, err
 	}
 	sess, err = NewResponder(config, i.conn, i.cb, msg, log)
 	if err != nil {
 		return nil, err
 	}
-	go func() {
-		if err = handleInitForSession(sess, init, msg); err != nil {
-			return
-		}
-		i.runSession(spi, sess)
-	}()
+	go i.runSession(spi, sess)
 	return
 }
 
@@ -121,7 +110,7 @@ func (i *Cmd) Run(config *Config, log log.Logger) error {
 			var err error
 			session, err = i.onInitRequest(spi, msg, config, log)
 			if err != nil {
-				level.Warn(log).Log("msg", "drop packet: ", "err", err)
+				level.Warn(log).Log("DROP", err)
 				continue
 			}
 		}

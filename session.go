@@ -218,6 +218,16 @@ func (sess *Session) sendMsg(msg *OutgoingMessage, err error) error {
 	return WriteData(sess.Conn, msg.Data, sess.Remote, sess.Logger)
 }
 
+// this can be used in genreal case, but not for INFO requests from responders -- TODO
+func (sess *Session) nextID() (id uint32) {
+	if sess.isInitiator {
+		id = sess.msgIDReq.next()
+	} else {
+		id = sess.msgIDResp.next()
+	}
+	return
+}
+
 // InitMsg generates IKE_INIT
 func (sess *Session) InitMsg() (*OutgoingMessage, error) {
 	init := InitFromSession(sess)
@@ -233,16 +243,6 @@ func (sess *Session) InitMsg() (*OutgoingMessage, error) {
 		sess.initRb = initB.Data
 	}
 	return initB, nil
-}
-
-// this can be used in genreal case, but not for INFO requests from responders -- TODO
-func (sess *Session) nextID() (id uint32) {
-	if sess.isInitiator {
-		id = sess.msgIDReq.next()
-	} else {
-		id = sess.msgIDResp.next()
-	}
-	return
 }
 
 // AuthMsg generates IKE_AUTH

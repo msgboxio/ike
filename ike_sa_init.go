@@ -10,8 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-var errMissingCookie = errors.New("COOKIE")
-
 //
 // outgoing request
 //
@@ -44,6 +42,7 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	if err := msg.CheckFlags(); err != nil {
 		return err
 	}
+	// NOTE - incoming request is parsed here once and then again when processing session
 	init, err := parseInit(msg)
 	if err != nil {
 		return err
@@ -51,6 +50,7 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	if err := doCheckInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
 		if reply := initErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
+			log.Log("REPLY", err.Error())
 			WriteMessage(conn, reply, nil, false, log)
 		}
 		return err
@@ -71,10 +71,10 @@ func doCheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	if cookie := init.cookie; cookie != nil {
 		// is COOKIE correct ?
 		if !bytes.Equal(cookie, getCookie(init.nonce, init.spiI, remote)) {
-			return errors.Wrap(errMissingCookie, "invalid cookie")
+			return errInvalidCookie
 		}
 	} else if cfg.ThrottleInitRequests {
-		return errors.Wrap(errMissingCookie, "requesting cookie")
+		return errMissingCookie
 	}
 	// check if transforms are usable
 	// make sure dh tranform id is the one that was configured
@@ -96,12 +96,35 @@ func initErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err 
 	switch cause := errors.Cause(err); cause {
 	case protocol.ERR_INVALID_KE_PAYLOAD:
 		tid := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-		return NotificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, tid)
+		return notificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, tid, remote)
+	case protocol.ERR_NO_PROPOSAL_CHOSEN:
+		// TODO - handle
 	case errMissingCookie:
 		// ask peer to send cookie
-		return NotificationResponse(init.spiI, protocol.COOKIE, getCookie(init.nonce, init.spiI, remote))
+		return notificationResponse(init.spiI, protocol.COOKIE, getCookie(init.nonce, init.spiI, remote), remote)
 	}
 	return nil
+}
+
+func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, data interface{}, remote net.Addr) *Message {
+	msg := &Message{
+		IkeHeader: &protocol.IkeHeader{
+			SpiI:         spi,
+			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
+			MinorVersion: protocol.IKEV2_MINOR_VERSION,
+			ExchangeType: protocol.IKE_SA_INIT,
+			Flags:        protocol.RESPONSE,
+		},
+		Payloads:   protocol.MakePayloads(),
+		RemoteAddr: remote,
+	}
+	msg.Payloads.Add(&protocol.NotifyPayload{
+		PayloadHeader:       &protocol.PayloadHeader{},
+		ProtocolId:          protocol.IKE,
+		NotificationType:    nt,
+		NotificationMessage: data,
+	})
+	return msg
 }
 
 //
@@ -120,7 +143,7 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 	for _, notif := range init.ns {
 		switch notif.NotificationType {
 		case protocol.COOKIE:
-			return PeerRequestsCookieError{notif}
+			return peerRequestsCookieError{notif}
 		case protocol.INVALID_KE_PAYLOAD:
 			// TODO - handle properly
 			return protocol.ERR_INVALID_KE_PAYLOAD
