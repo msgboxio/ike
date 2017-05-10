@@ -5,11 +5,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-type InfoParams struct {
-	IsInitiator bool
-	IsResponse  bool
-	SpiI, SpiR  protocol.Spi
-	Payload     protocol.Payload
+type infoParams struct {
+	isInitiator bool
+	isResponse  bool
+	spiI, spiR  protocol.Spi
+	payload     protocol.Payload
 }
 
 type SessionNotificationType int
@@ -36,18 +36,18 @@ type InformationalEvent struct {
 //  SK {}
 // Notification, Delete, and Configuration Payloads
 // Must be replied to
-func makeInformational(p InfoParams) *Message {
+func makeInformational(p infoParams) *Message {
 	var flags protocol.IkeFlags
-	if p.IsResponse {
+	if p.isResponse {
 		flags |= protocol.RESPONSE
 	}
-	if p.IsInitiator {
+	if p.isInitiator {
 		flags |= protocol.INITIATOR
 	}
 	info := &Message{
 		IkeHeader: &protocol.IkeHeader{
-			SpiI:         p.SpiI,
-			SpiR:         p.SpiR,
+			SpiI:         p.spiI,
+			SpiR:         p.spiR,
 			NextPayload:  protocol.PayloadTypeSK,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,
@@ -56,8 +56,8 @@ func makeInformational(p InfoParams) *Message {
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	if p.Payload != nil {
-		info.Payloads.Add(p.Payload)
+	if p.payload != nil {
+		info.Payloads.Add(p.payload)
 	}
 	return info
 }
@@ -68,12 +68,12 @@ func NotifyFromSession(sess *Session, ie protocol.IkeErrorCode, isResponse bool)
 	if sess.isInitiator {
 		spi = sess.IkeSpiR
 	}
-	return makeInformational(InfoParams{
-		IsInitiator: sess.isInitiator,
-		IsResponse:  isResponse,
-		SpiI:        sess.IkeSpiI,
-		SpiR:        sess.IkeSpiR,
-		Payload: &protocol.NotifyPayload{
+	return makeInformational(infoParams{
+		isInitiator: sess.isInitiator,
+		isResponse:  isResponse,
+		spiI:        sess.IkeSpiI,
+		spiR:        sess.IkeSpiR,
+		payload: &protocol.NotifyPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			ProtocolId:       protocol.IKE,
 			NotificationType: protocol.NotificationType(ie),
@@ -86,11 +86,11 @@ func NotifyFromSession(sess *Session, ie protocol.IkeErrorCode, isResponse bool)
 func DeleteFromSession(sess *Session) *Message {
 	// ike protocol ID, but no spi
 	// always a request
-	return makeInformational(InfoParams{
-		IsInitiator: sess.isInitiator,
-		SpiI:        sess.IkeSpiI,
-		SpiR:        sess.IkeSpiR,
-		Payload: &protocol.DeletePayload{
+	return makeInformational(infoParams{
+		isInitiator: sess.isInitiator,
+		spiI:        sess.IkeSpiI,
+		spiR:        sess.IkeSpiR,
+		payload: &protocol.DeletePayload{
 			PayloadHeader: &protocol.PayloadHeader{},
 			ProtocolId:    protocol.IKE,
 			Spis:          []protocol.Spi{},
@@ -100,11 +100,11 @@ func DeleteFromSession(sess *Session) *Message {
 
 // EmptyFromSession can build an empty Request or a Response
 func EmptyFromSession(sess *Session, isResponse bool) *Message {
-	return makeInformational(InfoParams{
-		IsInitiator: sess.isInitiator,
-		IsResponse:  isResponse,
-		SpiI:        sess.IkeSpiI,
-		SpiR:        sess.IkeSpiR,
+	return makeInformational(infoParams{
+		isInitiator: sess.isInitiator,
+		isResponse:  isResponse,
+		spiI:        sess.IkeSpiI,
+		spiR:        sess.IkeSpiR,
 	})
 }
 
