@@ -12,14 +12,13 @@ import (
 func addSaParams(tkm *Tkm,
 	ni, nr, dhShared *big.Int,
 	espSpiI, espSpiR []byte,
-	cfg *Config,
-	forInitiator bool) *platform.SaParams {
+	cfg *Config) *platform.SaParams {
 	// sa processing
 	espEi, espAi, espEr, espAr := tkm.IpsecSaKeys(ni, nr, dhShared)
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
 	return &platform.SaParams{
-		PolicyParams:  policyParameters(cfg, forInitiator),
+		PolicyParams:  policyParameters(cfg),
 		EspEi:         espEi,
 		EspAi:         espAi,
 		EspEr:         espEr,
@@ -30,20 +29,18 @@ func addSaParams(tkm *Tkm,
 	}
 }
 
-func removeSaParams(espSpiI, espSpiR []byte,
-	cfg *Config,
-	forInitiator bool) *platform.SaParams {
+func removeSaParams(espSpiI, espSpiR []byte, cfg *Config) *platform.SaParams {
 	// sa processing
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
 	return &platform.SaParams{
-		PolicyParams: policyParameters(cfg, forInitiator),
+		PolicyParams: policyParameters(cfg),
 		SpiI:         int(SpiI),
 		SpiR:         int(SpiR),
 	}
 }
 
-func policyParameters(cfg *Config, forInitiator bool) *protocol.PolicyParams {
+func policyParameters(cfg *Config) *protocol.PolicyParams {
 	tsI := cfg.TsI[0]
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)

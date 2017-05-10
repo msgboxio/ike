@@ -413,10 +413,7 @@ func (sess *Session) RemoveSa() (err error) {
 		sess.Logger.Log("REMOVE_SA", "sa was not started")
 		return
 	}
-	sa := removeSaParams(
-		sess.EspSpiI, sess.EspSpiR,
-		&sess.cfg,
-		sess.isInitiator)
+	sa := removeSaParams(sess.EspSpiI, sess.EspSpiR, &sess.cfg)
 	sa.Ini, sa.Res = sess.saAddr()
 	sess.Logger.Log("REMOVE_SA",
 		fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))

@@ -126,7 +126,7 @@ func runIpsecRekey(sess *Session) (err error) {
 	err = sess.AddSa(addSaParams(sess.tkm,
 		newTkm.Ni, newTkm.Nr, newTkm.DhShared,
 		espSpiI, espSpiR,
-		&sess.cfg, true))
+		&sess.cfg))
 	if err != nil {
 		return
 	}
@@ -164,7 +164,7 @@ func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	err = sess.AddSa(addSaParams(sess.tkm,
 		newTkm.Ni, newTkm.Nr, newTkm.DhShared,
 		espSpiI, espSpiR,
-		&sess.cfg, true))
+		&sess.cfg))
 	if err != nil {
 		return
 	}
@@ -182,8 +182,7 @@ func monitorSa(sess *Session) (err error) {
 	sa := addSaParams(sess.tkm,
 		sess.tkm.Ni, sess.tkm.Nr, nil, // NOTE : use the original SA
 		sess.EspSpiI, sess.EspSpiR,
-		&sess.cfg,
-		sess.isInitiator)
+		&sess.cfg)
 	// add INITIAL sa
 	err = sess.AddSa(sa)
 	if err != nil {
@@ -264,7 +263,7 @@ func monitorSa(sess *Session) (err error) {
 // RunSession starts and monitors the session returning when the session ends
 func RunSession(sess *Session) error {
 	var err error
-	pol := policyParameters(&sess.cfg, sess.isInitiator)
+	pol := policyParameters(&sess.cfg)
 	if sess.isInitiator {
 		err = runInitiator(sess)
 	} else {
