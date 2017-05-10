@@ -201,7 +201,6 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	// TODO
 	// If there is NAT , then all the further communication is performed over port 4500 instead of the default port 500
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
-	// MUTATION
 	// save Data
 	if sess.isInitiator {
 		sess.initRb = msg.Data

@@ -60,6 +60,10 @@ type Session struct {
 	Logger log.Logger
 }
 
+func (s *Session) IsInitiator() bool {
+	return s.isInitiator
+}
+
 // Constructors
 
 // NewInitiator creates an initiator session
@@ -69,7 +73,7 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		return nil, err
 	}
 	cxt, cancel := context.WithCancel(context.Background())
-	o := &Session{
+	sess := &Session{
 		cxt:         cxt,
 		cancel:      cancel,
 		isInitiator: true,
@@ -84,10 +88,10 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		msgIDReq:    &msgID{id: 0},
 		msgIDResp:   &msgID{id: -1},
 	}
-	o.Logger = log.With(logger, "session", o.tag())
-	o.authLocal = NewAuthenticator(cfg.LocalID, o.tkm, cfg.AuthMethod, o.isInitiator)
-	o.authRemote = NewAuthenticator(cfg.RemoteID, o.tkm, cfg.AuthMethod, o.isInitiator)
-	return o, nil
+	sess.Logger = log.With(logger, "session", sess.tag())
+	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
+	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
+	return sess, nil
 }
 
 // NewResponder creates a Responder session

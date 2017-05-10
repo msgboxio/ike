@@ -32,7 +32,7 @@ func makeTemplate(src, dst net.IP, reqId int, isTransportMode bool) netlink.Xfrm
 	}
 }
 
-func makeSaPolicies(reqId, priority int, pol *PolicyParams) (policies []*netlink.XfrmPolicy) {
+func makeSaPolicies(reqId, priority int, pol *PolicyParams, forInitiator bool) (policies []*netlink.XfrmPolicy) {
 	// initiator
 	iniP := &netlink.XfrmPolicy{
 		Src:     pol.IniNet,
@@ -49,7 +49,7 @@ func makeSaPolicies(reqId, priority int, pol *PolicyParams) (policies []*netlink
 	}
 	iniT := makeTemplate(pol.Ini, pol.Res, reqId, pol.IsTransportMode)
 	iniP.Tmpls = append(iniP.Tmpls, iniT)
-	if pol.IsInitiator {
+	if forInitiator {
 		iniP.Dir = netlink.XFRM_DIR_OUT
 	}
 	policies = append(policies, iniP)
@@ -67,7 +67,7 @@ func makeSaPolicies(reqId, priority int, pol *PolicyParams) (policies []*netlink
 		// },
 		Priority: priority,
 	}
-	if pol.IsInitiator {
+	if forInitiator {
 		resP.Dir = netlink.XFRM_DIR_IN
 	}
 	resT := makeTemplate(pol.Res, pol.Ini, reqId, pol.IsTransportMode)
@@ -77,7 +77,7 @@ func makeSaPolicies(reqId, priority int, pol *PolicyParams) (policies []*netlink
 		// fwd for local tunnel endpoint
 		fwdP := iniP
 		fwdT := iniT
-		if pol.IsInitiator {
+		if forInitiator {
 			fwdP = resP
 			fwdT = resT
 		}
@@ -230,8 +230,8 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	return
 }
 
-func InstallPolicy(pol *PolicyParams, log log.Logger) error {
-	for _, policy := range makeSaPolicies(256, 16, pol) {
+func InstallPolicy(pol *PolicyParams, log log.Logger, forInitiator bool) error {
+	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
 		level.Debug(log).Log("INSTALL_POLICY", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
@@ -247,8 +247,8 @@ func InstallPolicy(pol *PolicyParams, log log.Logger) error {
 	return nil
 }
 
-func RemovePolicy(pol *PolicyParams, log log.Logger) error {
-	for _, policy := range makeSaPolicies(256, 16, pol) {
+func RemovePolicy(pol *PolicyParams, log log.Logger, forInitiator bool) error {
+	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
 		level.Debug(log).Log("REMOVE_POLICY", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {

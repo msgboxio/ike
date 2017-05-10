@@ -53,6 +53,5 @@ func policyParameters(cfg *Config, forInitiator bool) *platform.PolicyParams {
 		IniNet:          iNet,
 		ResNet:          rNet,
 		IsTransportMode: cfg.IsTransportMode,
-		IsInitiator:     forInitiator,
 	}
 }

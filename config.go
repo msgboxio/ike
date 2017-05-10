@@ -39,8 +39,7 @@ func DefaultConfig() *Config {
 
 		AuthMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		// ThrottleInitRequests: true,
-		Lifetime: time.Second * 10,
-		// Lifetime: time.Hour,
+		Lifetime: time.Hour,
 	}
 }
 

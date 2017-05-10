@@ -9,10 +9,10 @@ import (
 	"github.com/go-kit/kit/log"
 )
 
-func InstallPolicy(*PolicyParams, log.Logger) error {
+func InstallPolicy(*PolicyParams, log.Logger, bool) error {
 	return nil
 }
-func RemovePolicy(*PolicyParams, log.Logger) error {
+func RemovePolicy(*PolicyParams, log.Logger, bool) error {
 	return nil
 }
 

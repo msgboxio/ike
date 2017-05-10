@@ -11,7 +11,6 @@ type PolicyParams struct {
 	IniPort, ResPort int
 	IniNet, ResNet   *net.IPNet
 	IsTransportMode  bool
-	IsInitiator      bool
 }
 
 type SaParams struct {

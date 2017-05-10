@@ -65,7 +65,6 @@ func TestAddPolicy(t *testing.T) {
 		ResNet:          dnet,
 		Res:             dst.To4(),
 		IsTransportMode: true,
-		IsInitiator:     true,
 	}
 	err := InstallPolicy(&sa.PolicyParams, log.NewNopLogger())
 	if err != nil {
