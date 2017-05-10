@@ -1,20 +1,9 @@
 package platform
 
-import (
-	"net"
-
-	"github.com/msgboxio/ike/protocol"
-)
-
-type PolicyParams struct {
-	Ini, Res         net.IP // tunnel endpoints
-	IniPort, ResPort int
-	IniNet, ResNet   *net.IPNet
-	IsTransportMode  bool
-}
+import "github.com/msgboxio/ike/protocol"
 
 type SaParams struct {
-	*PolicyParams
+	*protocol.PolicyParams
 
 	EspTransforms protocol.Transforms
 

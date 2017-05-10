@@ -64,7 +64,19 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 	return errors.New("acceptable proposals are missing")
 }
 
-func SelectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
+func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
+	return []*protocol.SaProposal{
+		&protocol.SaProposal{
+			IsLast:       true,
+			Number:       1,
+			ProtocolID:   prot,
+			Spi:          append([]byte{}, spi...),
+			SaTransforms: trs.AsList(),
+		},
+	}
+}
+
+func selectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
 	first, last, err := IPNetToFirstLastAddress(addr)
 	if err != nil {
 		return nil, err
@@ -83,46 +95,34 @@ func SelectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
 	}}, nil
 }
 
-// AddSelector builds selector from address & mask
-func (cfg *Config) AddSelector(initiator, responder *net.IPNet) (err error) {
-	tsI, err := SelectorFromAddress(initiator)
+// AddNetworkSelectors builds selector from address & mask
+func (cfg *Config) AddNetworkSelectors(localnet, remotenet *net.IPNet, forInitiator bool) (err error) {
+	local, err := selectorFromAddress(localnet)
 	if err != nil {
 		return
 	}
-	cfg.TsI = tsI
-	tsR, err := SelectorFromAddress(responder)
+	remote, err := selectorFromAddress(remotenet)
 	if err != nil {
 		return
 	}
-	cfg.TsR = tsR
+	cfg.TsI = remote
+	cfg.TsR = local
+	if forInitiator {
+		cfg.TsI = local
+		cfg.TsR = remote
+	}
 	return
 }
 
-func (cfg *Config) AddHostBasedSelectors(local, remote net.IP, isInitiator bool) error {
+// AddHostSelectors builds selectors from ip addresses
+func (cfg *Config) AddHostSelectors(local, remote net.IP, forInitiator bool) error {
 	slen := len(local) * 8
-	ini := remote
-	res := local
-	if isInitiator {
-		ini = local
-		res = remote
-	}
-	err := cfg.AddSelector(
-		&net.IPNet{IP: ini, Mask: net.CIDRMask(slen, slen)},
-		&net.IPNet{IP: res, Mask: net.CIDRMask(slen, slen)})
+	err := cfg.AddNetworkSelectors(
+		&net.IPNet{IP: local, Mask: net.CIDRMask(slen, slen)},
+		&net.IPNet{IP: remote, Mask: net.CIDRMask(slen, slen)},
+		forInitiator)
 	if err != nil {
-		return errors.Wrapf(err, "could not add selectors for %s=>%s", ini, res)
+		return errors.Wrapf(err, "could not add selectors for %s=>%s", local, remote)
 	}
 	return nil
-}
-
-func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
-	return []*protocol.SaProposal{
-		&protocol.SaProposal{
-			IsLast:       true,
-			Number:       1,
-			ProtocolID:   prot,
-			Spi:          append([]byte{}, spi...),
-			SaTransforms: trs.AsList(),
-		},
-	}
 }

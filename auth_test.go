@@ -41,7 +41,7 @@ func testWithIdentity(t testing.TB, locid, remid Identity, log log.Logger) {
 	cfg.LocalID = locid
 	cfg.RemoteID = remid
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
-	cfg.AddSelector(net, net)
+	cfg.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
 	chr := make(chan []byte, 1)
 	sa := make(chan *platform.SaParams, 1)

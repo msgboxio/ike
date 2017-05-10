@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/msgboxio/ike/platform"
+	"github.com/msgboxio/ike/protocol"
 )
 
 // ni, nr, dhShared can either be from the original Tkm
@@ -42,12 +43,12 @@ func removeSaParams(espSpiI, espSpiR []byte,
 	}
 }
 
-func policyParameters(cfg *Config, forInitiator bool) *platform.PolicyParams {
+func policyParameters(cfg *Config, forInitiator bool) *protocol.PolicyParams {
 	tsI := cfg.TsI[0]
 	tsR := cfg.TsR[0]
 	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
 	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
-	return &platform.PolicyParams{
+	return &protocol.PolicyParams{
 		IniPort:         0,
 		ResPort:         0,
 		IniNet:          iNet,

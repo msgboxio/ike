@@ -23,8 +23,8 @@ var (
 
 // SessionCallback holds the callbacks used by the session to notify the user
 type SessionCallback struct {
-	Initialize func(*Session, *platform.PolicyParams) error
-	Delete     func(*Session, *platform.PolicyParams) error
+	Initialize func(*Session, *protocol.PolicyParams) error
+	Delete     func(*Session, *protocol.PolicyParams) error
 
 	AddSa    func(*Session, *platform.SaParams) error
 	RemoveSa func(*Session, *platform.SaParams) error
@@ -384,7 +384,7 @@ func (sess *Session) SetAddresses(local, remote net.Addr) error {
 		// selectors already configured
 		return nil
 	}
-	return sess.cfg.AddHostBasedSelectors(AddrToIp(local), AddrToIp(remote), sess.isInitiator)
+	return sess.cfg.AddHostSelectors(AddrToIp(local), AddrToIp(remote), sess.isInitiator)
 }
 
 func (sess *Session) saAddr() (net.IP, net.IP) {
@@ -426,7 +426,7 @@ func (sess *Session) RemoveSa() (err error) {
 	return
 }
 
-func (sess *Session) installPolicy(pol *platform.PolicyParams) (err error) {
+func (sess *Session) installPolicy(pol *protocol.PolicyParams) (err error) {
 	pol.Ini, pol.Res = sess.saAddr()
 	sess.Logger.Log("INSTALL_POLICY",
 		fmt.Sprintf("[%s]%s<=>%s[%s]", pol.Ini, pol.IniNet, pol.ResNet, pol.Res))
@@ -436,7 +436,7 @@ func (sess *Session) installPolicy(pol *platform.PolicyParams) (err error) {
 	return
 }
 
-func (sess *Session) removePolicy(pol *platform.PolicyParams) (err error) {
+func (sess *Session) removePolicy(pol *protocol.PolicyParams) (err error) {
 	if (sess.Local == nil) || sess.Remote == nil {
 		sess.Logger.Log("REMOVE_POLICY", "sa was not started")
 		return

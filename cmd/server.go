@@ -15,6 +15,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
+	"github.com/msgboxio/ike/protocol"
 )
 
 func waitForSignal(cancel context.CancelFunc, logger log.Logger) {
@@ -104,11 +105,11 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 		if err != nil {
 			return
 		}
+		isInitiator := true
 		if remoteString == "" {
-			err = config.AddSelector(remotenet, localnet)
-		} else {
-			err = config.AddSelector(localnet, remotenet)
+			isInitiator = false
 		}
+		err = config.AddNetworkSelectors(localnet, remotenet, isInitiator)
 	}
 	return
 }
@@ -150,10 +151,10 @@ func main() {
 	}
 
 	cmd := ike.NewCmd(pconn, &ike.SessionCallback{
-		Initialize: func(session *ike.Session, pol *platform.PolicyParams) error {
+		Initialize: func(session *ike.Session, pol *protocol.PolicyParams) error {
 			return platform.InstallPolicy(pol, logger, session.IsInitiator())
 		},
-		Delete: func(session *ike.Session, pol *platform.PolicyParams) error {
+		Delete: func(session *ike.Session, pol *protocol.PolicyParams) error {
 			return platform.RemovePolicy(pol, logger, session.IsInitiator())
 		},
 		AddSa: func(session *ike.Session, sa *platform.SaParams) error {

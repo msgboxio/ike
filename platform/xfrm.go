@@ -32,7 +32,7 @@ func makeTemplate(src, dst net.IP, reqId int, isTransportMode bool) netlink.Xfrm
 	}
 }
 
-func makeSaPolicies(reqId, priority int, pol *PolicyParams, forInitiator bool) (policies []*netlink.XfrmPolicy) {
+func makeSaPolicies(reqId, priority int, pol *protocol.PolicyParams, forInitiator bool) (policies []*netlink.XfrmPolicy) {
 	// initiator
 	iniP := &netlink.XfrmPolicy{
 		Src:     pol.IniNet,
@@ -230,7 +230,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	return
 }
 
-func InstallPolicy(pol *PolicyParams, log log.Logger, forInitiator bool) error {
+func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
 	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
 		level.Debug(log).Log("INSTALL_POLICY", policy)
 		// create xfrm policy rules
@@ -247,7 +247,7 @@ func InstallPolicy(pol *PolicyParams, log log.Logger, forInitiator bool) error {
 	return nil
 }
 
-func RemovePolicy(pol *PolicyParams, log log.Logger, forInitiator bool) error {
+func RemovePolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
 	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
 		level.Debug(log).Log("REMOVE_POLICY", policy)
 		// create xfrm policy rules

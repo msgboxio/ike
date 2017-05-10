@@ -7,12 +7,13 @@ import (
 	"net"
 
 	"github.com/go-kit/kit/log"
+	"github.com/msgboxio/ike/protocol"
 )
 
-func InstallPolicy(*PolicyParams, log.Logger, bool) error {
+func InstallPolicy(*protocol.PolicyParams, log.Logger, bool) error {
 	return nil
 }
-func RemovePolicy(*PolicyParams, log.Logger, bool) error {
+func RemovePolicy(*protocol.PolicyParams, log.Logger, bool) error {
 	return nil
 }
 

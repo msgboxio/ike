@@ -16,7 +16,7 @@ func TestInit(t *testing.T) {
 	cfg.LocalID = pskTestID
 	cfg.RemoteID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
-	cfg.AddSelector(net, net)
+	cfg.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
 	chr := make(chan []byte, 1)
 	sa := make(chan *platform.SaParams, 1)
@@ -37,7 +37,7 @@ func TestInit1(t *testing.T) {
 	cfg.LocalID = pskTestID
 	cfg.RemoteID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
-	cfg.AddSelector(net, net)
+	cfg.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
 	chr := make(chan []byte, 1)
 	sa := make(chan *platform.SaParams, 1)
@@ -57,7 +57,7 @@ func TestInit2(t *testing.T) {
 	cfg1.LocalID = pskTestID
 	cfg1.RemoteID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
-	cfg1.AddSelector(net, net)
+	cfg1.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
 	chr := make(chan []byte, 1)
 	sa := make(chan *platform.SaParams, 1)
