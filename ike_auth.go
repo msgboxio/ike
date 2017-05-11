@@ -6,6 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"time"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -41,24 +45,6 @@ func authFromSession(sess *Session) (*Message, error) {
 		}, initB, sess.Logger)
 }
 
-func handleAuthForSession(sess *Session, msg *Message) (err error) {
-	if err := msg.CheckFlags(); err != nil {
-		return err
-	}
-	if err = authenticateSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
-		sess.CheckError(err)
-		return
-	}
-	if err = handleSaForSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
-		return
-	}
-	return
-}
-
 // authenticateSession supports signature authentication using
 // AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
 // AUTH_RSA_DIGITAL_SIGNATURE with certificates
@@ -67,6 +53,9 @@ func handleAuthForSession(sess *Session, msg *Message) (err error) {
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
 func authenticateSession(sess *Session, msg *Message) (err error) {
+	if err := msg.CheckFlags(); err != nil {
+		return err
+	}
 	if err = checkAuth(msg, sess.isInitiator); err != nil {
 		return err
 	}
@@ -119,7 +108,7 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 		if !MatchNameFromCert(&cert, certID.Name) {
 			return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
 		}
-		// verify signature
+		// verify signature : MUTATES
 		certAuth.SetUserCertificate(chain[0])
 		return certAuth.Verify(initB, idP, authP.Data, sess.Logger)
 	default:
@@ -128,27 +117,28 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 }
 
 // handleSaForSession handles the remaining tasks after authentication succeeded
-func handleSaForSession(sess *Session, msg *Message) error {
+func handleSaForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.Duration, err error) {
 	params, err := parseSa(msg)
 	if err != nil {
-		return err
+		return
 	}
 	for _, n := range msg.Payloads.GetNotifications() {
 		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
 			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
 			// TODO - for now, we should simply end the IKE_SA
-			return errors.Errorf("peer notified: %s;", nErr)
+			err = errors.Errorf("peer notified: %s;", nErr)
+			return
 		}
 	}
-	// level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		return err
+		level.Warn(sess.Logger).Log("proposal", spew.Sprintf("%#v", params.proposals), "err", err)
+		return
 	}
 	// selectors
-	sess.Logger.Log("offered_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
+	sess.Logger.Log("rx_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
 	if err = sess.cfg.CheckSelectors(params.tsI, params.tsR, params.isTransportMode); err != nil {
-		sess.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
-		return err
+		level.Warn(sess.Logger).Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+		return
 	}
 	if params.isTransportMode {
 		sess.Logger.Log("Mode", "TRANSPORT")
@@ -157,26 +147,16 @@ func handleSaForSession(sess *Session, msg *Message) error {
 	}
 	// message looks OK
 	if sess.isInitiator {
-		if params.isResponse {
-			sess.EspSpiR = append([]byte{}, params.spiR...)
-		}
-		if sess.EspSpiR == nil {
-			err = errors.Wrap(protocol.ERR_INVALID_KE_PAYLOAD, "Missing responder SPI")
-		}
+		spi = append([]byte{}, params.spiR...)
 	} else {
-		if !params.isResponse {
-			sess.EspSpiI = append([]byte{}, params.spiI...)
-		}
-		if sess.EspSpiI == nil {
-			err = errors.Wrap(protocol.ERR_INVALID_KE_PAYLOAD, "Missing initiator SPI")
-		}
+		spi = append([]byte{}, params.spiI...)
 	}
 	if err != nil {
-		return err
+		return
 	}
+	lt = params.lifetime
 	if params.lifetime != 0 {
 		sess.Logger.Log("Lifetime", params.lifetime)
-		sess.cfg.Lifetime = params.lifetime
 	}
-	return nil
+	return
 }

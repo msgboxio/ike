@@ -285,6 +285,16 @@ func checkAuth(msg *Message, forInitiator bool) error {
 	if msg.IkeHeader.ExchangeType != protocol.IKE_AUTH {
 		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
 	}
+	// other flag combos have been checked
+	if forInitiator {
+		if !msg.IkeHeader.Flags.IsResponse() {
+			return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: initiator received request")
+		}
+	} else {
+		if msg.IkeHeader.Flags.IsResponse() {
+			return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: responder received response")
+		}
+	}
 	payloads := authIPayloads
 	if forInitiator {
 		payloads = authRPayloads

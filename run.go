@@ -49,12 +49,31 @@ func runInitiator(sess *Session) (err error) {
 		level.Error(sess.Logger).Log("init", err)
 		return
 	}
+	// save message
+	sess.initRb = msg.Data
+	// start auth
+	sess.EspSpiI = MakeSpi()[:4]
 	// on send AUTH and wait for reply
 	if msg, err = sess.SendMsgGetReply(sess.AuthMsg); err != nil {
 		return
 	}
-	if err = handleAuthForSession(sess, msg); err != nil {
+	// can we authenticate ?
+	if err = authenticateSession(sess, msg); err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(protocol.ERR_AUTHENTICATION_FAILED)
 		return
+	}
+	// are other parameters ok?
+	espSpiR, lifetime, err := handleSaForSession(sess, msg)
+	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
+		return
+	}
+	// replace espSpiI & espSpiR : MUTATION
+	sess.EspSpiR = espSpiR
+	if lifetime != 0 {
+		sess.cfg.Lifetime = lifetime
 	}
 	return
 }
@@ -77,6 +96,8 @@ func runResponder(sess *Session) (err error) {
 	if err = handleInitForSession(sess, init, msg); err != nil {
 		return
 	}
+	// save message
+	sess.initIb = msg.Data
 	// not really necessary
 	if err = sess.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
 		return
@@ -86,11 +107,27 @@ func runResponder(sess *Session) (err error) {
 	if err != nil {
 		return
 	}
-	if err = handleAuthForSession(sess, msg); err != nil {
+	// can we authenticate ?
+	if err = authenticateSession(sess, msg); err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(protocol.ERR_AUTHENTICATION_FAILED)
 		return
 	}
+	// are other parameters ok?
+	espSpiI, lifetime, err := handleSaForSession(sess, msg)
+	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
+		return
+	}
+	// replace espSpiI & espSpiR : MUTATION
+	sess.EspSpiI = espSpiI
+	sess.EspSpiR = MakeSpi()[:4]
+	if lifetime != 0 {
+		sess.cfg.Lifetime = lifetime
+	}
 	// send AUTH_reply
-	if err := sess.SendAuth(); err != nil {
+	if err := sess.sendMsg(sess.AuthMsg()); err != nil {
 		return err
 	}
 	return nil
@@ -132,7 +169,7 @@ func runIpsecRekey(sess *Session) (err error) {
 	}
 	// remove old sa
 	sess.RemoveSa()
-	// replace espSpiI & espSpiR
+	// replace espSpiI & espSpiR : MUTATION
 	sess.EspSpiI = espSpiI
 	sess.EspSpiR = espSpiR
 	return
@@ -170,7 +207,7 @@ func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	}
 	// remove old sa
 	sess.RemoveSa()
-	// replace espSpiI & espSpiR
+	// replace espSpiI & espSpiR : MUTATION
 	sess.EspSpiI = espSpiI
 	sess.EspSpiR = espSpiR
 	//  send INFORMATIONAL, wait for INFORMATIONAL_reply

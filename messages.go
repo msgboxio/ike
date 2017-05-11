@@ -89,7 +89,8 @@ func (msg *Message) EnsurePayloads(payloadTypes []protocol.PayloadType) error {
 
 // CheckFlags checks if flags are correctly set for us
 // NOTE: To simply implementation, we do not handle the case
-// where original responder starts transactions except for NOTIFICATIONS
+// where original responder starts transactions. In reality this only effects CHILD_SA txns
+// so this function is not to be used for NOTIFICATIONS
 func (msg *Message) CheckFlags() error {
 	flags := msg.IkeHeader.Flags
 	// check flags

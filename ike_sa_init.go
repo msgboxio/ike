@@ -77,12 +77,8 @@ func doCheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 		return errMissingCookie
 	}
 	// check if transforms are usable
-	// make sure dh tranform id is the one that was configured
-	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
-	if dh := protocol.DhTransformId(tr); dh != init.dhTransformID {
-		return errors.Wrapf(protocol.ERR_INVALID_KE_PAYLOAD,
-			"IKE_SA_INIT: Using different DH transform [%s] vs the one configured [%s]",
-			init.dhTransformID, dh) // C.1
+	if err := cfg.CheckDhTransform(init.dhTransformID); err != nil {
+		return err
 	}
 	// check ike proposal
 	if err := cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {
@@ -133,11 +129,11 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, data i
 
 func checkInitResponseForSession(sess *Session, init *initParams) error {
 	if init.isInitiator { // id must be zero
-		return protocol.ERR_INVALID_SYNTAX
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: response from initiator")
 	}
 	// make sure responder spi is not the same as initiator spi
 	if bytes.Equal(init.spiR, init.spiI) {
-		return errors.WithStack(protocol.ERR_INVALID_SYNTAX)
+		return errors.Wrap(protocol.ERR_INVALID_IKE_SPI, "IKE_SA_INIT: invalid SPI")
 	}
 	// handle INVALID_KE_PAYLOAD, NO_PROPOSAL_CHOSEN, or COOKIE
 	for _, notif := range init.ns {
@@ -146,15 +142,15 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 			return peerRequestsCookieError{notif}
 		case protocol.INVALID_KE_PAYLOAD:
 			// TODO - handle properly
-			return protocol.ERR_INVALID_KE_PAYLOAD
+			return errors.Wrap(protocol.ERR_INVALID_KE_PAYLOAD, "IKE_SA_INIT: peer returned")
 		case protocol.NO_PROPOSAL_CHOSEN:
-			return protocol.ERR_NO_PROPOSAL_CHOSEN
+			return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, "IKE_SA_INIT: peer returned")
 		}
 	}
 	// make sure responder spi is set
 	// in case messages are being reflected - TODO
 	if SpiToInt64(init.spiR) == 0 {
-		return errors.WithStack(protocol.ERR_INVALID_SYNTAX)
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid responder SPI")
 	}
 	return nil
 }
@@ -201,11 +197,5 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	// TODO
 	// If there is NAT , then all the further communication is performed over port 4500 instead of the default port 500
 	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
-	// save Data
-	if sess.isInitiator {
-		sess.initRb = msg.Data
-	} else {
-		sess.initIb = msg.Data
-	}
 	return nil
 }

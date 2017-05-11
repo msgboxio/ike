@@ -44,6 +44,10 @@ func DefaultConfig() *Config {
 	}
 }
 
+//
+// proposals
+//
+
 // CheckProposals checks if incoming proposals include our configuration
 func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.Proposals) error {
 	for _, prop := range proposals {
@@ -75,6 +79,17 @@ func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, sp
 			SaTransforms: trs.AsList(),
 		},
 	}
+}
+
+func (cfg *Config) CheckDhTransform(dhID protocol.DhTransformId) error {
+	// make sure dh tranform id is the one that was configured
+	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
+	if dh := protocol.DhTransformId(tr); dh != dhID {
+		return errors.Wrapf(protocol.ERR_INVALID_KE_PAYLOAD,
+			"IKE_SA_INIT: Using different DH transform [%s] vs the one configured [%s]",
+			dhID, dh) // C.1
+	}
+	return nil
 }
 
 //
@@ -134,6 +149,7 @@ func (cfg *Config) AddNetworkSelectors(localnet, remotenet *net.IPNet, forInitia
 	if err != nil {
 		return
 	}
+	// MUTATION
 	cfg.TsI = remote
 	cfg.TsR = local
 	if forInitiator {
@@ -146,6 +162,7 @@ func (cfg *Config) AddNetworkSelectors(localnet, remotenet *net.IPNet, forInitia
 // AddHostSelectors builds selectors from ip addresses
 func (cfg *Config) AddHostSelectors(local, remote net.IP, forInitiator bool) error {
 	slen := len(local) * 8
+	// MUTATION
 	err := cfg.AddNetworkSelectors(
 		&net.IPNet{IP: local, Mask: net.CIDRMask(slen, slen)},
 		&net.IPNet{IP: remote, Mask: net.CIDRMask(slen, slen)},

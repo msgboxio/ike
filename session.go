@@ -60,10 +60,6 @@ type Session struct {
 	Logger log.Logger
 }
 
-func (s *Session) IsInitiator() bool {
-	return s.isInitiator
-}
-
 // Constructors
 
 // NewInitiator creates an initiator session
@@ -80,7 +76,6 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		tkm:         tkm,
 		cfg:         *cfg,
 		IkeSpiI:     MakeSpi(),
-		EspSpiI:     MakeSpi()[:4],
 		incoming:    make(chan *Message, 10),
 		Conn:        conn,
 		Remote:      remoteAddr,
@@ -115,7 +110,6 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 		cfg:       *cfg,
 		IkeSpiI:   ikeSpiI,
 		IkeSpiR:   MakeSpi(),
-		EspSpiR:   MakeSpi()[:4],
 		incoming:  make(chan *Message, 10),
 		Conn:      conn,
 		Local:     initI.LocalAddr,
@@ -158,6 +152,10 @@ func (sess *Session) HandleClose() {
 }
 
 // Housekeeping
+
+func (sess *Session) IsInitiator() bool {
+	return sess.isInitiator
+}
 
 type OutgoingMessage struct {
 	Data []byte
@@ -266,7 +264,7 @@ func (sess *Session) InitMsg() (*OutgoingMessage, error) {
 
 // AuthMsg generates IKE_AUTH
 func (sess *Session) AuthMsg() (*OutgoingMessage, error) {
-	sess.Logger.Log("msg", "AUTH", "selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+	sess.Logger.Log("tx_selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
 	// make sure selectors are present
 	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
@@ -304,11 +302,6 @@ func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessage, error)) (*
 		}
 		return msg, err
 	}
-}
-
-// SendAuth sends IKE_AUTH
-func (sess *Session) SendAuth() error {
-	return sess.sendMsg(sess.AuthMsg())
 }
 
 // CheckError checks error, then send to peer
