@@ -160,7 +160,7 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 }
 
 // return error if secure signatures are configured, but not proposed by peer
-func checkSignatureAlgo(sess *Session, isEnabled bool) error {
+func checkSignatureAlg(sess *Session, isEnabled bool) error {
 	if !isEnabled {
 		level.Warn(sess.Logger).Log("msg", "Not using secure signatures")
 		if sess.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
@@ -192,7 +192,7 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 		}
 	}
 	// returns error if secure signatures are configured, but not proposed by peer
-	if err := checkSignatureAlgo(sess, rfc7427Signatures); err != nil {
+	if err := checkSignatureAlg(sess, rfc7427Signatures); err != nil {
 		return err
 	}
 	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {

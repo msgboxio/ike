@@ -2,6 +2,7 @@ package ike
 
 import (
 	"net"
+	"reflect"
 	"time"
 
 	"github.com/msgboxio/ike/crypto"
@@ -61,7 +62,7 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 			}
 		}
 	}
-	return errors.New("acceptable proposals are missing")
+	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, "acceptable proposals are missing")
 }
 
 func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
@@ -74,6 +75,34 @@ func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, sp
 			SaTransforms: trs.AsList(),
 		},
 	}
+}
+
+//
+// selectors
+//
+
+// CheckSelectors checks if incoming selectors match our configuration
+func (cfg *Config) CheckSelectors(tsi, tsr []*protocol.Selector, isTransportMode bool) error {
+	p1 := cfg.Policy()
+	p2 := selectorsToPolicy(tsi[0], tsr[0], isTransportMode)
+	if !reflect.DeepEqual(p1, p2) {
+		return errors.WithStack(protocol.ERR_INVALID_SELECTORS)
+	}
+	// // transport mode
+	// if isTransportMode && cfg.IsTransportMode {
+	// } else {
+	// 	// one side wants tunnel mode
+	// 	if isTransportMode {
+	// 		// sess.Logger.Log("Mode", "Peer Requested TRANSPORT, configured TUNNEL")
+	// 		return errors.Wrap(protocol.ERR_INVALID_SELECTORS, "Reject TRANSPORT Mode Request")
+	// 	} else if cfg.IsTransportMode {
+	// 		// sess.Logger.Log("Mode", "Peer Requested TUNNEL, configured TRANSPORT")
+	// 		return errors.Wrap(protocol.ERR_INVALID_SELECTORS, "Reject TUNNEL Mode Request")
+	// 	} else {
+	// 		// sess.Logger.Log("Mode", "TUNNEL")
+	// 	}
+	// }
+	return nil
 }
 
 func selectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
@@ -125,4 +154,21 @@ func (cfg *Config) AddHostSelectors(local, remote net.IP, forInitiator bool) err
 		return errors.Wrapf(err, "could not add selectors for %s=>%s", local, remote)
 	}
 	return nil
+}
+
+// Policy converts the selectors to policy
+func (cfg *Config) Policy() *protocol.PolicyParams {
+	return selectorsToPolicy(cfg.TsI[0], cfg.TsR[0], cfg.IsTransportMode)
+}
+
+func selectorsToPolicy(tsI, tsR *protocol.Selector, isTransportMode bool) *protocol.PolicyParams {
+	iNet := FirstLastAddressToIPNet(tsI.StartAddress, tsI.EndAddress)
+	rNet := FirstLastAddressToIPNet(tsR.StartAddress, tsR.EndAddress)
+	return &protocol.PolicyParams{
+		IniPort:         0,
+		ResPort:         0,
+		IniNet:          iNet,
+		ResNet:          rNet,
+		IsTransportMode: isTransportMode,
+	}
 }

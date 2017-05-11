@@ -142,11 +142,19 @@ func handleSaForSession(sess *Session, msg *Message) error {
 	}
 	// level.Debug(o.Logger).Log("proposal", spew.Sprintf("%#v", params), "err", err)
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		return errors.Wrap(protocol.ERR_INVALID_SELECTORS, err.Error())
+		return err
 	}
-	// TODO - check selector
-	sess.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+	// selectors
 	sess.Logger.Log("offered_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
+	if err = sess.cfg.CheckSelectors(params.tsI, params.tsR, params.isTransportMode); err != nil {
+		sess.Logger.Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+		return err
+	}
+	if params.isTransportMode {
+		sess.Logger.Log("Mode", "TRANSPORT")
+	} else {
+		sess.Logger.Log("Mode", "TUNNEL")
+	}
 	// message looks OK
 	if sess.isInitiator {
 		if params.isResponse {
@@ -169,21 +177,6 @@ func handleSaForSession(sess *Session, msg *Message) error {
 	if params.lifetime != 0 {
 		sess.Logger.Log("Lifetime", params.lifetime)
 		sess.cfg.Lifetime = params.lifetime
-	}
-	// transport mode
-	if params.isTransportMode && sess.cfg.IsTransportMode {
-		sess.Logger.Log("Mode", "TRANSPORT")
-	} else {
-		// one side wants tunnel mode
-		if params.isTransportMode {
-			sess.Logger.Log("Mode", "Peer Requested TRANSPORT, configured TUNNEL")
-			return errors.Wrap(protocol.ERR_INVALID_SELECTORS, "Reject TRANSPORT Mode Request")
-		} else if sess.cfg.IsTransportMode {
-			sess.Logger.Log("Mode", "Peer Requested TUNNEL, configured TRANSPORT")
-			return errors.Wrap(protocol.ERR_INVALID_SELECTORS, "Reject TUNNEL Mode Request")
-		} else {
-			sess.Logger.Log("Mode", "TUNNEL")
-		}
 	}
 	return nil
 }

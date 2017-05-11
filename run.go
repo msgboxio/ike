@@ -263,7 +263,7 @@ func monitorSa(sess *Session) (err error) {
 // RunSession starts and monitors the session returning when the session ends
 func RunSession(sess *Session) error {
 	var err error
-	pol := policyParameters(&sess.cfg)
+	pol := sess.cfg.Policy()
 	if sess.isInitiator {
 		err = runInitiator(sess)
 	} else {

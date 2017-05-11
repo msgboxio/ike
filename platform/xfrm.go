@@ -230,6 +230,8 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	return
 }
 
+// public methods
+
 func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
 	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
 		level.Debug(log).Log("INSTALL_POLICY", policy)
