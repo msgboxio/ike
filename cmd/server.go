@@ -16,6 +16,7 @@ import (
 	"github.com/msgboxio/ike"
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 func waitForSignal(cancel context.CancelFunc, logger log.Logger) {
@@ -32,14 +33,10 @@ var localPskID = &ike.PskIdentities{
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-var localID = &ike.CertIdentity{}
-
 var remotePskID = &ike.PskIdentities{
 	Primary: "ak@msgbox.io",
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
-
-var remoteID = &ike.CertIdentity{}
 
 var isDebug bool
 
@@ -61,38 +58,44 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 
 	flag.Parse()
 
-	// crypto keys & names
-	if caFile != "" {
-		roots, _err := ike.LoadRoot(caFile)
-		err = _err
-		if err != nil {
-			return
-		}
-		remoteID.Roots = roots
-	}
-	if certFile != "" {
-		certs, _err := ike.LoadCerts(certFile)
-		err = _err
-		if err != nil {
-			return
-		}
-		localID.Certificate = certs[0]
-	}
-	if keyFile != "" {
-		key, _err := ike.LoadKey(keyFile)
-		err = _err
-		if err != nil {
-			return
-		}
-		localID.PrivateKey = key
-	}
-	if peerID != "" {
-		remoteID.Name = peerID
-	}
-
 	config = ike.DefaultConfig()
 
-	if (localTunnel == "") && (remoteTunnel == "") {
+	// crypto keys & names
+	if caFile != "" && peerID != "" {
+		roots, _err := ike.LoadRoot(caFile)
+		err = errors.Wrapf(_err, "loading %s", caFile)
+		if err != nil {
+			return
+		}
+		config.RemoteID = &ike.CertIdentity{
+			Roots: roots,
+			Name:  peerID,
+		}
+	}
+	if certFile != "" && keyFile != "" {
+		certs, _err := ike.LoadCerts(certFile)
+		err = errors.Wrapf(_err, "loading %s", certFile)
+		if err != nil {
+			return
+		}
+
+		key, _err := ike.LoadKey(keyFile)
+		err = errors.Wrapf(_err, "loading %s", keyFile)
+		if err != nil {
+			return
+		}
+		config.LocalID = &ike.CertIdentity{
+			Certificate: certs[0],
+			PrivateKey:  key,
+		}
+	}
+
+	if config.RemoteID == nil || config.LocalID == nil {
+		config.RemoteID = remotePskID
+		config.LocalID = localPskID
+	}
+
+	if localTunnel == "" && remoteTunnel == "" {
 		config.IsTransportMode = true
 	} else {
 		_, localnet, _err := net.ParseCIDR(localTunnel)
@@ -117,10 +120,9 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 func main() {
 	config, localString, remoteString, err := loadConfig()
 	if err != nil {
+		fmt.Printf("Error: %+v\n", err)
 		panic(err)
 	}
-	config.LocalID = localPskID
-	config.RemoteID = remotePskID
 
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
 	if isDebug {

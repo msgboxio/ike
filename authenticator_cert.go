@@ -1,7 +1,10 @@
 package ike
 
 import (
+	"bytes"
 	"crypto/x509"
+	"encoding/hex"
+	"fmt"
 
 	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
@@ -10,13 +13,13 @@ import (
 
 // CertAuthenticator is an Authenticator
 type CertAuthenticator struct {
-	tkm             *Tkm
-	forInitiator    bool
-	identity        Identity
-	authMethod      protocol.AuthMethod
-	userCertificate *x509.Certificate
+	tkm          *Tkm
+	forInitiator bool
+	identity     Identity
+	authMethod   protocol.AuthMethod
 }
 
+// this is an Authenticator
 var _ Authenticator = (*CertAuthenticator)(nil)
 
 func (o *CertAuthenticator) Identity() Identity {
@@ -42,19 +45,42 @@ func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger l
 		return nil, errors.Errorf("missing private key")
 	}
 	cert := FormatCert(certID.Certificate)
-	logger.Log("Auth", "OUR", "cert", cert.String())
+	logger.Log("AUTH", fmt.Sprintf("OUR_CERT[%s]", cert.String()))
 	signed := o.tkm.SignB(initB, idP.Encode(), o.forInitiator)
 	return CreateSignature(certID.Certificate.SignatureAlgorithm, o.AuthMethod(), signed, certID.PrivateKey, logger)
 }
 
-func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error {
-	if o.userCertificate == nil {
-		return errors.New("missing Certificate")
+func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error {
+	chain, ok := inbandData.([]*x509.Certificate)
+	if !ok {
+		// should never happen
+		panic("logic error")
+	}
+	// chain will not be empty
+	cert := FormatCert(chain[0])
+	logger.Log("AUTH", fmt.Sprintf("PEER_CERT[%s]", cert.String()))
+	// ensure key used to compute a digital signature belongs to the name in the ID payload
+	if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
+		return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
+	}
+	// find identity
+	certID, ok := o.identity.(*CertIdentity)
+	if !ok {
+		// should never happen
+		panic("logic error")
+	}
+	// Verify validity of certificate
+	opts := x509.VerifyOptions{
+		Roots: certID.Roots,
+	}
+	if _, err := chain[0].Verify(opts); err != nil {
+		return errors.Wrap(err, "Unable to verify certificate")
+	}
+	// ensure that certificate is for authorized ID: check in subject & altname
+	// TODO - is this reasonable?
+	if !MatchNameFromCert(&cert, certID.Name) {
+		return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
 	}
 	signed := o.tkm.SignB(initB, idP.Encode(), !o.forInitiator)
-	return VerifySignature(o.AuthMethod(), signed, authData, o.userCertificate, logger)
-}
-
-func (o *CertAuthenticator) SetUserCertificate(cert *x509.Certificate) {
-	o.userCertificate = cert
+	return VerifySignature(o.AuthMethod(), signed, authData, chain[0], logger)
 }

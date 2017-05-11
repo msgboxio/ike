@@ -1,11 +1,7 @@
 package ike
 
 import (
-	"bytes"
-	"crypto/x509"
-	"encoding/hex"
 	"fmt"
-
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
@@ -72,45 +68,23 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		sess.Logger.Log("AUTH", fmt.Sprintf("SHARED_KEY[%s]", string(idP.Data)))
-		return sess.authRemote.Verify(initB, idP, authP.Data, sess.Logger)
+		// find authenticator
+		pskAuth, ok := sess.authRemote.(*PskAuthenticator)
+		if !ok {
+			return errors.New("PreShared Key authentication is required")
+		}
+		return pskAuth.Verify(initB, idP, authP.Data, nil, sess.Logger)
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		chain, err := msg.Payloads.GetCertchain()
 		if err != nil {
 			return err
-		}
-		cert := FormatCert(chain[0])
-		sess.Logger.Log("AUTH", fmt.Sprintf("PEER_CERT[%s]", cert.String()))
-		// ensure key used to compute a digital signature belongs to the name in the ID payload
-		if bytes.Compare(idP.Data, chain[0].RawSubject) != 0 {
-			return errors.Errorf("Incorrect id in certificate: %s", hex.Dump(chain[0].RawSubject))
 		}
 		// find authenticator
 		certAuth, ok := sess.authRemote.(*CertAuthenticator)
 		if !ok {
 			return errors.New("Certificate authentication is required")
 		}
-		// find identity
-		certID, ok := certAuth.identity.(*CertIdentity)
-		if !ok {
-			// should never happen
-			panic("logic error")
-		}
-		// Verify validity of certificate
-		opts := x509.VerifyOptions{
-			Roots: certID.Roots,
-		}
-		if _, err := chain[0].Verify(opts); err != nil {
-			return errors.Wrap(err, "Unable to verify certificate")
-		}
-		// ensure that ID in cert is authorized
-		// TODO - is this reasonable?
-		if !MatchNameFromCert(&cert, certID.Name) {
-			return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
-		}
-		// verify signature : MUTATES
-		certAuth.SetUserCertificate(chain[0])
-		return certAuth.Verify(initB, idP, authP.Data, sess.Logger)
+		return certAuth.Verify(initB, idP, authP.Data, chain, sess.Logger)
 	default:
 		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
 	}

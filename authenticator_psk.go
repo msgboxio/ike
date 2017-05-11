@@ -3,6 +3,7 @@ package ike
 import (
 	"crypto/hmac"
 	"encoding/hex"
+	"fmt"
 
 	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
@@ -38,19 +39,20 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger 
 		return nil, errors.Errorf("No Secret for %s", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), psk.forInitiator)
-	logger.Log("sign", "PSK", "id", string(idP.Data))
-	// TODO : tkm.Auth always uses the hash negotiated with prf
+	logger.Log("AUTH", fmt.Sprintf("OUR_KEY[%s]", string(idP.Data)))
+	// NOTE : tkm.Auth always uses the hash negotiated for prf
 	prf := psk.tkm.suite.Prf
 	return prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length], nil
 }
 
-func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, logger log.Logger) error {
+func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error {
+	logger.Log("AUTH", fmt.Sprintf("PEER_KEY[%s]", string(idP.Data)))
 	secret := psk.identity.AuthData(idP.Data, protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE)
 	if secret == nil {
 		return errors.Errorf("Ike PSK Auth for %s failed: No Secret is available", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), !psk.forInitiator)
-	// TODO : tkm.Auth always uses the hash negotiated with prf
+	// NOTE : tkm.Auth always uses the hash negotiated for prf
 	prf := psk.tkm.suite.Prf
 	signedB := prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length]
 	// compare
