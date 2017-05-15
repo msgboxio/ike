@@ -300,17 +300,20 @@ func monitorSa(sess *Session) (err error) {
 // RunSession starts and monitors the session returning when the session ends
 func RunSession(sess *Session) error {
 	var err error
-	pol := sess.cfg.Policy()
+	var pol *protocol.PolicyParams
 	if sess.isInitiator {
 		err = runInitiator(sess)
 	} else {
 		err = runResponder(sess)
 	}
 	if err == nil {
+		pol = sess.cfg.Policy()
 		sess.installPolicy(pol)
 		err = monitorSa(sess)
 	}
-	sess.removePolicy(pol)
+	if pol != nil {
+		sess.removePolicy(pol)
+	}
 	sess.cancel()
 	return err
 }

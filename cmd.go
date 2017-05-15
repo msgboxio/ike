@@ -13,8 +13,7 @@ import (
 
 // Cmd provides utilities for building ike apps
 type Cmd struct {
-	// map of initiator spi -> session
-	sessions Sessions
+	sessions Sessions // map of initiator spi -> session
 	conn     Conn
 	cb       *SessionCallback
 }
@@ -24,14 +23,6 @@ func NewCmd(conn Conn, cb *SessionCallback) *Cmd {
 		sessions: NewSessions(),
 		conn:     conn,
 		cb:       cb,
-	}
-}
-
-func (i *Cmd) onError(sess *Session, err error) {
-	if err == errorRekeyDeadlineExceeded {
-		sess.Close(context.DeadlineExceeded)
-	} else {
-		sess.Close(context.Canceled)
 	}
 }
 
@@ -60,8 +51,8 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) 
 				return
 			}
 			spi := SpiToInt64(initiator.IkeSpiI)
-			// in case peer does not support rekeying
-			if err = i.runSession(spi, initiator); err == context.DeadlineExceeded {
+			// if peer did not rekey in time
+			if err = i.runSession(spi, initiator); err == errorRekeyDeadlineExceeded {
 				initiator.Logger.Log("msg", "reKeying")
 				continue
 			} else if err == context.Canceled {

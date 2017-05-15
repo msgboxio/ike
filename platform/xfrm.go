@@ -184,17 +184,17 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	// initiator
 	authI, cryptI, aeadI := espTransforms(sa, true)
 	initiator := &netlink.XfrmState{
-		Src:          sa.Ini,
-		Dst:          sa.Res,
-		Proto:        netlink.XFRM_PROTO_ESP,
-		Mode:         mode,
-		Spi:          sa.SpiR,
-		Reqid:        reqid,
-		ReplayWindow: 256,
-		ESN:          true,
-		Auth:         authI,
-		Crypt:        cryptI,
-		Aead:         aeadI,
+		Src:   sa.Ini,
+		Dst:   sa.Res,
+		Proto: netlink.XFRM_PROTO_ESP,
+		Mode:  mode,
+		Spi:   sa.SpiR,
+		Reqid: reqid,
+		// ReplayWindow: 256,
+		// ESN:          true,
+		Auth:  authI,
+		Crypt: cryptI,
+		Aead:  aeadI,
 	}
 	if sa.IniPort != 0 && sa.ResPort != 0 {
 		initiator.Encap = &netlink.XfrmStateEncap{
@@ -207,17 +207,17 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 	// responder
 	authR, cryptR, aeadR := espTransforms(sa, false)
 	responder := &netlink.XfrmState{
-		Src:          sa.Res,
-		Dst:          sa.Ini,
-		Proto:        netlink.XFRM_PROTO_ESP,
-		Mode:         mode,
-		Spi:          sa.SpiI,
-		Reqid:        reqid,
-		ReplayWindow: 256,
-		ESN:          true,
-		Auth:         authR,
-		Crypt:        cryptR,
-		Aead:         aeadR,
+		Src:   sa.Res,
+		Dst:   sa.Ini,
+		Proto: netlink.XFRM_PROTO_ESP,
+		Mode:  mode,
+		Spi:   sa.SpiI,
+		Reqid: reqid,
+		// ReplayWindow: 256,
+		// ESN:          true,
+		Auth:  authR,
+		Crypt: cryptR,
+		Aead:  aeadR,
 	}
 	if sa.IniPort != 0 && sa.ResPort != 0 {
 		responder.Encap = &netlink.XfrmStateEncap{

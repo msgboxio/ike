@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-kit/kit/log"
@@ -148,7 +147,7 @@ func main() {
 		panic(fmt.Sprintf("Listen: %+v", err))
 	}
 	// requires root
-	if err := platform.SetSocketBypas(pconn.Inner(), syscall.AF_INET6); err != nil {
+	if err := platform.SetSocketBypas(pconn.Inner()); err != nil {
 		panic(fmt.Sprintf("Bypass: %+v", err))
 	}
 

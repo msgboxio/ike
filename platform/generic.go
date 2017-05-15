@@ -25,7 +25,7 @@ func RemoveChildSa(*SaParams, log.Logger) error {
 	return nil
 }
 
-func SetSocketBypas(conn net.Conn, family uint16) (err error) {
+func SetSocketBypas(conn net.Conn) (err error) {
 	return
 }
 

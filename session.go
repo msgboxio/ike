@@ -45,12 +45,12 @@ type Session struct {
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
 
-	msgIDReq, msgIDResp *msgID
+	msgIDReq, msgIDResp msgID
 
 	incoming chan *Message
 
 	initIb, initRb  []byte
-	responderCookie []byte // TODO - remove this from session
+	responderCookie []byte
 
 	// data from client
 	Conn          Conn
@@ -80,8 +80,8 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		Conn:        conn,
 		Remote:      remoteAddr,
 		Cb:          *cb,
-		msgIDReq:    &msgID{id: 0},
-		msgIDResp:   &msgID{id: -1},
+		msgIDReq:    msgID{id: 0},
+		msgIDResp:   msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
 	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
@@ -115,8 +115,8 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 		Local:     initI.LocalAddr,
 		Remote:    initI.RemoteAddr,
 		Cb:        *cb,
-		msgIDReq:  &msgID{id: 0},
-		msgIDResp: &msgID{id: -1},
+		msgIDReq:  msgID{id: 0},
+		msgIDResp: msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
 	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
