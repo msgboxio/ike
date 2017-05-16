@@ -34,7 +34,8 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 	case errPeerRemovedIkeSa:
 		sess.Close(errPeerRemovedIkeSa)
 	default:
-		level.Warn(sess.Logger).Log("err", err)
+		sess.Close(err)
+		level.Warn(sess.Logger).Log("ERR", err)
 	}
 	i.sessions.Remove(spi)
 	sess.Logger.Log("IKE_SA", "removed", "session", fmt.Sprintf("%s<=>%s", sess.IkeSpiI, sess.IkeSpiR))
@@ -47,7 +48,7 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) 
 		for {
 			initiator, err := NewInitiator(config, remoteAddr, i.conn, i.cb, log)
 			if err != nil {
-				level.Error(log).Log("msg", "could not start Initiator", "err", err)
+				level.Error(log).Log("ERR", err, "msg", "could not start Initiator")
 				return
 			}
 			spi := SpiToInt64(initiator.IkeSpiI)

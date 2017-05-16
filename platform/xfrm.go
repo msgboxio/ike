@@ -190,8 +190,6 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Mode:  mode,
 		Spi:   sa.SpiR,
 		Reqid: reqid,
-		// ReplayWindow: 256,
-		// ESN:          true,
 		Auth:  authI,
 		Crypt: cryptI,
 		Aead:  aeadI,
@@ -213,8 +211,6 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Mode:  mode,
 		Spi:   sa.SpiI,
 		Reqid: reqid,
-		// ReplayWindow: 256,
-		// ESN:          true,
 		Auth:  authR,
 		Crypt: cryptR,
 		Aead:  aeadR,
@@ -225,6 +221,12 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 			SrcPort: sa.ResPort,
 			DstPort: sa.IniPort,
 		}
+	}
+	if sa.EspTransforms.GetType(protocol.TRANSFORM_TYPE_ESN).TransformId == uint16(protocol.ESN) {
+		initiator.ReplayWindow = 256
+		initiator.ESN = true
+		responder.ReplayWindow = 256
+		responder.ESN = true
 	}
 	states = append(states, responder)
 	return

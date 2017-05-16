@@ -16,7 +16,7 @@ type Config struct {
 	LocalID, RemoteID Identity
 	AuthMethod        protocol.AuthMethod
 
-	TsI, TsR             []*protocol.Selector
+	TsI, TsR             protocol.Selectors
 	IsTransportMode      bool
 	ThrottleInitRequests bool
 	Lifetime             time.Duration
@@ -51,7 +51,7 @@ func DefaultConfig() *Config {
 //
 
 // CheckProposals checks if incoming proposals include our configuration
-func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.Proposals) error {
+func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.Proposals) (err error) {
 	for _, prop := range proposals {
 		if prop.ProtocolID != prot {
 			continue
@@ -59,16 +59,19 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 		// select first acceptable one from the list
 		switch prot {
 		case protocol.IKE:
-			if cfg.ProposalIke.Within(prop.SaTransforms) {
-				return nil
+			if err = cfg.ProposalIke.Within(prop.SaTransforms); err != nil {
+				break
 			}
 		case protocol.ESP:
-			if cfg.ProposalEsp.Within(prop.SaTransforms) {
-				return nil
+			if err = cfg.ProposalEsp.Within(prop.SaTransforms); err != nil {
+				break
 			}
 		}
 	}
-	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, "acceptable proposals are missing")
+	if err == nil {
+		return
+	}
+	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, err.Error())
 }
 
 func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {

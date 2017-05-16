@@ -264,7 +264,7 @@ func (sess *Session) AuthMsg() (*OutgoingMessage, error) {
 	}
 	auth, err := authFromSession(sess)
 	if err != nil {
-		sess.Logger.Log("err", err)
+		sess.Logger.Log("ERR", err)
 		return nil, err
 	}
 	auth.IkeHeader.MsgID = sess.nextID()

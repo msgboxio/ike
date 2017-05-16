@@ -105,7 +105,7 @@ func handleSaForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.
 		}
 	}
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		level.Warn(sess.Logger).Log("proposal", spew.Sprintf("%#v", params.proposals), "err", err)
+		level.Warn(sess.Logger).Log("ERR", err, "proposal", spew.Sprintf("%#v", params.proposals))
 		return
 	}
 	// selectors

@@ -145,7 +145,7 @@ func HandleInformationalForSession(sess *Session, msg *Message) *InformationalEv
 	if note := plds.Get(protocol.PayloadTypeN); note != nil {
 		np := note.(*protocol.NotifyPayload)
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-			sess.Logger.Log("msg", "Received Informational Error", "err", err)
+			sess.Logger.Log("ERR", err, "msg", "Received Informational Error")
 			return &InformationalEvent{
 				SessionNotificationType: MSG_ERROR,
 				Message:                 err,

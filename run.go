@@ -7,8 +7,6 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
-const SaRekeyTimeout = 5 * time.Second
-
 func runInitiator(sess *Session) (err error) {
 	// send initiator INIT after jittered wait and wait for reply
 	time.Sleep(Jitter(2*time.Second, -0.5))

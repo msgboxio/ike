@@ -1,9 +1,13 @@
 package protocol
 
+import (
+	"fmt"
+)
+
 // Transforms store the configured crypto suite
 type Transforms map[TransformType]*SaTransform
 
-func (t Transforms) AsProposal(pID ProtocolID) (prop Proposals) {
+func (t *Transforms) AsProposal(pID ProtocolID) (prop Proposals) {
 	prop = append(prop, &SaProposal{
 		ProtocolID:   pID,
 		SaTransforms: t.AsList(),
@@ -19,23 +23,30 @@ func (t Transforms) AsList() (trs []*SaTransform) {
 	return
 }
 
-// Within checks if the conf set of transforms occurs within list of porposed transforms
-func (t Transforms) Within(proposals []*SaTransform) bool {
-	listHas := func(trsList []*SaTransform, trs *SaTransform) bool {
+// Within checks if the configured set of transforms occurs within list of proposed transforms
+func (t Transforms) Within(proposals []*SaTransform) error {
+	listHas := func(trsList []*SaTransform, target *SaTransform) error {
 		for _, tr := range trsList {
-			if trs.IsEqual(tr) {
-				return true
+			if target.IsEqual(tr) {
+				return nil
 			}
 		}
-		return false
+		return fmt.Errorf("%v: does not match", target.Transform)
 	}
-
 	for _, proposal := range t {
-		if !listHas(proposals, proposal) {
-			return false
+		if err := listHas(proposals, proposal); err != nil {
+			return err
 		}
 	}
-	return true
+	return nil
+}
+
+func (t Transforms) GetType(ty TransformType) *Transform {
+	trs, ok := t[ty]
+	if !ok {
+		return nil
+	}
+	return &trs.Transform
 }
 
 // IkeTransform builds a IKE cipher suite

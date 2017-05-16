@@ -53,8 +53,10 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
 	flag.StringVar(&peerID, "peerid", "", "Peer ID")
 
-	flag.BoolVar(&isDebug, "debug", isDebug, "debug logs")
+	var useESN bool
+	flag.BoolVar(&useESN, "esn", useESN, "use ESN")
 
+	flag.BoolVar(&isDebug, "debug", isDebug, "debug logs")
 	flag.Parse()
 
 	config = ike.DefaultConfig()
@@ -112,6 +114,9 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			isInitiator = false
 		}
 		err = config.AddNetworkSelectors(localnet, remotenet, isInitiator)
+	}
+	if useESN {
+		config.ProposalEsp.GetType(protocol.TRANSFORM_TYPE_ESN).TransformId = uint16(protocol.ESN)
 	}
 	return
 }

@@ -10,6 +10,8 @@ import (
 
 	"fmt"
 
+	"runtime"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -263,6 +265,10 @@ func espTransforms(tr protocol.Transforms) (crypt string, auth string, err error
 			crypt = encrTransform(transform)
 		case protocol.TRANSFORM_TYPE_INTEG:
 			auth = authTransform(transform)
+		case protocol.TRANSFORM_TYPE_ESN:
+			if transform.Transform.TransformId != uint16(protocol.ESN_NONE) {
+				err = fmt.Errorf("ESN is not supported on %s", runtime.GOOS)
+			}
 		}
 	}
 	if auth == "" || crypt == "" {

@@ -183,8 +183,8 @@ type authParams struct {
 	isInitiator     bool
 	isTransportMode bool
 	spiI, spiR      protocol.Spi
-	proposals       []*protocol.SaProposal
-	tsI, tsR        []*protocol.Selector
+	proposals       protocol.Proposals
+	tsI, tsR        protocol.Selectors
 	authenticator   Authenticator
 	lifetime        time.Duration
 }
