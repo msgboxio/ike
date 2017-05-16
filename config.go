@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -30,16 +29,6 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		// ProposalIke: crypto.Chacha20poly1305Prfsha256Ecp256,
-		// ProposalIke: crypto.Aes128gcm16Prfsha256Ecp256,
-		// ProposalIke: crypto.Aes256gcm16Prfsha384Ecp384,
-		ProposalIke: crypto.Aes128Sha256Modp3072,
-
-		// ProposalEsp: crypto.Chacha20poly1305,
-		// ProposalEsp: crypto.Aes128Sha256,
-		// ProposalEsp: crypto.Aes256gcm16,
-		ProposalEsp: crypto.Aes128Sha256,
-
 		AuthMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		// ThrottleInitRequests: true,
 		Lifetime: time.Hour,

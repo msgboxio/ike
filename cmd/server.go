@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike"
+	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/platform"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
@@ -56,11 +57,30 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 	var useESN bool
 	flag.BoolVar(&useESN, "esn", useESN, "use ESN")
 
+	keysOf := func(m map[string]protocol.Transforms) (ret []string) {
+		for k := range m {
+			ret = append(ret, k)
+		}
+		return
+	}
+	var espSuite, ikeSuite string
+	flag.StringVar(&espSuite, "esp", "aes128-sha256", spew.Sprintf("esp crypto: %v", keysOf(crypto.EspSuites)))
+	flag.StringVar(&ikeSuite, "ike", "aes128-sha256-modp3072", spew.Sprintf("ike crypto: %v", keysOf(crypto.IkeSuites)))
+
 	flag.BoolVar(&isDebug, "debug", isDebug, "debug logs")
 	flag.Parse()
 
 	config = ike.DefaultConfig()
 
+	ok := false
+	if config.ProposalEsp, ok = crypto.EspSuites[espSuite]; !ok {
+		err = fmt.Errorf("esp suit %s is not available", espSuite)
+		return
+	}
+	if config.ProposalIke, ok = crypto.IkeSuites[ikeSuite]; !ok {
+		err = fmt.Errorf("ike suit %s is not available", ikeSuite)
+		return
+	}
 	// crypto keys & names
 	if caFile != "" && peerID != "" {
 		roots, _err := ike.LoadRoot(caFile)
