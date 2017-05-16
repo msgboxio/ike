@@ -42,7 +42,8 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	if err := msg.CheckFlags(); err != nil {
 		return err
 	}
-	// NOTE - incoming request is parsed here once and then again when processing session
+	// NOTE - incoming request is parsed again when processing session
+	// Avoiding it adds code complexity
 	init, err := parseInit(msg)
 	if err != nil {
 		return err
@@ -191,11 +192,5 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	if err := checkSignatureAlg(sess, rfc7427Signatures); err != nil {
 		return err
 	}
-	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
-		return err
-	}
-	// TODO
-	// If there is NAT , then all the further communication is performed over port 4500 instead of the default port 500
-	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	return nil
 }

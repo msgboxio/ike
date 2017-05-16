@@ -23,11 +23,11 @@ var (
 
 // SessionCallback holds the callbacks used by the session to notify the user
 type SessionCallback struct {
-	Initialize func(*Session, *protocol.PolicyParams) error
-	Delete     func(*Session, *protocol.PolicyParams) error
+	InstallPolicy func(*Session, *protocol.PolicyParams) error
+	RemovePolicy  func(*Session, *protocol.PolicyParams) error
 
-	AddSa    func(*Session, *platform.SaParams) error
-	RemoveSa func(*Session, *platform.SaParams) error
+	InstallChildSa func(*Session, *platform.SaParams) error
+	RemoveChildSa  func(*Session, *platform.SaParams) error
 }
 
 // Session stores IKE session's local state
@@ -127,28 +127,21 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 // Destructors
 
 // Close is called to initiate a session shutdown
+// 1: peer shut us down, or 2: we are shutting down all sessions
 func (sess *Session) Close(err error) {
 	sess.Logger.Log("CLOSE", err)
 	if sess.isClosing {
 		return
 	}
 	sess.isClosing = true
-	sess.sendIkeSaDelete()
-	sess.RemoveSa()
-	close(sess.incoming)
-	<-sess.cxt.Done()
-}
-
-// HandleClose will cleanly removes child SAs upon receiving a message from peer
-func (sess *Session) HandleClose() {
-	if sess.isClosing {
-		return
+	if err != errPeerRemovedIkeSa {
+		sess.sendIkeSaDelete()
 	}
-	sess.isClosing = true
-	sess.SendEmptyInformational(true)
 	sess.RemoveSa()
-	close(sess.incoming)
-	<-sess.cxt.Done()
+	sess.removePolicy()
+	// NOTE : it is possible that RunSession has exited already
+	close(sess.incoming) // closing channel will cause RunSession to continue
+	<-sess.cxt.Done()    // wait till it returns
 }
 
 // Housekeeping
@@ -394,8 +387,8 @@ func (sess *Session) AddSa(sa *platform.SaParams) (err error) {
 	sa.Ini, sa.Res = sess.saAddr()
 	sess.Logger.Log("INSTALL_SA",
 		fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
-	if sess.Cb.AddSa != nil {
-		err = sess.Cb.AddSa(sess, sa)
+	if sess.Cb.InstallChildSa != nil {
+		err = sess.Cb.InstallChildSa(sess, sa)
 	}
 	return
 }
@@ -410,32 +403,34 @@ func (sess *Session) RemoveSa() (err error) {
 	sa.Ini, sa.Res = sess.saAddr()
 	sess.Logger.Log("REMOVE_SA",
 		fmt.Sprintf("%#x<=>%#x; [%s]%s<=>%s[%s]", sa.SpiI, sa.SpiR, sa.Ini, sa.IniNet, sa.ResNet, sa.Res))
-	if sess.Cb.RemoveSa != nil {
-		err = sess.Cb.RemoveSa(sess, sa)
+	if sess.Cb.RemoveChildSa != nil {
+		err = sess.Cb.RemoveChildSa(sess, sa)
 	}
 	return
 }
 
-func (sess *Session) installPolicy(pol *protocol.PolicyParams) (err error) {
+func (sess *Session) installPolicy() (err error) {
+	pol := sess.cfg.Policy()
 	pol.Ini, pol.Res = sess.saAddr()
 	sess.Logger.Log("INSTALL_POLICY",
 		fmt.Sprintf("[%s]%s<=>%s[%s]", pol.Ini, pol.IniNet, pol.ResNet, pol.Res))
-	if sess.Cb.Initialize != nil {
-		err = sess.Cb.Initialize(sess, pol)
+	if sess.Cb.InstallPolicy != nil {
+		err = sess.Cb.InstallPolicy(sess, pol)
 	}
 	return
 }
 
-func (sess *Session) removePolicy(pol *protocol.PolicyParams) (err error) {
+func (sess *Session) removePolicy() (err error) {
 	if (sess.Local == nil) || sess.Remote == nil {
 		sess.Logger.Log("REMOVE_POLICY", "sa was not started")
 		return
 	}
+	pol := sess.cfg.Policy()
 	pol.Ini, pol.Res = sess.saAddr()
 	sess.Logger.Log("REMOVE_POLICY",
 		fmt.Sprintf("[%s]%s<=>%s[%s]", pol.Ini, pol.IniNet, pol.ResNet, pol.Res))
-	if sess.Cb.Delete != nil {
-		err = sess.Cb.Delete(sess, pol)
+	if sess.Cb.RemovePolicy != nil {
+		err = sess.Cb.RemovePolicy(sess, pol)
 	}
 	return
 }

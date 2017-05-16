@@ -103,11 +103,11 @@ func (t *testcb) Close() error    { return nil }
 
 func scb(cbk *testcb) *SessionCallback {
 	return &SessionCallback{
-		AddSa: func(_ *Session, sa *platform.SaParams) error {
+		InstallChildSa: func(_ *Session, sa *platform.SaParams) error {
 			cbk.saTo <- sa
 			return nil
 		},
-		RemoveSa: func(_ *Session, sa *platform.SaParams) error {
+		RemoveChildSa: func(_ *Session, sa *platform.SaParams) error {
 			return nil
 		},
 	}

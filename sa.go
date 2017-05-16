@@ -33,8 +33,9 @@ func removeSaParams(espSpiI, espSpiR []byte, cfg *Config) *platform.SaParams {
 	SpiI := SpiToInt32(espSpiI)
 	SpiR := SpiToInt32(espSpiR)
 	return &platform.SaParams{
-		PolicyParams: cfg.Policy(),
-		SpiI:         int(SpiI),
-		SpiR:         int(SpiR),
+		PolicyParams:  cfg.Policy(),
+		SpiI:          int(SpiI),
+		SpiR:          int(SpiR),
+		EspTransforms: cfg.ProposalEsp,
 	}
 }

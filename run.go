@@ -49,6 +49,12 @@ func runInitiator(sess *Session) (err error) {
 		level.Error(sess.Logger).Log("init", err)
 		return
 	}
+	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
+		return err
+	}
+	// TODO
+	// If there is NAT , then all the further communication is performed over port 4500 instead of the default port 500
+	// also, periodically send keepalive packets in order for NAT to keep it’s bindings alive.
 	// save message
 	sess.initRb = msg.Data
 	// start auth
@@ -96,6 +102,10 @@ func runResponder(sess *Session) (err error) {
 	if err = handleInitForSession(sess, init, msg); err != nil {
 		return
 	}
+	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
+		return err
+	}
+	// TODO - NAT
 	// save message
 	sess.initIb = msg.Data
 	// not really necessary
@@ -216,12 +226,16 @@ func onIpsecRekey(sess *Session, msg *Message) (err error) {
 }
 
 func monitorSa(sess *Session) (err error) {
-	sa := addSaParams(sess.tkm,
+	// install policy
+	err = sess.installPolicy()
+	if err != nil {
+		return
+	}
+	// add INITIAL sa
+	err = sess.AddSa(addSaParams(sess.tkm,
 		sess.tkm.Ni, sess.tkm.Nr, nil, // NOTE : use the original SA
 		sess.EspSpiI, sess.EspSpiR,
-		&sess.cfg)
-	// add INITIAL sa
-	err = sess.AddSa(sa)
+		&sess.cfg))
 	if err != nil {
 		return
 	}
@@ -300,19 +314,13 @@ func monitorSa(sess *Session) (err error) {
 // RunSession starts and monitors the session returning when the session ends
 func RunSession(sess *Session) error {
 	var err error
-	var pol *protocol.PolicyParams
 	if sess.isInitiator {
 		err = runInitiator(sess)
 	} else {
 		err = runResponder(sess)
 	}
 	if err == nil {
-		pol = sess.cfg.Policy()
-		sess.installPolicy(pol)
 		err = monitorSa(sess)
-	}
-	if pol != nil {
-		sess.removePolicy(pol)
 	}
 	sess.cancel()
 	return err

@@ -97,7 +97,7 @@ func listenUDP4(localString string, logger log.Logger) (p4 *pconnV4, err error) 
 			return nil, err
 		}
 	}
-	logger.Log("listening V4", udp.LocalAddr())
+	logger.Log("listeningV4", udp.LocalAddr())
 	return (*pconnV4)(p), nil
 }
 

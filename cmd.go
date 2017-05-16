@@ -32,7 +32,7 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 	err = RunSession(sess)
 	switch errors.Cause(err) {
 	case errPeerRemovedIkeSa:
-		sess.HandleClose()
+		sess.Close(errPeerRemovedIkeSa)
 	default:
 		level.Warn(sess.Logger).Log("err", err)
 	}
