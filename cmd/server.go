@@ -57,7 +57,7 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 	var useESN bool
 	flag.BoolVar(&useESN, "esn", useESN, "use ESN")
 
-	keysOf := func(m map[string]protocol.Transforms) (ret []string) {
+	keysOf := func(m map[string]protocol.TransformMap) (ret []string) {
 		for k := range m {
 			ret = append(ret, k)
 		}

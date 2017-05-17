@@ -257,7 +257,7 @@ func authTransform(tr *protocol.SaTransform) (auth string) {
 	}
 	return ""
 }
-func espTransforms(tr protocol.Transforms) (crypt string, auth string, err error) {
+func espTransforms(tr protocol.TransformMap) (crypt string, auth string, err error) {
 	// return "aes-cbc", "hmac-sha256", nil
 	for ttype, transform := range tr {
 		switch ttype {

@@ -63,7 +63,7 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 			err = errT
 			return
 		}
-		prop.SaTransforms = append(prop.SaTransforms, trans)
+		prop.Transforms = append(prop.Transforms, trans)
 		b = b[usedT:]
 		if trans.IsLast {
 			if len(b) > 0 {
@@ -73,9 +73,9 @@ func decodeProposal(b []byte) (prop *SaProposal, used int, err error) {
 			break
 		}
 	}
-	if len(prop.SaTransforms) != int(numTransforms) {
+	if len(prop.Transforms) != int(numTransforms) {
 		err = errors.Wrap(ERR_INVALID_SYNTAX, fmt.Sprintf("Incorrect number of transforms: %d != %d",
-			len(prop.SaTransforms), numTransforms))
+			len(prop.Transforms), numTransforms))
 		return
 	}
 	used = int(propLength)
@@ -90,10 +90,10 @@ func (prop *SaProposal) encode(number int, isLast bool) (b []byte) {
 	packets.WriteB8(b, 4, prop.Number)
 	packets.WriteB8(b, 5, uint8(prop.ProtocolID))
 	packets.WriteB8(b, 6, uint8(len(prop.Spi)))
-	packets.WriteB8(b, 7, uint8(len(prop.SaTransforms)))
+	packets.WriteB8(b, 7, uint8(len(prop.Transforms)))
 	b = append(b, prop.Spi...)
-	for idx, tr := range prop.SaTransforms {
-		isLast := idx == len(prop.SaTransforms)-1
+	for idx, tr := range prop.Transforms {
+		isLast := idx == len(prop.Transforms)-1
 		b = append(b, tr.encode(isLast)...)
 	}
 	packets.WriteB16(b, 2, uint16(len(b)))

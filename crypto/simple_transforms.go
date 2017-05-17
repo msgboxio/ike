@@ -12,7 +12,7 @@ import (
 var (
 	Aes128Sha256Modp3072,
 	Aes128Sha256Ecp256,
-	Aes128Sha256 protocol.Transforms
+	Aes128Sha256 protocol.TransformMap
 )
 
 func init() {

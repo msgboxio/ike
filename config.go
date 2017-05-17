@@ -11,7 +11,7 @@ import (
 )
 
 type Config struct {
-	ProposalIke, ProposalEsp protocol.Transforms
+	ProposalIke, ProposalEsp protocol.TransformMap
 
 	LocalID, RemoteID Identity
 	AuthMethod        protocol.AuthMethod
@@ -52,11 +52,11 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 		// select first acceptable one from the list
 		switch prot {
 		case protocol.IKE:
-			if err = cfg.ProposalIke.Within(prop.SaTransforms); err == nil {
+			if err = cfg.ProposalIke.Within(prop.Transforms); err == nil {
 				break
 			}
 		case protocol.ESP:
-			if err = cfg.ProposalEsp.Within(prop.SaTransforms); err == nil {
+			if err = cfg.ProposalEsp.Within(prop.Transforms); err == nil {
 				break
 			}
 		}
@@ -67,14 +67,14 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, errors.Cause(err).Error())
 }
 
-func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) protocol.Proposals {
+func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.TransformMap, spi []byte) protocol.Proposals {
 	return protocol.Proposals{
 		&protocol.SaProposal{
-			IsLast:       true,
-			Number:       1,
-			ProtocolID:   prot,
-			Spi:          append([]byte{}, spi...),
-			SaTransforms: trs.AsList(),
+			IsLast:     true,
+			Number:     1,
+			ProtocolID: prot,
+			Spi:        append([]byte{}, spi...),
+			Transforms: trs.AsList(),
 		},
 	}
 }

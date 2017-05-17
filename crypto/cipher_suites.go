@@ -9,8 +9,8 @@ import (
 var DebugCrypto = false
 
 var (
-	IkeSuites = map[string]protocol.Transforms{}
-	EspSuites = map[string]protocol.Transforms{}
+	IkeSuites = map[string]protocol.TransformMap{}
+	EspSuites = map[string]protocol.TransformMap{}
 )
 
 // Cipher interface provides Encryption & Integrity Protection
@@ -36,7 +36,7 @@ type CipherSuite struct {
 
 // Build a CipherSuite from the given transfom
 // TODO - check that the entire suite makes sense
-func NewCipherSuite(trs protocol.Transforms) (*CipherSuite, error) {
+func NewCipherSuite(trs protocol.TransformMap) (*CipherSuite, error) {
 	cs := &CipherSuite{}
 	// empty variables, filled in later
 	var aead *aeadCipher

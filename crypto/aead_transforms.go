@@ -16,7 +16,7 @@ var (
 	Chacha20poly1305Prfsha256Ecp256,
 	Aes128gcm16,
 	Aes256gcm16,
-	Chacha20poly1305 protocol.Transforms
+	Chacha20poly1305 protocol.TransformMap
 )
 
 func init() {

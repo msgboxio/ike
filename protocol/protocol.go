@@ -329,11 +329,11 @@ type SaPayload struct {
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 */
 type SaProposal struct {
-	IsLast       bool
-	Number       uint8
-	ProtocolID   ProtocolID
-	Spi          []byte
-	SaTransforms []*SaTransform
+	IsLast     bool
+	Number     uint8
+	ProtocolID ProtocolID
+	Spi        []byte
+	Transforms []*SaTransform
 }
 type Proposals []*SaProposal
 
