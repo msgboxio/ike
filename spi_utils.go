@@ -23,7 +23,7 @@ func MakeSpi() (ret protocol.Spi) {
 	return spi.Bytes()
 }
 
-func spiFromProposal(props []*protocol.SaProposal, pid protocol.ProtocolID) (protocol.Spi, error) {
+func spiFromProposal(props protocol.Proposals, pid protocol.ProtocolID) (protocol.Spi, error) {
 	for _, p := range props {
 		if !p.IsSpiSizeCorrect(len(p.Spi)) {
 			return nil, errors.New("Bad SPI size ")

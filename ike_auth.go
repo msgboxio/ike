@@ -13,7 +13,7 @@ import (
 // authFromSession creates IKE_AUTH messages
 func authFromSession(sess *Session) (*Message, error) {
 	// proposal
-	var prop []*protocol.SaProposal
+	var prop protocol.Proposals
 	// part of signed octet
 	var initB []byte
 	if sess.isInitiator {

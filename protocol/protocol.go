@@ -764,7 +764,7 @@ const (
 type TrafficSelectorPayload struct {
 	*PayloadHeader
 	TrafficSelectorPayloadType PayloadType
-	Selectors                  []*Selector
+	Selectors                  Selectors
 }
 
 // end of traffic selector

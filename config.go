@@ -67,8 +67,8 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, errors.Cause(err).Error())
 }
 
-func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) []*protocol.SaProposal {
-	return []*protocol.SaProposal{
+func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.Transforms, spi []byte) protocol.Proposals {
+	return protocol.Proposals{
 		&protocol.SaProposal{
 			IsLast:       true,
 			Number:       1,
@@ -95,7 +95,7 @@ func (cfg *Config) CheckDhTransform(dhID protocol.DhTransformId) error {
 //
 
 // CheckSelectors checks if incoming selectors match our configuration
-func (cfg *Config) CheckSelectors(tsi, tsr []*protocol.Selector, isTransportMode bool) error {
+func (cfg *Config) CheckSelectors(tsi, tsr protocol.Selectors, isTransportMode bool) error {
 	p1 := cfg.Policy()
 	p2 := selectorsToPolicy(tsi[0], tsr[0], isTransportMode)
 	if !reflect.DeepEqual(p1, p2) {
@@ -118,7 +118,7 @@ func (cfg *Config) CheckSelectors(tsi, tsr []*protocol.Selector, isTransportMode
 	return nil
 }
 
-func selectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
+func selectorFromAddress(addr *net.IPNet) (protocol.Selectors, error) {
 	first, last, err := IPNetToFirstLastAddress(addr)
 	if err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func selectorFromAddress(addr *net.IPNet) ([]*protocol.Selector, error) {
 	if len(first) == net.IPv6len {
 		stype = protocol.TS_IPV6_ADDR_RANGE
 	}
-	return []*protocol.Selector{&protocol.Selector{
+	return protocol.Selectors{&protocol.Selector{
 		Type:         stype,
 		IpProtocolId: 0,
 		StartPort:    0,

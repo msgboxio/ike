@@ -57,7 +57,7 @@ type initParams struct {
 	spiI, spiR  protocol.Spi
 
 	nonce         *big.Int
-	proposals     []*protocol.SaProposal
+	proposals     protocol.Proposals
 	dhTransformID protocol.DhTransformId
 	dhPublic      *big.Int
 
@@ -367,8 +367,8 @@ type childSaParams struct {
 	isInitiator      bool
 	isTransportMode  bool
 	ikeSpiI, ikeSpiR protocol.Spi
-	proposals        []*protocol.SaProposal
-	tsI, tsR         []*protocol.Selector
+	proposals        protocol.Proposals
+	tsI, tsR         protocol.Selectors
 	lifetime         time.Duration
 	targetEspSpi     protocol.Spi // esp sa that is being replaced
 	nonce            *big.Int
