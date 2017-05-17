@@ -7,10 +7,12 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"net"
+	"os"
 	"sync"
 	"testing"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/platform"
 	"github.com/pkg/errors"
 )
@@ -20,8 +22,8 @@ var localAddr, remoteAddr net.Addr
 var logger log.Logger
 
 func init() {
-	// logger = level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
-	logger = log.NewNopLogger()
+	logger = level.NewFilter(log.NewLogfmtLogger(os.Stdout), level.AllowDebug())
+	// logger = log.NewNopLogger()
 }
 
 var pskTestID = &PskIdentities{

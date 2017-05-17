@@ -10,11 +10,9 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 )
 
@@ -102,14 +100,13 @@ func TestSignature(test *testing.T) {
 		{"ECDSA/ECDSA", certificate(ecdsaPriv, x509.ECDSAWithSHA1), ecdsaPriv, true, protocol.AUTH_DIGITAL_SIGNATURE, x509.ECDSAWithSHA1},
 		{"ECDSA/ECDSA", certificate(ecdsaPriv, x509.ECDSAWithSHA384), ecdsaPriv, true, protocol.AUTH_DIGITAL_SIGNATURE, x509.ECDSAWithSHA384},
 	}
-	log := log.NewLogfmtLogger(os.Stdout)
 	data := []byte("qwertyy12345")
 	for _, t := range tests {
-		sig, err := CreateSignature(t.sigAlgo, t.AuthMethod, data, t.priv, log)
+		sig, err := CreateSignature(t.sigAlgo, t.AuthMethod, data, t.priv, logger)
 		if err != nil {
 			test.Error(err)
 		}
-		err = VerifySignature(t.AuthMethod, data, sig, t.cert, log)
+		err = VerifySignature(t.AuthMethod, data, sig, t.cert, logger)
 		if t.checkSig {
 			if err != nil {
 				test.Error(err)

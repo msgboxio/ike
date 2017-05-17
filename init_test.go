@@ -54,6 +54,7 @@ func TestInit1(t *testing.T) {
 // Initiator cannot handle INVALID_KE_PAYLOAD, responder can generate one
 func TestInit2(t *testing.T) {
 	var cfg1 = DefaultConfig()
+	cfg1.ProposalIke = crypto.Aes128Sha256Ecp256
 	cfg1.LocalID = pskTestID
 	cfg1.RemoteID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
@@ -69,6 +70,6 @@ func TestInit2(t *testing.T) {
 	cfg2.ProposalIke = crypto.Aes128Sha256Modp3072
 	go runTestResponder(&cfg2, &testcb{chi, sa, cerr}, chr, logger)
 	if err := waitFor2Sa(t, sa, cerr); errors.Cause(err) != protocol.ERR_INVALID_KE_PAYLOAD {
-		t.Fail()
+		t.Error("wrong Error", err)
 	}
 }

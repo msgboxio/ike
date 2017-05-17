@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 )
@@ -26,13 +27,14 @@ func TestCheckProposals(t *testing.T) {
 	}
 	ikeProps := crypto.Aes128gcm16Prfsha256Ecp256.AsProposal(protocol.IKE)
 	if err := cfg.CheckProposals(protocol.IKE, ikeProps); err != nil {
-		t.Error(err)
+		t.Error("IKE", err)
 	}
 	ipsecProps := crypto.Aes256gcm16.AsProposal(protocol.ESP)
 	if err := cfg.CheckProposals(protocol.ESP, ipsecProps); err != nil {
-		t.Error(err)
+		t.Error("ESP", err)
 	}
 	if err := cfg.CheckProposals(protocol.IKE, ipsecProps); err == nil {
-		t.Fail()
+		spew.Dump(ipsecProps)
+		t.Error("NO ERROR")
 	}
 }

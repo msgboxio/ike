@@ -249,10 +249,9 @@ func monitorSa(sess *Session) (err error) {
 	// setup SA REKEY timeout (jittered) & monitoring
 	rekeyDelay := sess.cfg.Lifetime
 	saRekeyDeadline := time.NewTimer(rekeyDelay)
-	sess.Logger.Log("RekeyDeadline", rekeyDelay)
 	rekeyTimeout := Jitter(rekeyDelay, -0.2)
 	saRekeyTimer := time.NewTimer(rekeyTimeout)
-	sess.Logger.Log("RekeyTimeout", rekeyTimeout)
+	sess.Logger.Log("RekeyDeadline", rekeyDelay, "RekeyTimeout", rekeyTimeout)
 	for {
 		select {
 		// TODO - use a timeout here
