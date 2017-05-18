@@ -281,6 +281,7 @@ func monitorSa(sess *Session) (err error) {
 					continue
 				}
 				switch evt.SessionNotificationType {
+				case MSG_EMPTY_RESPONSE:
 				case MSG_EMPTY_REQUEST:
 					if iErr := sess.SendEmptyInformational(true); iErr != nil {
 						return iErr
