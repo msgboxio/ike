@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
+	"github.com/pkg/errors"
 )
 
 func runInitiator(sess *Session) (err error) {
@@ -146,12 +147,25 @@ func runIpsecRekey(sess *Session) (err error) {
 	if err != nil {
 		return
 	}
-	params, err := parseChildSa(msg)
+	params, err := parseChildSa(msg, true)
 	if err != nil {
 		return
 	}
-	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiR, err := HandleChildSaForSession(sess, newTkm, true, params)
+	for _, n := range msg.Payloads.GetNotifications() {
+		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
+			// TODO - for now, we should simply end the IKE_SA
+			err = errors.Wrap(nErr, "peer notified")
+			return
+		}
+	}
+	// this will fail for IKE REKEY
+	params.authParams, err = parseSa(msg)
+	if err != nil {
+		return
+	}
+	// use new tkm to verify REKEY_reply and configure new SA
+	espSpiR, lifetime, err := handleChildSaResponse(sess, newTkm, params)
 	if err != nil {
 		return
 	}
@@ -168,22 +182,31 @@ func runIpsecRekey(sess *Session) (err error) {
 	// replace espSpiI & espSpiR : MUTATION
 	sess.EspSpiI = espSpiI
 	sess.EspSpiR = espSpiR
+	if lifetime != 0 {
+		sess.cfg.Lifetime = lifetime
+	}
 	return
 }
 
 func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	// if REKEY rx :
-	params, err := parseChildSa(msg)
+	params, err := parseChildSa(msg, false)
 	if err != nil {
 		return
 	}
+	// this will fail for IKE REKEY
+	params.authParams, err = parseSa(msg)
+	if err != nil {
+		return
+	}
+	// create tkm with new Nonce
 	newTkm, err := NewTkm(&sess.cfg, params.nonce)
 	if err != nil {
 		return
 	}
 	//  send REKEY_reply
 	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiI, err := HandleChildSaForSession(sess, newTkm, false, params)
+	espSpiI, lifetime, err := handleChildSaRequest(sess, newTkm, params)
 	if err != nil {
 		return
 	}
@@ -206,6 +229,9 @@ func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	// replace espSpiI & espSpiR : MUTATION
 	sess.EspSpiI = espSpiI
 	sess.EspSpiR = espSpiR
+	if lifetime != 0 {
+		sess.cfg.Lifetime = lifetime
+	}
 	//  send INFORMATIONAL, wait for INFORMATIONAL_reply
 	//  if timeout, send REKEY_reply again
 	return

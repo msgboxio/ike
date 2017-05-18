@@ -30,13 +30,13 @@ var (
 		protocol.PayloadTypeTSr,
 	}
 
-	rekeyIkeSaPaylods = []protocol.PayloadType{
+	rekeyIkeSaPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeKE,
 		protocol.PayloadTypeNonce,
 	}
 
-	rekeyChildSaPaylods = []protocol.PayloadType{
+	rekeyChildSaPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeNonce,
 		protocol.PayloadTypeTSi,
@@ -360,7 +360,7 @@ func parseSa(msg *Message) (*authParams, error) {
 //  SK {SA, Nr, KEr} - ike sa
 //  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
 type childSaParams struct {
-	authParams
+	*authParams
 	targetEspSpi  protocol.Spi // esp sa that is being replaced
 	nonce         *big.Int
 	dhTransformId protocol.DhTransformId
@@ -440,69 +440,49 @@ func makeChildSa(params *childSaParams) *Message {
 	return child
 }
 
-func parseChildSa(msg *Message) (*childSaParams, error) {
+// parseChildSa parses the CHILD_SA parts only
+// SA part must be parsed separately
+func parseChildSa(msg *Message, forInitiator bool) (*childSaParams, error) {
 	if msg.IkeHeader.ExchangeType != protocol.CREATE_CHILD_SA {
-		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "CREATE_CHILD_SA: incorrect type")
+		return nil, errors.New("CREATE_CHILD_SA: incorrect type")
+	}
+	// other flag combos have been checked
+	if forInitiator {
+		if !msg.IkeHeader.Flags.IsResponse() {
+			return nil, errors.New("CREATE_CHILD_SA: initiator received request")
+		}
+	} else {
+		if msg.IkeHeader.Flags.IsResponse() {
+			return nil, errors.New("CREATE_CHILD_SA: responder received response")
+		}
 	}
 	params := &childSaParams{}
-	if msg.IkeHeader.Flags&protocol.RESPONSE != 0 {
-		params.isResponse = true
-	}
-	if msg.IkeHeader.Flags&protocol.INITIATOR != 0 {
-		params.isInitiator = true
-	}
 	rekeySA := msg.Payloads.GetNotification(protocol.REKEY_SA)
 	if rekeySA != nil {
-		// received CREATE_CHILD_SA request
+		if forInitiator {
+			return nil, errors.New("CREATE_CHILD_SA: initiator received REKEY_SA")
+		}
+		// rekeying a ESP SA
 		// make sure protocol id is correct
 		if rekeySA.ProtocolId != protocol.ESP {
-			return nil, errors.New("REKEY child SA: Wrong protocol")
+			return nil, errors.New("CREATE_CHILD_SA: Wrong protocol")
 		}
 		params.targetEspSpi = rekeySA.Spi
 	}
-	if err := msg.EnsurePayloads(rekeyChildSaPaylods); err == nil {
-		// rekeying IPSEC SA
-		no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-		params.nonce = no.Nonce
-		ikeSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-		params.proposals = ikeSa.Proposals
-		tsI := msg.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-		tsR := msg.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
-		if len(tsI) == 0 || len(tsR) == 0 {
-			return nil,
-				errors.New("REKEY child SA: acceptable traffic selectors are missing")
-		}
-		params.tsI = tsI
-		params.tsR = tsR
-		// check for optional KE payload
-		if kep := msg.Payloads.Get(protocol.PayloadTypeKE); kep != nil {
-			keR := kep.(*protocol.KePayload)
-			params.dhPublic = keR.KeyData
-			params.dhTransformId = keR.DhTransformId
-		}
-	} else if err := msg.EnsurePayloads(rekeyIkeSaPaylods); err == nil {
+	if err := msg.EnsurePayloads(rekeyChildSaPayloads); err == nil {
+		// rekeying IPSEC SA - have traffic selectors
+	} else if err := msg.EnsurePayloads(rekeyIkeSaPayloads); err == nil {
 		// rekeying IKE SA
-		// get sa & nonce
-		no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
-		params.nonce = no.Nonce
-		ikeSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-		params.proposals = ikeSa.Proposals
-		keR := msg.Payloads.Get(protocol.PayloadTypeKE).(*protocol.KePayload)
+	} else {
+		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "CREATE_CHILD_SA")
+	}
+	no := msg.Payloads.Get(protocol.PayloadTypeNonce).(*protocol.NoncePayload)
+	params.nonce = no.Nonce
+	// check for KE payload - optional for IPSEC SA
+	if kep := msg.Payloads.Get(protocol.PayloadTypeKE); kep != nil {
+		keR := kep.(*protocol.KePayload)
 		params.dhPublic = keR.KeyData
 		params.dhTransformId = keR.DhTransformId
-	} else {
-		return nil, errors.New("REKEY packet is invalid")
 	}
-	// notifications
-	wantsTransportMode := false
-	for _, ns := range msg.Payloads.GetNotifications() {
-		switch ns.NotificationType {
-		case protocol.AUTH_LIFETIME:
-			params.lifetime = ns.NotificationMessage.(time.Duration)
-		case protocol.USE_TRANSPORT_MODE:
-			wantsTransportMode = true
-		}
-	}
-	params.isTransportMode = wantsTransportMode
 	return params, nil
 }

@@ -2,6 +2,7 @@ package ike
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
@@ -20,15 +21,16 @@ func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []b
 	prop := protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, espSpi)
 	return makeChildSa(
 		&childSaParams{
-			authParams: authParams{
-				isResponse:  !isInitiator,
-				isInitiator: isInitiator,
-				spiI:        sess.IkeSpiI,
-				spiR:        sess.IkeSpiR,
-				proposals:   prop,
-				tsI:         sess.cfg.TsI,
-				tsR:         sess.cfg.TsR,
-				lifetime:    sess.cfg.Lifetime,
+			authParams: &authParams{
+				isResponse:      !isInitiator,
+				isInitiator:     isInitiator,
+				isTransportMode: sess.cfg.IsTransportMode,
+				spiI:            sess.IkeSpiI,
+				spiR:            sess.IkeSpiR,
+				proposals:       prop,
+				tsI:             sess.cfg.TsI,
+				tsR:             sess.cfg.TsR,
+				lifetime:        sess.cfg.Lifetime,
 			},
 			targetEspSpi:  targetEspSpi,
 			nonce:         no,
@@ -37,34 +39,47 @@ func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []b
 		})
 }
 
-// HandleChildSaForSession currently suppports CREATE_CHILD_SA messages for creating child sa
-func HandleChildSaForSession(sess *Session, newTkm *Tkm, asInitiator bool, params *childSaParams) (protocol.Spi, error) {
-	// check spi if CREATE_CHILD_SA request received as responder
-	if !asInitiator {
-		if !bytes.Equal(params.targetEspSpi, sess.EspSpiI) {
-			return nil, errors.Errorf("REKEY child SA request: incorrect target ESP Spi: 0x%x, rx 0x%x",
-				params.targetEspSpi, sess.EspSpiI)
+func handleChildSaResponse(sess *Session, newTkm *Tkm, params *childSaParams) (spi protocol.Spi, lt time.Duration, err error) {
+	if params.targetEspSpi != nil {
+		err = errors.Errorf("REKEY child SA response: target ESP unexpected")
+		return
+	}
+	spi, lt, err = checkSaForSession(sess, params.authParams)
+	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
+		return
+	}
+	if params.dhPublic != nil {
+		if err = newTkm.DhGenerateKey(params.dhPublic); err != nil {
+			return
 		}
 	}
-	if params.dhPublic == nil {
-		// return nil, errors.New("REKEY child SA: missing DH parameters")
-	} else {
-		// MUTATION
-		if err := newTkm.DhGenerateKey(params.dhPublic); err != nil {
-			return nil, err
+	newTkm.Nr = params.nonce
+	return
+}
+
+func handleChildSaRequest(sess *Session, newTkm *Tkm, params *childSaParams) (spi protocol.Spi, lt time.Duration, err error) {
+	if params.targetEspSpi == nil {
+		err = errors.Errorf("REKEY child SA request: missing target ESP")
+		return
+	}
+	if !bytes.Equal(params.targetEspSpi, sess.EspSpiI) {
+		err = errors.Errorf("REKEY child SA request: incorrect target ESP Spi: 0x%x, rx 0x%x",
+			params.targetEspSpi, sess.EspSpiI)
+		return
+	}
+	spi, lt, err = checkSaForSession(sess, params.authParams)
+	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
+		return
+	}
+	if params.dhPublic != nil {
+		if err = newTkm.DhGenerateKey(params.dhPublic); err != nil {
+			return
 		}
 	}
-	// proposal should be identical
-	if err := sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		return nil, err
-	}
-	// set Nr
-	// MUTATION
-	if asInitiator {
-		newTkm.Nr = params.nonce
-	} else {
-		newTkm.Ni = params.nonce
-	}
-	// get new esp from proposal
-	return spiFromProposal(params.proposals, protocol.ESP)
+	newTkm.Ni = params.nonce
+	return
 }
