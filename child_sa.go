@@ -18,20 +18,23 @@ func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []b
 		targetEspSpi = sess.EspSpiI
 	}
 	prop := protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, espSpi)
-	return makeChildSa(&childSaParams{
-		isResponse:    !isInitiator,
-		isInitiator:   isInitiator,
-		ikeSpiI:       sess.IkeSpiI,
-		ikeSpiR:       sess.IkeSpiR,
-		proposals:     prop,
-		tsI:           sess.cfg.TsI,
-		tsR:           sess.cfg.TsR,
-		lifetime:      sess.cfg.Lifetime,
-		targetEspSpi:  targetEspSpi,
-		nonce:         no,
-		dhTransformId: newTkm.suite.DhGroup.TransformId(),
-		dhPublic:      newTkm.DhPublic,
-	})
+	return makeChildSa(
+		&childSaParams{
+			authParams: authParams{
+				isResponse:  !isInitiator,
+				isInitiator: isInitiator,
+				spiI:        sess.IkeSpiI,
+				spiR:        sess.IkeSpiR,
+				proposals:   prop,
+				tsI:         sess.cfg.TsI,
+				tsR:         sess.cfg.TsR,
+				lifetime:    sess.cfg.Lifetime,
+			},
+			targetEspSpi:  targetEspSpi,
+			nonce:         no,
+			dhTransformId: newTkm.suite.DhGroup.TransformId(),
+			dhPublic:      newTkm.DhPublic,
+		})
 }
 
 // HandleChildSaForSession currently suppports CREATE_CHILD_SA messages for creating child sa

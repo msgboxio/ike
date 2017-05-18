@@ -75,9 +75,8 @@ func TestIkeMsgGen(t *testing.T) {
 		sess.IkeSpiI, sess.IkeSpiR,
 		protocol.ProposalFromTransform(protocol.IKE, cfg.ProposalIke, sess.IkeSpiI),
 		cfg.TsI, cfg.TsR,
-		&PskAuthenticator{tkm, true, pskTestID},
 		time.Hour,
-	}, initIb, logger)
+	}, &PskAuthenticator{tkm, true, pskTestID}, initIb, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

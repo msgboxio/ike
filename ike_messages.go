@@ -185,11 +185,10 @@ type authParams struct {
 	spiI, spiR      protocol.Spi
 	proposals       protocol.Proposals
 	tsI, tsR        protocol.Selectors
-	authenticator   Authenticator
 	lifetime        time.Duration
 }
 
-func makeAuth(params *authParams, initB []byte, logger log.Logger) (*Message, error) {
+func makeAuth(params *authParams, authenticator Authenticator, initB []byte, logger log.Logger) (*Message, error) {
 	flags := protocol.RESPONSE
 	idPayloadType := protocol.PayloadTypeIDr
 	if params.isInitiator {
@@ -208,8 +207,8 @@ func makeAuth(params *authParams, initB []byte, logger log.Logger) (*Message, er
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	id := params.authenticator.Identity()
-	switch params.authenticator.AuthMethod() {
+	id := authenticator.Identity()
+	switch authenticator.AuthMethod() {
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		certId, ok := id.(*CertIdentity)
 		if !ok {
@@ -232,13 +231,13 @@ func makeAuth(params *authParams, initB []byte, logger log.Logger) (*Message, er
 		Data:          id.Id(),
 	}
 	auth.Payloads.Add(iDp)
-	signature, err := params.authenticator.Sign(initB, iDp, logger)
+	signature, err := authenticator.Sign(initB, iDp, logger)
 	if err != nil {
 		return nil, err
 	}
 	auth.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		AuthMethod:    params.authenticator.AuthMethod(),
+		AuthMethod:    authenticator.AuthMethod(),
 		Data:          signature,
 	})
 	auth.Payloads.Add(&protocol.SaPayload{
@@ -338,16 +337,14 @@ func parseSa(msg *Message) (*authParams, error) {
 		params.tsR = tsR
 	}
 	// notifications
-	wantsTransportMode := false
 	for _, ns := range msg.Payloads.GetNotifications() {
 		switch ns.NotificationType {
 		case protocol.AUTH_LIFETIME:
 			params.lifetime = ns.NotificationMessage.(time.Duration)
 		case protocol.USE_TRANSPORT_MODE:
-			wantsTransportMode = true
+			params.isTransportMode = true
 		}
 	}
-	params.isTransportMode = wantsTransportMode
 	return params, nil
 }
 
@@ -363,17 +360,11 @@ func parseSa(msg *Message) (*authParams, error) {
 //  SK {SA, Nr, KEr} - ike sa
 //  SK {SA, Nr, [KEr,] TSi, TSr} - child sa
 type childSaParams struct {
-	isResponse       bool
-	isInitiator      bool
-	isTransportMode  bool
-	ikeSpiI, ikeSpiR protocol.Spi
-	proposals        protocol.Proposals
-	tsI, tsR         protocol.Selectors
-	lifetime         time.Duration
-	targetEspSpi     protocol.Spi // esp sa that is being replaced
-	nonce            *big.Int
-	dhTransformId    protocol.DhTransformId
-	dhPublic         *big.Int
+	authParams
+	targetEspSpi  protocol.Spi // esp sa that is being replaced
+	nonce         *big.Int
+	dhTransformId protocol.DhTransformId
+	dhPublic      *big.Int
 }
 
 func makeChildSa(params *childSaParams) *Message {
@@ -386,8 +377,8 @@ func makeChildSa(params *childSaParams) *Message {
 	}
 	child := &Message{
 		IkeHeader: &protocol.IkeHeader{
-			SpiI:         params.ikeSpiI,
-			SpiR:         params.ikeSpiR,
+			SpiI:         params.spiI,
+			SpiR:         params.spiR,
 			NextPayload:  protocol.PayloadTypeSK,
 			MajorVersion: protocol.IKEV2_MAJOR_VERSION,
 			MinorVersion: protocol.IKEV2_MINOR_VERSION,

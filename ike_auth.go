@@ -35,9 +35,36 @@ func authFromSession(sess *Session) (*Message, error) {
 			proposals:       prop,
 			tsI:             sess.cfg.TsI,
 			tsR:             sess.cfg.TsR,
-			authenticator:   sess.authLocal,
 			lifetime:        sess.cfg.Lifetime,
-		}, initB, sess.Logger)
+		}, sess.authLocal, initB, sess.Logger)
+}
+
+func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.Duration, err error) {
+	// can we authenticate ?
+	if err = authenticateSession(sess, msg); err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(protocol.ERR_AUTHENTICATION_FAILED)
+		return
+	}
+	for _, n := range msg.Payloads.GetNotifications() {
+		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
+			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
+			// TODO - for now, we should simply end the IKE_SA
+			err = errors.Wrap(nErr, "peer notified")
+			return
+		}
+	}
+	// are SA parameters ok?
+	params, err := parseSa(msg)
+	if err != nil {
+		return
+	}
+	spi, lt, err = checkSaForSession(sess, params)
+	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
+	}
+	return
 }
 
 // authenticateSession supports signature authentication using
@@ -89,20 +116,8 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 	}
 }
 
-// handleSaForSession handles the remaining tasks after authentication succeeded
-func handleSaForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.Duration, err error) {
-	params, err := parseSa(msg)
-	if err != nil {
-		return
-	}
-	for _, n := range msg.Payloads.GetNotifications() {
-		if nErr, ok := protocol.GetIkeErrorCode(n.NotificationType); ok {
-			// for example, due to FAILED_CP_REQUIRED, NO_PROPOSAL_CHOSEN, TS_UNACCEPTABLE etc
-			// TODO - for now, we should simply end the IKE_SA
-			err = errors.Errorf("peer notified: %s;", nErr)
-			return
-		}
-	}
+// checkSaForSession handles the remaining tasks after authentication succeeded
+func checkSaForSession(sess *Session, params *authParams) (spi protocol.Spi, lt time.Duration, err error) {
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
 		sess.Logger.Log("PEER_PROPOSALS", spew.Sprintf("%#v", params.proposals))
 		sess.Logger.Log("OUR_PROPOSALS", spew.Sprintf("%#v", sess.cfg.ProposalEsp))

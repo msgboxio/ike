@@ -57,18 +57,12 @@ func runInitiator(sess *Session) (err error) {
 	sess.initRb = msg.Data
 	// start auth
 	sess.EspSpiI = MakeSpi()[:4]
-	// on send AUTH and wait for reply
+	// send AUTH and wait for reply
 	if msg, err = sess.SendMsgGetReply(sess.AuthMsg); err != nil {
 		return
 	}
 	// can we authenticate ?
-	if err = authenticateSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(protocol.ERR_AUTHENTICATION_FAILED)
-		return
-	}
-	// are other parameters ok?
-	espSpiR, lifetime, err := handleSaForSession(sess, msg)
+	espSpiR, lifetime, err := handleAuthForSession(sess, msg)
 	if err != nil {
 		// send notification to peer & end IKE SA
 		sess.CheckError(err)
@@ -116,13 +110,7 @@ func runResponder(sess *Session) (err error) {
 		return
 	}
 	// can we authenticate ?
-	if err = authenticateSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(protocol.ERR_AUTHENTICATION_FAILED)
-		return
-	}
-	// are other parameters ok?
-	espSpiI, lifetime, err := handleSaForSession(sess, msg)
+	espSpiI, lifetime, err := handleAuthForSession(sess, msg)
 	if err != nil {
 		// send notification to peer & end IKE SA
 		sess.CheckError(err)
