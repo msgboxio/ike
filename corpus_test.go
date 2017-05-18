@@ -73,7 +73,7 @@ func TestIkeMsgGen(t *testing.T) {
 		false, true,
 		cfg.IsTransportMode,
 		sess.IkeSpiI, sess.IkeSpiR,
-		ProposalFromTransform(protocol.IKE, cfg.ProposalIke, sess.IkeSpiI),
+		protocol.ProposalFromTransform(protocol.IKE, cfg.ProposalIke, sess.IkeSpiI),
 		cfg.TsI, cfg.TsR,
 		&PskAuthenticator{tkm, true, pskTestID},
 		time.Hour,

@@ -23,7 +23,7 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 		panic(err)
 	}
 
-	log.Log("xfrm", "Started listening for xfrm messages from kernel")
+	log.Log("XFRM", "Started listening for messages from kernel")
 	go func() {
 	done:
 		for {
@@ -32,12 +32,12 @@ func ListenForEvents(parent context.Context, cb ListenerCallback, log log.Logger
 				doneCh <- struct{}{}
 				break done
 			case err := <-errCh:
-				log.Log("xfrm", err)
+				log.Log("XFRM", err)
 			case msg := <-ch:
 				cb(msg)
 			}
 		}
-		log.Log("xfrm", "Stopped listening for xfrm messages from kernel")
+		log.Log("XFRM", "Stopped listening for messages from kernel")
 		close(ch)
 		close(errCh)
 		close(doneCh)

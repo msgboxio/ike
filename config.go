@@ -67,18 +67,6 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, errors.Cause(err).Error())
 }
 
-func ProposalFromTransform(prot protocol.ProtocolID, trs protocol.TransformMap, spi []byte) protocol.Proposals {
-	return protocol.Proposals{
-		&protocol.SaProposal{
-			IsLast:     true,
-			Number:     1,
-			ProtocolID: prot,
-			Spi:        append([]byte{}, spi...),
-			Transforms: trs.AsList(),
-		},
-	}
-}
-
 func (cfg *Config) CheckDhTransform(dhID protocol.DhTransformId) error {
 	// make sure dh tranform id is the one that was configured
 	tr := cfg.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId

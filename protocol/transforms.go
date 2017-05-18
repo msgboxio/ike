@@ -5,14 +5,20 @@ import (
 )
 
 // TransformMap store the configured crypto suite
+// NOTE that this cannot be used to parse incoming list of transforms
+// incoming list can have many Transforms of same type in 1 proposal
 type TransformMap map[TransformType]*SaTransform
 
-func (t *TransformMap) AsProposal(pID ProtocolID) (prop Proposals) {
-	prop = append(prop, &SaProposal{
-		ProtocolID: pID,
-		Transforms: t.AsList(),
-	})
-	return
+func ProposalFromTransform(prot ProtocolID, trs TransformMap, spi []byte) Proposals {
+	return Proposals{
+		&SaProposal{
+			IsLast:     true,
+			Number:     1,
+			ProtocolID: prot,
+			Spi:        append([]byte{}, spi...),
+			Transforms: trs.AsList(),
+		},
+	}
 }
 
 // AsList converts transforms to flat list
@@ -24,7 +30,7 @@ func (t TransformMap) AsList() (trs []*SaTransform) {
 }
 
 // Within checks if the configured set of transforms occurs within list of proposed transforms
-func (t TransformMap) Within(proposals []*SaTransform) error {
+func (t TransformMap) Within(transforms []*SaTransform) error {
 	listHas := func(trsList []*SaTransform, target *SaTransform) error {
 		for _, tr := range trsList {
 			if target.IsEqual(tr) {
@@ -33,8 +39,8 @@ func (t TransformMap) Within(proposals []*SaTransform) error {
 		}
 		return fmt.Errorf("%v: does not match", target.Transform)
 	}
-	for _, proposal := range t {
-		if err := listHas(proposals, proposal); err != nil {
+	for _, transform := range t {
+		if err := listHas(transforms, transform); err != nil {
 			return err
 		}
 	}

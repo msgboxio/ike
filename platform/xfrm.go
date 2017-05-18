@@ -240,7 +240,7 @@ func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
 			if err == syscall.EEXIST {
-				level.Warn(log).Log("POLICY", fmt.Sprintf("Skipped adding %v: already exists", policy))
+				log.Log("POLICY", fmt.Sprintf("Skipped adding %v: already exists", policy))
 				continue
 			} else {
 				err = errors.Errorf("Failed to add policy %v: %v", policy, err)

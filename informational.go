@@ -1,6 +1,7 @@
 package ike
 
 import (
+	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -15,10 +16,9 @@ type infoParams struct {
 type SessionNotificationType int
 
 const (
-	MSG_DELETE_IKE_SA SessionNotificationType = iota
-	MSG_DELETE_ESP_SA
-	MSG_EMPTY_REQUEST
+	MSG_EMPTY_REQUEST SessionNotificationType = iota
 	MSG_EMPTY_RESPONSE
+	MSG_NOTIFICATION
 	MSG_ERROR
 )
 
@@ -108,6 +108,8 @@ func EmptyFromSession(sess *Session, isResponse bool) *Message {
 	})
 }
 
+// HandleInformationalForSession handles informational from peer
+// TODO : handles a single payload only
 func HandleInformationalForSession(sess *Session, msg *Message) *InformationalEvent {
 	plds := msg.Payloads
 	// Empty
@@ -125,15 +127,14 @@ func HandleInformationalForSession(sess *Session, msg *Message) *InformationalEv
 		dp := del.(*protocol.DeletePayload)
 		if dp.ProtocolId == protocol.IKE {
 			return &InformationalEvent{
-				SessionNotificationType: MSG_DELETE_IKE_SA,
+				SessionNotificationType: MSG_ERROR,
 				Message:                 errors.Wrapf(errPeerRemovedIkeSa, "SA: %#x", msg.IkeHeader.SpiI),
 			}
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
-				sess.Logger.Log("msg", "Peer removed ESP SA", "spi", spi)
 				return &InformationalEvent{
-					SessionNotificationType: MSG_DELETE_ESP_SA,
+					SessionNotificationType: MSG_ERROR,
 					Message:                 errors.Wrapf(errPeerRemovedEspSa, "SA: %#x", spi),
 				}
 			}
@@ -141,22 +142,25 @@ func HandleInformationalForSession(sess *Session, msg *Message) *InformationalEv
 	}
 	// Notification
 	// delete the ike sa if notification is one of following
-	// UNSUPPORTED_CRITICAL_PAYLOAD, INVALID_SYNTAX, an AUTHENTICATION_FAILED
+	// UNSUPPORTED_CRITICAL_PAYLOAD, INVALID_SYNTAX, AUTHENTICATION_FAILED
 	if note := plds.Get(protocol.PayloadTypeN); note != nil {
 		np := note.(*protocol.NotifyPayload)
 		if err, ok := protocol.GetIkeErrorCode(np.NotificationType); ok {
-			sess.Logger.Log("ERR", err, "msg", "Received Informational Error")
 			return &InformationalEvent{
 				SessionNotificationType: MSG_ERROR,
 				Message:                 err,
 			}
 		}
+		level.Warn(sess.Logger).Log("INFORMATIONAL", "unhandled", "NOTIFICATION", np)
 	}
 	// Configuration
 	if cfg := plds.Get(protocol.PayloadTypeCP); cfg != nil {
 		cp := cfg.(*protocol.ConfigurationPayload)
-		sess.Logger.Log("config", cp)
-		// TODO
+		return &InformationalEvent{
+			SessionNotificationType: MSG_NOTIFICATION,
+			Message:                 cp,
+		}
 	}
+	level.Warn(sess.Logger).Log("INFORMATIONAL", "unhandled", "PAYLOADS", plds)
 	return nil
 }

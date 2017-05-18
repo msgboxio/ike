@@ -35,10 +35,10 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 		sess.Close(errPeerRemovedIkeSa)
 	default:
 		sess.Close(err)
-		level.Warn(sess.Logger).Log("ERR", err)
+		sess.Logger.Log("CLOSE", err)
 	}
 	i.sessions.Remove(spi)
-	sess.Logger.Log("IKE_SA", "removed", "session", fmt.Sprintf("%s<=>%s", sess.IkeSpiI, sess.IkeSpiR))
+	sess.Logger.Log("IKE_SA", "removed", "SESSION", fmt.Sprintf("%s<=>%s", sess.IkeSpiI, sess.IkeSpiR))
 	return
 }
 
@@ -48,13 +48,13 @@ func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) 
 		for {
 			initiator, err := NewInitiator(config, remoteAddr, i.conn, i.cb, log)
 			if err != nil {
-				level.Error(log).Log("ERR", err, "msg", "could not start Initiator")
+				log.Log("ERROR", err, "MSG", "could not start Initiator")
 				return
 			}
 			spi := SpiToInt64(initiator.IkeSpiI)
 			// if peer did not rekey in time
 			if err = i.runSession(spi, initiator); err == errorRekeyDeadlineExceeded {
-				initiator.Logger.Log("msg", "reKeying")
+				initiator.Logger.Log("REKEY", "deadline exceeded")
 				continue
 			} else if err == context.Canceled {
 				break
@@ -75,7 +75,7 @@ func (i *Cmd) ShutDown(err error) {
 
 // Run loops until there is a socket error
 func (i *Cmd) Run(config *Config, log log.Logger) error {
-	onInitRequest := func(spi uint64, msg *Message) (sess *Session, err error) {
+	forUnknownSession := func(spi uint64, msg *Message) (sess *Session, err error) {
 		// handle IKE_SA_INIT requests
 		if err = checkInitRequest(msg, i.conn, config, log); err != nil {
 			return nil, err
@@ -100,7 +100,7 @@ func (i *Cmd) Run(config *Config, log log.Logger) error {
 		session, found := i.sessions.Get(spi)
 		if !found {
 			var err error
-			session, err = onInitRequest(spi, msg)
+			session, err = forUnknownSession(spi, msg)
 			if err != nil {
 				level.Warn(log).Log("DROP", err)
 				continue

@@ -1,7 +1,6 @@
 package crypto
 
 import (
-	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -30,8 +29,6 @@ type CipherSuite struct {
 
 	// Lengths, in bytes, of the key material needed for each component.
 	KeyLen, MacTruncLen int
-
-	log.Logger
 }
 
 // Build a CipherSuite from the given transfom

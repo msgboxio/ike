@@ -33,9 +33,9 @@ func (msg *Message) DecodePayloads(b []byte, nextPayload protocol.PayloadType, l
 		return
 	}
 	if protocol.PacketLog {
-		stdlog.Println("rx:" + spew.Sprintf("%#v", msg))
+		stdlog.Println("RX:" + spew.Sprintf("%#v", msg))
 	}
-	log.Log("rx", fmt.Sprintf("[%d] %s%s", msg.IkeHeader.MsgID, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags),
+	log.Log("RX", fmt.Sprintf("[%d] %s%s", msg.IkeHeader.MsgID, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags),
 		"payloads", *msg.Payloads)
 	return
 }
@@ -107,9 +107,9 @@ func (msg *Message) CheckFlags() error {
 // Encode encodes the message using crypto keys
 func (msg *Message) Encode(tkm *Tkm, forInitiator bool, log log.Logger) (b []byte, err error) {
 	if protocol.PacketLog {
-		stdlog.Println("tx:" + spew.Sprintf("%#v", msg))
+		stdlog.Println("TX:" + spew.Sprintf("%#v", msg))
 	}
-	log.Log("tx", fmt.Sprintf("[%d] %s%s", msg.IkeHeader.MsgID, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags),
+	log.Log("TX", fmt.Sprintf("[%d] %s%s", msg.IkeHeader.MsgID, msg.IkeHeader.ExchangeType, msg.IkeHeader.Flags),
 		"payloads", msg.Payloads)
 	firstPayloadType := protocol.PayloadTypeNone // no payloads are one possibility
 	if len(msg.Payloads.Array) > 0 {

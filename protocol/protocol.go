@@ -826,7 +826,7 @@ const (
 type ConfigurationAttributeType uint16
 
 const (
-	// Attribute Type           										Value  Multi-Valued  Length
+	// Attribute Type		Value 							 Multi-Valued  Length
 	INTERNAL_IP4_ADDRESS ConfigurationAttributeType = 1  //     YES*          0 or 4 octets
 	INTERNAL_IP4_NETMASK ConfigurationAttributeType = 2  //     NO            0 or 4 octets
 	INTERNAL_IP4_DNS     ConfigurationAttributeType = 3  //     YES           0 or 4 octets

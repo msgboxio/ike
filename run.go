@@ -44,7 +44,7 @@ func runInitiator(sess *Session) (err error) {
 	}
 	// COOKIE is handled within cmd.newSession
 	if err = handleInitForSession(sess, init, msg); err != nil {
-		level.Error(sess.Logger).Log("init", err)
+		level.Error(sess.Logger).Log("INIT", err)
 		return
 	}
 	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
@@ -263,13 +263,20 @@ func monitorSa(sess *Session) (err error) {
 			// if INFORMATIONAL, send INFORMATIONAL_reply
 			case protocol.INFORMATIONAL:
 				evt := HandleInformationalForSession(sess, msg)
+				if evt == nil {
+					continue
+				}
 				switch evt.SessionNotificationType {
 				case MSG_EMPTY_REQUEST:
-					if err := sess.SendEmptyInformational(true); err != nil {
-						return err
+					if iErr := sess.SendEmptyInformational(true); iErr != nil {
+						return iErr
 					}
-				case MSG_DELETE_IKE_SA:
-					return evt.Message.(error)
+				case MSG_ERROR:
+					iErr := evt.Message.(error)
+					sess.Logger.Log("INFORMATIONAL", iErr)
+					return iErr
+				default:
+					level.Warn(sess.Logger).Log("INFORMATIONAL", "unhandled", "NOTIFICATION", evt.Message)
 				}
 			case protocol.CREATE_CHILD_SA:
 				// ONLY :

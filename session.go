@@ -257,14 +257,14 @@ func (sess *Session) InitMsg() (*OutgoingMessage, error) {
 
 // AuthMsg generates IKE_AUTH
 func (sess *Session) AuthMsg() (*OutgoingMessage, error) {
-	sess.Logger.Log("tx_selectors", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+	sess.Logger.Log("TX_SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
 	// make sure selectors are present
 	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
 		return nil, errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 	}
 	auth, err := authFromSession(sess)
 	if err != nil {
-		sess.Logger.Log("ERR", err)
+		sess.Logger.Log("ERROR", err)
 		return nil, err
 	}
 	auth.IkeHeader.MsgID = sess.nextID()

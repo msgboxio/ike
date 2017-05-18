@@ -24,7 +24,7 @@ func InitFromSession(sess *Session) *Message {
 		isInitiator:       sess.isInitiator,
 		spiI:              sess.IkeSpiI,
 		spiR:              sess.IkeSpiR,
-		proposals:         ProposalFromTransform(protocol.IKE, sess.cfg.ProposalIke, sess.IkeSpiI),
+		proposals:         protocol.ProposalFromTransform(protocol.IKE, sess.cfg.ProposalIke, sess.IkeSpiI),
 		cookie:            sess.responderCookie,
 		dhTransformID:     sess.tkm.suite.DhGroup.TransformId(),
 		dhPublic:          sess.tkm.DhPublic,
@@ -51,7 +51,7 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	if err := doCheckInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
 		if reply := initErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
-			log.Log("REPLY", err.Error())
+			log.Log("INIT_REPLY", err.Error())
 			WriteMessage(conn, reply, nil, false, log)
 		}
 		return err
@@ -153,13 +153,21 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 	if SpiToInt64(init.spiR) == 0 {
 		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: invalid responder SPI")
 	}
+	// check if transforms are usable
+	if err := sess.cfg.CheckDhTransform(init.dhTransformID); err != nil {
+		return err
+	}
+	// check ike proposal
+	if err := sess.cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {
+		return err
+	}
 	return nil
 }
 
 // return error if secure signatures are configured, but not proposed by peer
 func checkSignatureAlg(sess *Session, isEnabled bool) error {
 	if !isEnabled {
-		level.Warn(sess.Logger).Log("msg", "Not using secure signatures")
+		level.Warn(sess.Logger).Log("SIGNATURE", "insecure")
 		if sess.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
 			return errors.New("Peer is not using secure signatures")
 		}
@@ -176,7 +184,7 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			sess.Logger.Log("secure", protocol.AUTH_DIGITAL_SIGNATURE)
+			sess.Logger.Log("SIGNATURE", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.LocalAddr) {

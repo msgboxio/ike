@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"syscall"
 
+	"fmt"
+
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/pkg/errors"
@@ -91,13 +93,13 @@ func listenUDP4(localString string, logger log.Logger) (p4 *pconnV4, err error) 
 	cf := ipv4.FlagTTL | ipv4.FlagSrc | ipv4.FlagDst | ipv4.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
-			level.Warn(logger).Log("msg", "udp source address detection not supported", "on", runtime.GOOS)
+			level.Warn(logger).Log("UDP", "source address detection not supported", "on", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
 		}
 	}
-	logger.Log("listeningV4", udp.LocalAddr())
+	logger.Log("UDP", fmt.Sprintf("listening : %s", udp.LocalAddr()))
 	return (*pconnV4)(p), nil
 }
 
@@ -112,13 +114,13 @@ func listenUDP6(localString string, logger log.Logger) (p6 *pconnV6, err error) 
 	cf := ipv6.FlagSrc | ipv6.FlagDst | ipv6.FlagInterface
 	if err := p.SetControlMessage(cf, true); err != nil {
 		if protocolNotSupported(err) {
-			level.Warn(logger).Log("msg", "udp source address detection not supported", "on", runtime.GOOS)
+			level.Warn(logger).Log("UDP", "source address detection not supported", "on", runtime.GOOS)
 		} else {
 			p.Close()
 			return nil, err
 		}
 	}
-	logger.Log("listening", udp.LocalAddr())
+	logger.Log("UDP", fmt.Sprintf("listening : %s", udp.LocalAddr()))
 	return (*pconnV6)(p), nil
 }
 
@@ -182,7 +184,7 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 		if err != nil {
 			return nil, errors.WithStack(err)
 		}
-		log.Log("read", len(b), "from", remoteAddr)
+		log.Log("RX", len(b), "FROM", remoteAddr)
 		if buf != nil {
 			b = append(buf, b...)
 			buf = nil
@@ -193,7 +195,7 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 			continue
 		}
 		if err != nil {
-			level.Error(log).Log(err)
+			log.Log("ERROR", err)
 			continue
 		}
 		msg.LocalAddr = localAddr
@@ -211,8 +213,10 @@ func WriteMessage(conn Conn, msg *Message, tkm *Tkm, forInitiator bool, log log.
 }
 
 func WriteData(conn Conn, data []byte, remote net.Addr, log log.Logger) (err error) {
-	err = conn.WritePacket(data, remote)
-	log.Log("write", len(data), "to", remote, "error", err)
+	if err = conn.WritePacket(data, remote); err != nil {
+		return errors.WithStack(err)
+	}
+	log.Log("TX", len(data), "TO", remote)
 	return
 }
 

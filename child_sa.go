@@ -17,7 +17,7 @@ func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []b
 		no = newTkm.Ni
 		targetEspSpi = sess.EspSpiI
 	}
-	prop := ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, espSpi)
+	prop := protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, espSpi)
 	return makeChildSa(&childSaParams{
 		isResponse:    !isInitiator,
 		isInitiator:   isInitiator,

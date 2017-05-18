@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -17,12 +16,12 @@ func authFromSession(sess *Session) (*Message, error) {
 	// part of signed octet
 	var initB []byte
 	if sess.isInitiator {
-		prop = ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiI)
+		prop = protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiI)
 		// initiators's signed octet
 		// initI | Nr | prf(sk_pi | IDi )
 		initB = sess.initIb
 	} else {
-		prop = ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiR)
+		prop = protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiR)
 		// responder's signed octet
 		// initR | Ni | prf(sk_pr | IDr )
 		initB = sess.initRb
@@ -86,7 +85,7 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 		}
 		return certAuth.Verify(initB, idP, authP.Data, chain, sess.Logger)
 	default:
-		return errors.Errorf("Auth method not supported: %s", authP.AuthMethod)
+		return errors.Errorf("Authentication method is not supported: %s", authP.AuthMethod)
 	}
 }
 
@@ -105,19 +104,20 @@ func handleSaForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.
 		}
 	}
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		level.Warn(sess.Logger).Log("ERR", err, "proposal", spew.Sprintf("%#v", params.proposals))
+		sess.Logger.Log("PEER_PROPOSALS", spew.Sprintf("%#v", params.proposals))
+		sess.Logger.Log("OUR_PROPOSALS", spew.Sprintf("%#v", sess.cfg.ProposalEsp))
 		return
 	}
 	// selectors
-	sess.Logger.Log("rx_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
+	sess.Logger.Log("PEER_SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
 	if err = sess.cfg.CheckSelectors(params.tsI, params.tsR, params.isTransportMode); err != nil {
-		level.Warn(sess.Logger).Log("cfg_selectors:", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+		sess.Logger.Log("OUR_SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
 		return
 	}
 	if params.isTransportMode {
-		sess.Logger.Log("Mode", "TRANSPORT")
+		sess.Logger.Log("MODE", "TRANSPORT")
 	} else {
-		sess.Logger.Log("Mode", "TUNNEL")
+		sess.Logger.Log("MODE", "TUNNEL")
 	}
 	// message looks OK
 	if sess.isInitiator {
@@ -130,7 +130,7 @@ func handleSaForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.
 	}
 	lt = params.lifetime
 	if params.lifetime != 0 {
-		sess.Logger.Log("Lifetime", params.lifetime)
+		sess.Logger.Log("LIFETIME", params.lifetime)
 	}
 	return
 }

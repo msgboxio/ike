@@ -25,7 +25,7 @@ func waitForSignal(cancel context.CancelFunc, logger log.Logger) {
 	sig := <-c
 	// sig is a ^C, handle it
 	cancel()
-	level.Warn(logger).Log("signal", sig.String())
+	level.Warn(logger).Log("SIGNAL", sig.String())
 }
 
 var localPskID = &ike.PskIdentities{
@@ -144,7 +144,7 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 func main() {
 	config, localString, remoteString, err := loadConfig()
 	if err != nil {
-		fmt.Printf("Error: %+v\n", err)
+		fmt.Printf("Argument Error: %+v\n", err)
 		panic(err)
 	}
 
@@ -159,11 +159,11 @@ func main() {
 	go waitForSignal(cancel, logger)
 
 	ifs, _ := net.InterfaceAddrs()
-	logger.Log("interfaces", fmt.Sprintf("%v", ifs))
+	logger.Log("INTERFACES", fmt.Sprintf("%v", ifs))
 	// this should load the xfrm modules
 	// requires root
 	cb := func(msg interface{}) {
-		logger.Log("xfrm:", spew.Sprintf("%#v", msg))
+		logger.Log("EVENT", spew.Sprintf("%#v", msg))
 	}
 	platform.ListenForEvents(cxt, cb, logger)
 
@@ -217,13 +217,13 @@ func main() {
 	err = cmd.Run(config, logger)
 	if !closing {
 		// ignore when caused by the close call above
-		logger.Log("Error", err)
+		logger.Log("ERROR", err)
 		if isDebug {
-			fmt.Printf("Stack: %+v\n", err)
+			fmt.Printf("STACK: %+v\n", err)
 		}
 		cancel()
 	}
 	// wait for remaining sessions to shutdown
 	wg.Wait()
-	fmt.Printf("shutdown: %v\n", cxt.Err())
+	fmt.Printf("SHUTDOWN: %v\n", cxt.Err())
 }

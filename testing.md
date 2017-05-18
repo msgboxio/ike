@@ -45,7 +45,11 @@ sudo ./server.elf -remotenet=172.30.1.0/24 -localnet=172.30.2.0/24
 
 route is only needed for host originated packets
 
-# bugs
+# TODO:
+> allow external authentication
+> HandleChildSaForSession / handleSaForSession : must share code
+> dont allow selector & crypto change on rekey
+> send & accept all available suites
 > errors need to be looked at more closely
 
 # tests needed

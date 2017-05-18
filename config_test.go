@@ -25,11 +25,11 @@ func TestCheckProposals(t *testing.T) {
 		ProposalIke: crypto.Aes128gcm16Prfsha256Ecp256,
 		ProposalEsp: crypto.Aes256gcm16,
 	}
-	ikeProps := crypto.Aes128gcm16Prfsha256Ecp256.AsProposal(protocol.IKE)
+	ikeProps := protocol.ProposalFromTransform(protocol.IKE, crypto.Aes128gcm16Prfsha256Ecp256, MakeSpi())
 	if err := cfg.CheckProposals(protocol.IKE, ikeProps); err != nil {
 		t.Error("IKE", err)
 	}
-	ipsecProps := crypto.Aes256gcm16.AsProposal(protocol.ESP)
+	ipsecProps := protocol.ProposalFromTransform(protocol.ESP, crypto.Aes256gcm16, MakeSpi())
 	if err := cfg.CheckProposals(protocol.ESP, ipsecProps); err != nil {
 		t.Error("ESP", err)
 	}
