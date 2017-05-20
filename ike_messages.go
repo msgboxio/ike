@@ -24,6 +24,9 @@ var (
 		protocol.PayloadTypeIDr,
 		protocol.PayloadTypeAUTH,
 	}
+	saPayload = []protocol.PayloadType{
+		protocol.PayloadTypeSA,
+	}
 	saPayloads = []protocol.PayloadType{
 		protocol.PayloadTypeSA,
 		protocol.PayloadTypeTSi,
@@ -312,30 +315,42 @@ func parseSa(msg *Message) (*authParams, error) {
 	if msg.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
-	if err := msg.EnsurePayloads(saPayloads); err == nil {
-		espSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
-		if espSa.Proposals == nil {
-			return nil, errors.New("proposals are missing")
-		}
-		params.proposals = espSa.Proposals
-		spi, err := spiFromProposal(params.proposals, protocol.ESP)
-		if err != nil {
-			return nil, err
-		}
-		if params.isInitiator {
-			params.spiI = spi
-		} else {
-			params.spiR = spi
-		}
-		// get selectors
-		tsI := msg.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
-		tsR := msg.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
-		if len(tsI) == 0 || len(tsR) == 0 {
-			return nil, errors.New("acceptable traffic selectors are missing")
-		}
-		params.tsI = tsI
-		params.tsR = tsR
+	if err := msg.EnsurePayloads(saPayload); err != nil {
+		return nil, err
 	}
+	espSa := msg.Payloads.Get(protocol.PayloadTypeSA).(*protocol.SaPayload)
+	if espSa.Proposals == nil {
+		return nil, errors.New("proposals are missing")
+	}
+	params.proposals = espSa.Proposals
+	spi, err := spiFromProposal(params.proposals, protocol.ESP)
+	if err != nil {
+		return nil, err
+	}
+	if params.isInitiator {
+		params.spiI = spi
+	} else {
+		params.spiR = spi
+	}
+	return params, nil
+}
+
+func parseSaAndSelectors(msg *Message) (*authParams, error) {
+	if err := msg.EnsurePayloads(saPayloads); err != nil {
+		return nil, err
+	}
+	params, err := parseSa(msg)
+	if err != nil {
+		return nil, err
+	}
+	// get selectors
+	tsI := msg.Payloads.Get(protocol.PayloadTypeTSi).(*protocol.TrafficSelectorPayload).Selectors
+	tsR := msg.Payloads.Get(protocol.PayloadTypeTSr).(*protocol.TrafficSelectorPayload).Selectors
+	if len(tsI) == 0 || len(tsR) == 0 {
+		return nil, errors.New("acceptable traffic selectors are missing")
+	}
+	params.tsI = tsI
+	params.tsR = tsR
 	// notifications
 	for _, ns := range msg.Payloads.GetNotifications() {
 		switch ns.NotificationType {
@@ -353,7 +368,7 @@ func parseSa(msg *Message) (*authParams, error) {
 //  HDR(SPIi=xxx, SPIy=yyy, CREATE_CHILD_SA, Flags: none, Message ID=m),
 //  SK {SA, Ni, KEi} - ike sa
 //  SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr} - for rekey child sa
-//  SK {SA, Ni, [KEi,] TSi, TSr} - for new child sa, different selector perhaps
+//  SK {SA, Ni, [KEi,] TSi, TSr} - for new child sa, what is the use case ??
 // a<-b
 //  HDR(SPIi=xxx, SPIr=yyy, CREATE_CHILD_SA, Flags: Initiator | Response, Message ID=m),
 //  SK {N(NO_ADDITIONAL_SAS} - reject
@@ -440,8 +455,6 @@ func makeChildSa(params *childSaParams) *Message {
 	return child
 }
 
-// parseChildSa parses the CHILD_SA parts only
-// SA part must be parsed separately
 func parseChildSa(msg *Message, forInitiator bool) (*childSaParams, error) {
 	if msg.IkeHeader.ExchangeType != protocol.CREATE_CHILD_SA {
 		return nil, errors.New("CREATE_CHILD_SA: incorrect type")
@@ -471,8 +484,16 @@ func parseChildSa(msg *Message, forInitiator bool) (*childSaParams, error) {
 	}
 	if err := msg.EnsurePayloads(rekeyChildSaPayloads); err == nil {
 		// rekeying IPSEC SA - have traffic selectors
+		params.authParams, err = parseSaAndSelectors(msg)
+		if err != nil {
+			return nil, err
+		}
 	} else if err := msg.EnsurePayloads(rekeyIkeSaPayloads); err == nil {
-		// rekeying IKE SA
+		// rekeying IKE SA - no selectors
+		params.authParams, err = parseSa(msg)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		return nil, errors.Wrap(protocol.ERR_INVALID_SYNTAX, "CREATE_CHILD_SA")
 	}

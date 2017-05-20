@@ -47,7 +47,7 @@ route is only needed for host originated packets
 
 # TODO:
 > allow external authentication
-> HandleChildSaForSession / handleSaForSession : must share code
+> allow external control
 > dont allow selector & crypto change on rekey
 > send & accept all available suites
 > errors need to be looked at more closely

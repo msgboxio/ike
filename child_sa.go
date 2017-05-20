@@ -2,15 +2,14 @@ package ike
 
 import (
 	"bytes"
-	"time"
 
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
 
+// ChildSaFromSession creates CREATE_CHILD_SA messages
 // HDR, SK {N(REKEY_SA), SA, Ni, [KEi,] TSi, TSr}   -->
 // <--  HDR, SK {SA, Nr, [KEr,] TSi, TSr}
-// ChildSaFromSession creates CREATE_CHILD_SA messages
 func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []byte) *Message {
 	no := newTkm.Nr
 	targetEspSpi := sess.EspSpiR
@@ -39,47 +38,29 @@ func ChildSaFromSession(sess *Session, newTkm *Tkm, isInitiator bool, espSpi []b
 		})
 }
 
-func handleChildSaResponse(sess *Session, newTkm *Tkm, params *childSaParams) (spi protocol.Spi, lt time.Duration, err error) {
-	if params.targetEspSpi != nil {
-		err = errors.Errorf("REKEY child SA response: target ESP unexpected")
+func checkIpsecRekeyRequest(sess *Session, params *childSaParams) (espSpiI protocol.Spi, err error) {
+	if params.tsI == nil || params.tsR == nil {
+		err = errors.Errorf("CREATE_CHILD_SA request: selectors are missing. Rekeying IKE SA unsupported")
 		return
 	}
-	spi, lt, err = checkSaForSession(sess, params.authParams)
-	if err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
-		return
-	}
-	if params.dhPublic != nil {
-		if err = newTkm.DhGenerateKey(params.dhPublic); err != nil {
-			return
-		}
-	}
-	newTkm.Nr = params.nonce
-	return
-}
-
-func handleChildSaRequest(sess *Session, newTkm *Tkm, params *childSaParams) (spi protocol.Spi, lt time.Duration, err error) {
 	if params.targetEspSpi == nil {
-		err = errors.Errorf("REKEY child SA request: missing target ESP")
+		err = errors.Errorf("CREATE_CHILD_SA request: missing target ESP")
 		return
 	}
 	if !bytes.Equal(params.targetEspSpi, sess.EspSpiI) {
-		err = errors.Errorf("REKEY child SA request: incorrect target ESP Spi: 0x%x, rx 0x%x",
+		err = errors.Errorf("CREATE_CHILD_SA request: incorrect target ESP Spi: 0x%x, rx 0x%x",
 			params.targetEspSpi, sess.EspSpiI)
 		return
 	}
-	spi, lt, err = checkSaForSession(sess, params.authParams)
-	if err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
+	espSpiI, _, err = checkSelectorsForSession(sess, params.authParams)
+	return
+}
+
+func checkIpsecRekeyResponse(sess *Session, params *childSaParams) (espSpiR protocol.Spi, err error) {
+	if params.tsI == nil || params.tsR == nil {
+		err = errors.Errorf("CREATE_CHILD_SA response: selectors are missing")
 		return
 	}
-	if params.dhPublic != nil {
-		if err = newTkm.DhGenerateKey(params.dhPublic); err != nil {
-			return
-		}
-	}
-	newTkm.Ni = params.nonce
+	espSpiR, _, err = checkSelectorsForSession(sess, params.authParams)
 	return
 }

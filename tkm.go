@@ -39,14 +39,29 @@ type Tkm struct {
 
 var errMissingCryptoKeys = errors.New("Missing crypto keys")
 
-func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (tkm *Tkm, err error) {
+func NewTkm(cfg *Config, ni *big.Int) (*Tkm, error) {
+	suite, err := crypto.NewCipherSuite(cfg.ProposalIke)
+	if err != nil {
+		return nil, err
+	}
+	espSuite, err := crypto.NewCipherSuite(cfg.ProposalEsp)
+	if err != nil {
+		return nil, err
+	}
+	if ni != nil {
+		return newTkmResponder(suite, espSuite, ni)
+	}
+	return newTkmInitiator(suite, espSuite)
+}
+
+func newTkmInitiator(suite, espSuite *crypto.CipherSuite) (tkm *Tkm, err error) {
 	if err = suite.CheckIkeTransforms(); err != nil {
 		return
 	}
 	if err = espSuite.CheckEspTransforms(); err != nil {
 		return
 	}
-	// standard says nonce shwould be at least half of size of negotiated prf
+	// standard says nonce should be at least half of size of negotiated prf
 	ni, err := createNonce(suite.Prf.Length * 8)
 	if err != nil {
 		return
@@ -61,7 +76,7 @@ func NewTkmInitiator(suite, espSuite *crypto.CipherSuite) (tkm *Tkm, err error) 
 	return
 }
 
-func NewTkmResponder(suite, espSuite *crypto.CipherSuite, no *big.Int) (tkm *Tkm, err error) {
+func newTkmResponder(suite, espSuite *crypto.CipherSuite, ni *big.Int) (tkm *Tkm, err error) {
 	if err = suite.CheckIkeTransforms(); err != nil {
 		return
 	}
@@ -69,18 +84,19 @@ func NewTkmResponder(suite, espSuite *crypto.CipherSuite, no *big.Int) (tkm *Tkm
 		return
 	}
 	// at least 128 bits & at least half the key size of the negotiated prf
-	blen := no.BitLen()
-	if blen < 128 || blen < (suite.Prf.Length*8)/2 {
+	bitLen := ni.BitLen()
+	if bitLen < 128 || bitLen < (suite.Prf.Length*8)/2 {
 		err = errors.New("Proposed nonce is too small")
 		return
 	}
-	nr, err := createNonce(blen)
+	nr, err := createNonce(bitLen)
 	if err != nil {
 		return
 	}
 	tkm = &Tkm{
 		suite:    suite,
 		espSuite: espSuite,
+		Ni:       ni,
 		Nr:       nr,
 	}
 	err = tkm.dhCreate()

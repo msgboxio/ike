@@ -33,7 +33,7 @@ func initiatorTkm(t *testing.T) *Tkm {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tkm, err := NewTkmInitiator(suite, nil)
+	tkm, err := newTkmInitiator(suite, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

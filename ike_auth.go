@@ -55,11 +55,11 @@ func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt tim
 		}
 	}
 	// are SA parameters ok?
-	params, err := parseSa(msg)
+	params, err := parseSaAndSelectors(msg)
 	if err != nil {
 		return
 	}
-	spi, lt, err = checkSaForSession(sess, params)
+	spi, lt, err = checkSelectorsForSession(sess, params)
 	if err != nil {
 		// send notification to peer & end IKE SA
 		sess.CheckError(err)
@@ -116,8 +116,8 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 	}
 }
 
-// checkSaForSession handles the remaining tasks after authentication succeeded
-func checkSaForSession(sess *Session, params *authParams) (spi protocol.Spi, lt time.Duration, err error) {
+// checkSelectorsForSession returns Peer Spi
+func checkSelectorsForSession(sess *Session, params *authParams) (spi protocol.Spi, lt time.Duration, err error) {
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
 		sess.Logger.Log("PEER_PROPOSALS", spew.Sprintf("%#v", params.proposals))
 		sess.Logger.Log("OUR_PROPOSALS", spew.Sprintf("%#v", sess.cfg.ProposalEsp))

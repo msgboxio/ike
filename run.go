@@ -159,16 +159,18 @@ func runIpsecRekey(sess *Session) (err error) {
 			return
 		}
 	}
-	// this will fail for IKE REKEY
-	params.authParams, err = parseSa(msg)
+	espSpiR, err := checkIpsecRekeyResponse(sess, params)
 	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
 		return
 	}
-	// use new tkm to verify REKEY_reply and configure new SA
-	espSpiR, lifetime, err := handleChildSaResponse(sess, newTkm, params)
-	if err != nil {
-		return
+	if params.dhPublic != nil {
+		if err = newTkm.DhGenerateKey(params.dhPublic); err != nil {
+			return
+		}
 	}
+	newTkm.Nr = params.nonce
 	// install new SA - [espSpiI, espSpiR, nI, nR & dhShared]
 	err = sess.AddSa(addSaParams(sess.tkm,
 		newTkm.Ni, newTkm.Nr, newTkm.DhShared,
@@ -182,21 +184,22 @@ func runIpsecRekey(sess *Session) (err error) {
 	// replace espSpiI & espSpiR : MUTATION
 	sess.EspSpiI = espSpiI
 	sess.EspSpiR = espSpiR
-	if lifetime != 0 {
-		sess.cfg.Lifetime = lifetime
+	if params.lifetime != 0 {
+		sess.cfg.Lifetime = params.lifetime
 	}
 	return
 }
 
-func onIpsecRekey(sess *Session, msg *Message) (err error) {
+func onRekeyRequest(sess *Session, msg *Message) (err error) {
 	// if REKEY rx :
 	params, err := parseChildSa(msg, false)
 	if err != nil {
 		return
 	}
-	// this will fail for IKE REKEY
-	params.authParams, err = parseSa(msg)
+	espSpiI, err := checkIpsecRekeyRequest(sess, params)
 	if err != nil {
+		// send notification to peer & end IKE SA
+		sess.CheckError(err)
 		return
 	}
 	// create tkm with new Nonce
@@ -204,13 +207,13 @@ func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	if err != nil {
 		return
 	}
-	//  send REKEY_reply
-	//  use new tkm to verify REKEY_reply and configure new SA
-	espSpiI, lifetime, err := handleChildSaRequest(sess, newTkm, params)
-	if err != nil {
-		return
+	if params.dhPublic != nil {
+		if err = newTkm.DhGenerateKey(params.dhPublic); err != nil {
+			return
+		}
 	}
 	espSpiR := MakeSpi()[:4]
+	//  send REKEY_reply
 	// closure with parameters for new SA
 	err = sess.sendMsg(sess.RekeyMsg(ChildSaFromSession(sess, newTkm, false, espSpiR)))
 	if err != nil {
@@ -229,8 +232,8 @@ func onIpsecRekey(sess *Session, msg *Message) (err error) {
 	// replace espSpiI & espSpiR : MUTATION
 	sess.EspSpiI = espSpiI
 	sess.EspSpiR = espSpiR
-	if lifetime != 0 {
-		sess.cfg.Lifetime = lifetime
+	if params.lifetime != 0 {
+		sess.cfg.Lifetime = params.lifetime
 	}
 	//  send INFORMATIONAL, wait for INFORMATIONAL_reply
 	//  if timeout, send REKEY_reply again
@@ -297,12 +300,12 @@ func monitorSa(sess *Session) (err error) {
 				// ONLY :
 				// Accept SA rekey if responder
 				if sess.isInitiator {
-					level.Warn(sess.Logger).Log("RekeyRequest", "Currently only supported for responder")
+					level.Warn(sess.Logger).Log("CREATE_CHILD_SA", "Currently only supported for responder")
 					// send notification
 					sess.Notify(protocol.ERR_NO_ADDITIONAL_SAS, true)
 					continue
 				}
-				if err := onIpsecRekey(sess, msg); err != nil {
+				if err = onRekeyRequest(sess, msg); err != nil {
 					return err
 				}
 				// reset timers
@@ -319,9 +322,9 @@ func monitorSa(sess *Session) (err error) {
 				continue
 			}
 			sess.Logger.Log("Rekey", "Timeout")
-			if err := runIpsecRekey(sess); err != nil {
+			if err = runIpsecRekey(sess); err != nil {
 				sess.Logger.Log("RekeyError", err)
-				continue
+				return
 			}
 			// reset timers
 			saRekeyTimer.Reset(rekeyTimeout)
