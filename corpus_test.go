@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
@@ -69,20 +68,13 @@ func TestIkeMsgGen(t *testing.T) {
 		t.Fatal(err)
 	}
 	// auth
-	authI, err := makeAuth(&authParams{
-		false, true,
-		cfg.IsTransportMode,
-		sess.IkeSpiI, sess.IkeSpiR,
-		protocol.ProposalFromTransform(protocol.IKE, cfg.ProposalIke, sess.IkeSpiI),
-		cfg.TsI, cfg.TsR,
-		time.Hour,
-	}, &PskAuthenticator{tkm, true, pskTestID}, initIb, logger)
+	sess.initIb = initIb
+	sess.authLocal = &PskAuthenticator{tkm, true, pskTestID}
+	authI, err := authFromSession(sess)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// overwrite NextPayload
-	authI.IkeHeader.NextPayload = protocol.PayloadTypeIDi
-	authI.IkeHeader.MsgID = 43
+	// authI.IkeHeader.MsgID = 43
 	// encode & write authI msg
 	authIb, err := authI.Encode(tkm, true, logger)
 	if err != nil {

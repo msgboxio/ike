@@ -15,18 +15,21 @@ func authFromSession(sess *Session) (*Message, error) {
 	var prop protocol.Proposals
 	// part of signed octet
 	var initB []byte
+	var idPayloadType protocol.PayloadType
 	if sess.isInitiator {
 		prop = protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiI)
 		// initiators's signed octet
 		// initI | Nr | prf(sk_pi | IDi )
 		initB = sess.initIb
+		idPayloadType = protocol.PayloadTypeIDi
 	} else {
 		prop = protocol.ProposalFromTransform(protocol.ESP, sess.cfg.ProposalEsp, sess.EspSpiR)
 		// responder's signed octet
 		// initR | Ni | prf(sk_pr | IDr )
 		initB = sess.initRb
+		idPayloadType = protocol.PayloadTypeIDr
 	}
-	return makeAuth(
+	authMsg := makeAuth(
 		&authParams{
 			isInitiator:     sess.isInitiator,
 			isTransportMode: sess.cfg.IsTransportMode,
@@ -36,7 +39,44 @@ func authFromSession(sess *Session) (*Message, error) {
 			tsI:             sess.cfg.TsI,
 			tsR:             sess.cfg.TsR,
 			lifetime:        sess.cfg.Lifetime,
-		}, sess.authLocal, initB, sess.Logger)
+		})
+	id := sess.authLocal.Identity()
+	// add CERT
+	switch sess.authLocal.AuthMethod() {
+	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
+		certId, ok := id.(*CertIdentity)
+		if !ok {
+			// should never happen
+			return nil, errors.New("missing Certificate Identity")
+		}
+		if certId.Certificate == nil {
+			return nil, errors.New("missing Certificate")
+		}
+		authMsg.Payloads.Add(&protocol.CertPayload{
+			PayloadHeader:    &protocol.PayloadHeader{},
+			CertEncodingType: protocol.X_509_CERTIFICATE_SIGNATURE,
+			Data:             certId.Certificate.Raw,
+		})
+	}
+	// add ID
+	iDp := &protocol.IdPayload{
+		PayloadHeader: &protocol.PayloadHeader{},
+		IdPayloadType: idPayloadType,
+		IdType:        id.IdType(),
+		Data:          id.Id(),
+	}
+	authMsg.Payloads.Add(iDp)
+	// signature
+	signature, err := sess.authLocal.Sign(initB, iDp, sess.Logger)
+	if err != nil {
+		return nil, err
+	}
+	authMsg.Payloads.Add(&protocol.AuthPayload{
+		PayloadHeader: &protocol.PayloadHeader{},
+		AuthMethod:    sess.authLocal.AuthMethod(),
+		Data:          signature,
+	})
+	return authMsg, nil
 }
 
 func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.Duration, err error) {

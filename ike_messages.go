@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/go-kit/kit/log"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -191,12 +190,11 @@ type authParams struct {
 	lifetime        time.Duration
 }
 
-func makeAuth(params *authParams, authenticator Authenticator, initB []byte, logger log.Logger) (*Message, error) {
+// id, cert & auth payloads are added later
+func makeAuth(params *authParams) *Message {
 	flags := protocol.RESPONSE
-	idPayloadType := protocol.PayloadTypeIDr
 	if params.isInitiator {
 		flags = protocol.INITIATOR
-		idPayloadType = protocol.PayloadTypeIDi
 	}
 	auth := &Message{
 		IkeHeader: &protocol.IkeHeader{
@@ -210,39 +208,6 @@ func makeAuth(params *authParams, authenticator Authenticator, initB []byte, log
 		},
 		Payloads: protocol.MakePayloads(),
 	}
-	id := authenticator.Identity()
-	switch authenticator.AuthMethod() {
-	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		certId, ok := id.(*CertIdentity)
-		if !ok {
-			// should never happen
-			return nil, errors.New("missing Certificate Identity")
-		}
-		if certId.Certificate == nil {
-			return nil, errors.New("missing Identity")
-		}
-		auth.Payloads.Add(&protocol.CertPayload{
-			PayloadHeader:    &protocol.PayloadHeader{},
-			CertEncodingType: protocol.X_509_CERTIFICATE_SIGNATURE,
-			Data:             certId.Certificate.Raw,
-		})
-	}
-	iDp := &protocol.IdPayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		IdPayloadType: idPayloadType,
-		IdType:        id.IdType(),
-		Data:          id.Id(),
-	}
-	auth.Payloads.Add(iDp)
-	signature, err := authenticator.Sign(initB, iDp, logger)
-	if err != nil {
-		return nil, err
-	}
-	auth.Payloads.Add(&protocol.AuthPayload{
-		PayloadHeader: &protocol.PayloadHeader{},
-		AuthMethod:    authenticator.AuthMethod(),
-		Data:          signature,
-	})
 	auth.Payloads.Add(&protocol.SaPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
 		Proposals:     params.proposals,
@@ -280,7 +245,7 @@ func makeAuth(params *authParams, authenticator Authenticator, initB []byte, log
 			NotificationMessage: params.lifetime,
 		})
 	}
-	return auth, nil
+	return auth
 }
 
 func checkAuth(msg *Message, forInitiator bool) error {
@@ -315,6 +280,7 @@ func parseSa(msg *Message) (*authParams, error) {
 	if msg.IkeHeader.Flags&protocol.INITIATOR != 0 {
 		params.isInitiator = true
 	}
+	// NOTE: checking for SA payload only
 	if err := msg.EnsurePayloads(saPayload); err != nil {
 		return nil, err
 	}
