@@ -89,8 +89,9 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			return
 		}
 		config.RemoteID = &ike.CertIdentity{
-			Roots: roots,
-			Name:  peerID,
+			Roots:                roots,
+			Name:                 peerID,
+			AuthenticationMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		}
 	}
 	if certFile != "" && keyFile != "" {
@@ -106,13 +107,16 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			return
 		}
 		config.LocalID = &ike.CertIdentity{
-			Certificate: certs[0],
-			PrivateKey:  key,
+			Certificate:          certs[0],
+			PrivateKey:           key,
+			AuthenticationMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		}
 	}
 
-	if config.RemoteID == nil || config.LocalID == nil {
+	if config.RemoteID == nil {
 		config.RemoteID = remotePskID
+	}
+	if config.LocalID == nil {
 		config.LocalID = localPskID
 	}
 

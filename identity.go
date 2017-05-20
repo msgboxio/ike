@@ -10,7 +10,8 @@ import (
 type Identity interface {
 	IdType() protocol.IdType
 	Id() []byte
-	AuthData(id []byte, method protocol.AuthMethod) []byte
+	AuthMethod() protocol.AuthMethod
+	AuthData(id []byte) []byte
 }
 
 type PskIdentities struct {
@@ -26,10 +27,11 @@ func (psk *PskIdentities) Id() []byte {
 	return []byte(psk.Primary)
 }
 
-func (psk *PskIdentities) AuthData(id []byte, method protocol.AuthMethod) []byte {
-	if method != protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
-		return nil
-	}
+func (psk *PskIdentities) AuthMethod() protocol.AuthMethod {
+	return protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE
+}
+
+func (psk *PskIdentities) AuthData(id []byte) []byte {
 	if d, ok := psk.Ids[string(id)]; ok {
 		return d
 	}
@@ -37,10 +39,11 @@ func (psk *PskIdentities) AuthData(id []byte, method protocol.AuthMethod) []byte
 }
 
 type CertIdentity struct {
-	Certificate *x509.Certificate
-	PrivateKey  crypto.Signer
-	Roots       *x509.CertPool
-	Name        string
+	Certificate          *x509.Certificate
+	PrivateKey           crypto.Signer
+	Roots                *x509.CertPool
+	Name                 string
+	AuthenticationMethod protocol.AuthMethod
 }
 
 func (c *CertIdentity) IdType() protocol.IdType {
@@ -51,6 +54,10 @@ func (c *CertIdentity) Id() []byte {
 	return c.Certificate.RawSubject
 }
 
-func (c *CertIdentity) AuthData(id []byte, method protocol.AuthMethod) []byte {
+func (c *CertIdentity) AuthData(id []byte) []byte {
 	return nil
+}
+
+func (c *CertIdentity) AuthMethod() protocol.AuthMethod {
+	return c.AuthenticationMethod
 }

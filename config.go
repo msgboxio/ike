@@ -14,7 +14,6 @@ type Config struct {
 	ProposalIke, ProposalEsp protocol.TransformMap
 
 	LocalID, RemoteID Identity
-	AuthMethod        protocol.AuthMethod
 
 	TsI, TsR             protocol.Selectors
 	IsTransportMode      bool
@@ -30,7 +29,6 @@ type Config struct {
 
 func DefaultConfig() *Config {
 	return &Config{
-		AuthMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		// ThrottleInitRequests: true,
 		Lifetime:    time.Hour,
 		ProposalIke: crypto.Aes128Sha256Modp3072,

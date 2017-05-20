@@ -42,7 +42,7 @@ func authFromSession(sess *Session) (*Message, error) {
 		})
 	id := sess.authLocal.Identity()
 	// add CERT
-	switch sess.authLocal.AuthMethod() {
+	switch id.AuthMethod() {
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
 		certId, ok := id.(*CertIdentity)
 		if !ok {
@@ -73,7 +73,7 @@ func authFromSession(sess *Session) (*Message, error) {
 	}
 	authMsg.Payloads.Add(&protocol.AuthPayload{
 		PayloadHeader: &protocol.PayloadHeader{},
-		AuthMethod:    sess.authLocal.AuthMethod(),
+		AuthMethod:    id.AuthMethod(),
 		Data:          signature,
 	})
 	return authMsg, nil

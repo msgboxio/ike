@@ -84,8 +84,8 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		msgIDResp:   msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
-	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
-	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
+	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, sess.isInitiator)
+	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, sess.isInitiator)
 	return sess, nil
 }
 
@@ -119,8 +119,8 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 		msgIDResp: msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
-	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
-	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, cfg.AuthMethod, sess.isInitiator)
+	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, sess.isInitiator)
+	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, sess.isInitiator)
 	return sess, nil
 }
 

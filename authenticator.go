@@ -8,12 +8,11 @@ import (
 // Authenticator is used to authenticate & create AUTH payloads
 type Authenticator interface {
 	Identity() Identity
-	AuthMethod() protocol.AuthMethod
 	Sign([]byte, *protocol.IdPayload, log.Logger) ([]byte, error)
 	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error
 }
 
-func NewAuthenticator(id Identity, tkm *Tkm, authMethod protocol.AuthMethod, forInitiator bool) Authenticator {
+func NewAuthenticator(id Identity, tkm *Tkm, forInitiator bool) Authenticator {
 	switch id.(type) {
 	case *PskIdentities:
 		return &PskAuthenticator{
@@ -26,7 +25,6 @@ func NewAuthenticator(id Identity, tkm *Tkm, authMethod protocol.AuthMethod, for
 			tkm:          tkm,
 			forInitiator: forInitiator,
 			identity:     id,
-			authMethod:   authMethod,
 		}
 		return cid
 	default:

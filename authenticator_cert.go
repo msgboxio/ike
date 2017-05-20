@@ -16,7 +16,6 @@ type CertAuthenticator struct {
 	tkm          *Tkm
 	forInitiator bool
 	identity     Identity
-	authMethod   protocol.AuthMethod
 }
 
 // this is an Authenticator
@@ -24,10 +23,6 @@ var _ Authenticator = (*CertAuthenticator)(nil)
 
 func (o *CertAuthenticator) Identity() Identity {
 	return o.identity
-}
-
-func (o *CertAuthenticator) AuthMethod() protocol.AuthMethod {
-	return o.authMethod
 }
 
 func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger log.Logger) ([]byte, error) {
@@ -47,7 +42,7 @@ func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger l
 	cert := FormatCert(certID.Certificate)
 	logger.Log("AUTH", fmt.Sprintf("OUR_CERT[%s]", cert.String()))
 	signed := o.tkm.SignB(initB, idP.Encode(), o.forInitiator)
-	return CreateSignature(certID.Certificate.SignatureAlgorithm, o.AuthMethod(), signed, certID.PrivateKey, logger)
+	return CreateSignature(certID.Certificate.SignatureAlgorithm, certID.AuthMethod(), signed, certID.PrivateKey, logger)
 }
 
 func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error {
@@ -82,5 +77,5 @@ func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 		return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
 	}
 	signed := o.tkm.SignB(initB, idP.Encode(), !o.forInitiator)
-	return VerifySignature(o.AuthMethod(), signed, authData, chain[0], logger)
+	return VerifySignature(certID.AuthMethod(), signed, authData, chain[0], logger)
 }

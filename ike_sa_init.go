@@ -17,8 +17,11 @@ import (
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(sess *Session) *Message {
 	nonce := sess.tkm.Nr
+	secureSignature := sess.authLocal.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE
 	if sess.isInitiator {
 		nonce = sess.tkm.Ni
+		// TODO - assumes remoteID has been already set
+		secureSignature = sess.authRemote.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE
 	}
 	return makeInit(&initParams{
 		isInitiator:       sess.isInitiator,
@@ -29,7 +32,7 @@ func InitFromSession(sess *Session) *Message {
 		dhTransformID:     sess.tkm.suite.DhGroup.TransformId(),
 		dhPublic:          sess.tkm.DhPublic,
 		nonce:             nonce,
-		rfc7427Signatures: sess.cfg.AuthMethod == protocol.AUTH_DIGITAL_SIGNATURE,
+		rfc7427Signatures: secureSignature,
 	})
 }
 
@@ -165,11 +168,15 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 }
 
 // return error if secure signatures are configured, but not proposed by peer
-func checkSignatureAlg(sess *Session, isEnabled bool) error {
+func checkSignatureSecurity(sess *Session, isEnabled bool) error {
+	secureConfigured :=
+		(sess.authLocal.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE) ||
+			(sess.authRemote.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE)
 	if !isEnabled {
 		level.Warn(sess.Logger).Log("SIGNATURE", "insecure")
-		if sess.cfg.AuthMethod == protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE {
-			return errors.New("Peer is not using secure signatures")
+		if secureConfigured {
+			// TODO : change local configuration ?
+			return errors.New("Peer does not use secure signatures")
 		}
 	}
 	return nil
@@ -197,8 +204,5 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 		}
 	}
 	// returns error if secure signatures are configured, but not proposed by peer
-	if err := checkSignatureAlg(sess, rfc7427Signatures); err != nil {
-		return err
-	}
-	return nil
+	return checkSignatureSecurity(sess, rfc7427Signatures)
 }
