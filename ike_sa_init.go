@@ -191,7 +191,6 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			sess.Logger.Log("SIGNATURE", protocol.AUTH_DIGITAL_SIGNATURE)
 			rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.LocalAddr) {

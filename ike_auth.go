@@ -159,20 +159,17 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 // checkSelectorsForSession returns Peer Spi
 func checkSelectorsForSession(sess *Session, params *authParams) (spi protocol.Spi, lt time.Duration, err error) {
 	if err = sess.cfg.CheckProposals(protocol.ESP, params.proposals); err != nil {
-		sess.Logger.Log("PEER_PROPOSALS", spew.Sprintf("%#v", params.proposals))
-		sess.Logger.Log("OUR_PROPOSALS", spew.Sprintf("%#v", sess.cfg.ProposalEsp))
+		sess.Logger.Log("BAD_PROPOSAL", err,
+			"PEER", spew.Sprintf("%#v", params.proposals),
+			"OUR", spew.Sprintf("%#v", sess.cfg.ProposalEsp))
 		return
 	}
 	// selectors
-	sess.Logger.Log("PEER_SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR))
 	if err = sess.cfg.CheckSelectors(params.tsI, params.tsR, params.isTransportMode); err != nil {
-		sess.Logger.Log("OUR_SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
+		sess.Logger.Log("BAD_SELECTORS", err,
+			"PEER", fmt.Sprintf("[INI]%s<=>%s[RES]", params.tsI, params.tsR),
+			"OUR_SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR))
 		return
-	}
-	if params.isTransportMode {
-		sess.Logger.Log("MODE", "TRANSPORT")
-	} else {
-		sess.Logger.Log("MODE", "TUNNEL")
 	}
 	// message looks OK
 	if sess.isInitiator {
@@ -180,12 +177,16 @@ func checkSelectorsForSession(sess *Session, params *authParams) (spi protocol.S
 	} else {
 		spi = append([]byte{}, params.spiI...)
 	}
-	if err != nil {
-		return
-	}
 	lt = params.lifetime
+	log := []interface{}{"SELECTORS", fmt.Sprintf("[INI]%s<=>%s[RES]", sess.cfg.TsI, sess.cfg.TsR)}
 	if params.lifetime != 0 {
-		sess.Logger.Log("LIFETIME", params.lifetime)
+		log = append(log, "LIFETIME", params.lifetime)
 	}
+	if params.isTransportMode {
+		log = append(log, "MODE", "TRANSPORT")
+	} else {
+		log = append(log, "MODE", "TUNNEL")
+	}
+	sess.Logger.Log(log...)
 	return
 }
