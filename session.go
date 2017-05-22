@@ -395,7 +395,7 @@ func (sess *Session) AddSa(sa *platform.SaParams) (err error) {
 
 // RemoveSa removes Child SA
 func (sess *Session) RemoveSa() (err error) {
-	if (sess.Local == nil) || sess.Remote == nil {
+	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
 		sess.Logger.Log("REMOVE_SA", "sa was not started")
 		return
 	}
@@ -421,7 +421,7 @@ func (sess *Session) installPolicy() (err error) {
 }
 
 func (sess *Session) removePolicy() (err error) {
-	if (sess.Local == nil) || sess.Remote == nil {
+	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
 		sess.Logger.Log("REMOVE_POLICY", "sa was not started")
 		return
 	}

@@ -28,16 +28,6 @@ func waitForSignal(cancel context.CancelFunc, logger log.Logger) {
 	level.Warn(logger).Log("SIGNAL", sig.String())
 }
 
-var localPskID = &ike.PskIdentities{
-	Primary: "ak@msgbox.io",
-	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-}
-
-var remotePskID = &ike.PskIdentities{
-	Primary: "ak@msgbox.io",
-	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
-}
-
 var isDebug bool
 
 func loadConfig() (config *ike.Config, localString string, remoteString string, err error) {
@@ -48,11 +38,14 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 	flag.StringVar(&localTunnel, "localnet", "", "local network")
 	flag.StringVar(&remoteTunnel, "remotenet", "", "remote network")
 
-	var caFile, certFile, keyFile, peerID string
+	var caFile, certFile, keyFile, peerID, peerPass, id, pass string
 	flag.StringVar(&caFile, "ca", "", "PEM encoded ca certificate")
 	flag.StringVar(&certFile, "cert", "", "PEM encoded peer certificate")
 	flag.StringVar(&keyFile, "key", "", "PEM encoded peer key")
 	flag.StringVar(&peerID, "peerid", "", "Peer ID")
+	flag.StringVar(&peerPass, "peerpass", "", "Peer Password")
+	flag.StringVar(&id, "id", "", "our ID")
+	flag.StringVar(&pass, "pass", "", "our Password")
 
 	var useESN bool
 	flag.BoolVar(&useESN, "esn", useESN, "use ESN")
@@ -81,7 +74,7 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 		err = fmt.Errorf("ike suit %s is not available", ikeSuite)
 		return
 	}
-	// crypto keys & names
+	// ca & id for verifying peer
 	if caFile != "" && peerID != "" {
 		roots, _err := ike.LoadRoot(caFile)
 		err = errors.Wrapf(_err, "loading %s", caFile)
@@ -94,6 +87,17 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			AuthenticationMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		}
 	}
+	if config.RemoteID == nil {
+		if peerID == "" && peerPass == "" {
+			err = errors.New("peer credentials are missing")
+			return
+		}
+		config.RemoteID = &ike.PskIdentities{
+			Primary: peerID,
+			Ids:     map[string][]byte{peerID: []byte(peerPass)},
+		}
+	}
+	// our key & certificate
 	if certFile != "" && keyFile != "" {
 		certs, _err := ike.LoadCerts(certFile)
 		err = errors.Wrapf(_err, "loading %s", certFile)
@@ -112,12 +116,15 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			AuthenticationMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		}
 	}
-
-	if config.RemoteID == nil {
-		config.RemoteID = remotePskID
-	}
 	if config.LocalID == nil {
-		config.LocalID = localPskID
+		if id == "" && pass == "" {
+			err = errors.New("our credentials are missing")
+			return
+		}
+		config.LocalID = &ike.PskIdentities{
+			Primary: id,
+			Ids:     map[string][]byte{id: []byte(pass)},
+		}
 	}
 
 	if localTunnel == "" && remoteTunnel == "" {

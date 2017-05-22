@@ -59,5 +59,9 @@ func (c *CertIdentity) AuthData(id []byte) []byte {
 }
 
 func (c *CertIdentity) AuthMethod() protocol.AuthMethod {
+	// if not explicitly configured, this defaults to AUTH_RSA_DIGITAL_SIGNATURE
+	if c.AuthenticationMethod == 0 {
+		return protocol.AUTH_RSA_DIGITAL_SIGNATURE
+	}
 	return c.AuthenticationMethod
 }
