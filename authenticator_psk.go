@@ -2,7 +2,6 @@ package ike
 
 import (
 	"crypto/hmac"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/go-kit/kit/log"
@@ -45,7 +44,7 @@ func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authD
 	logger.Log("AUTH", fmt.Sprintf("PEER_KEY[%s]", string(idP.Data)))
 	secret := psk.identity.AuthData(idP.Data)
 	if secret == nil {
-		return errors.Errorf("Ike PSK Auth for %s failed: No Secret is available", string(idP.Data))
+		return errors.Errorf("Ike PSK Auth for: %s failed, No Secret", string(idP.Data))
 	}
 	signB := psk.tkm.SignB(initB, idP.Encode(), !psk.forInitiator)
 	// NOTE : tkm.Auth always uses the hash negotiated for prf
@@ -53,7 +52,7 @@ func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authD
 	signedB := prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length]
 	// compare
 	if !hmac.Equal(signedB, authData) {
-		return errors.Errorf("Ike PSK Auth of %s failed: \n%s vs \n%s", string(idP.Data), hex.Dump(signedB), hex.Dump(authData))
+		return errors.Errorf("Ike PSK Auth failed for: %s", string(idP.Data))
 	}
 	return nil
 }

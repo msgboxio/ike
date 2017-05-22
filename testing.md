@@ -46,7 +46,6 @@ sudo ./server.elf -remotenet=172.30.1.0/24 -localnet=172.30.2.0/24
 route is only needed for host originated packets
 
 # bugs
-> when initiator receives AUTH_FAILED, it should stop
 
 # TODO:
 > allow external authentication

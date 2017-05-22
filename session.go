@@ -126,15 +126,22 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 
 // Destructors
 
-// Close is called to initiate a session shutdown
+// Shutdown is called to initiate a session shutdown
 // 1: peer shut us down, or 2: we are shutting down all sessions
-func (sess *Session) Close(err error) {
-	sess.Logger.Log("CLOSE", err)
+func (sess *Session) Shutdown(err error) {
+	sess.Logger.Log("Shutdown", err)
 	if sess.isClosing {
 		return
 	}
 	sess.isClosing = true
-	if err != errPeerRemovedIkeSa {
+	// dont send Delete for
+	switch errors.Cause(err) {
+	case errPeerRemovedIkeSa,
+		protocol.ERR_UNSUPPORTED_CRITICAL_PAYLOAD,
+		protocol.ERR_INVALID_SYNTAX,
+		protocol.ERR_AUTHENTICATION_FAILED:
+		break
+	default:
 		sess.sendIkeSaDelete()
 	}
 	sess.RemoveSa()
@@ -277,7 +284,7 @@ func (sess *Session) RekeyMsg(child *Message) (*OutgoingMessage, error) {
 	return sess.encode(child)
 }
 
-// SendMsgGetReply takes a message generator
+// SendMsgGetReply sends a request and waits for valid reply
 func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessage, error)) (*Message, error) {
 	for {
 		// send initiator INIT after jittered wait
@@ -395,7 +402,7 @@ func (sess *Session) AddSa(sa *platform.SaParams) (err error) {
 
 // RemoveSa removes Child SA
 func (sess *Session) RemoveSa() (err error) {
-	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
+	if sess.EspSpiI == nil || sess.EspSpiR == nil {
 		sess.Logger.Log("REMOVE_SA", "sa was not started")
 		return
 	}
@@ -421,7 +428,7 @@ func (sess *Session) installPolicy() (err error) {
 }
 
 func (sess *Session) removePolicy() (err error) {
-	if sess.cfg.TsI == nil || sess.cfg.TsR == nil {
+	if sess.EspSpiI == nil || sess.EspSpiR == nil {
 		sess.Logger.Log("REMOVE_POLICY", "sa was not started")
 		return
 	}

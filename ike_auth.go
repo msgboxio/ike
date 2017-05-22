@@ -79,11 +79,63 @@ func authFromSession(sess *Session) (*Message, error) {
 	return authMsg, nil
 }
 
+// auth respones can be a valid auth message, auth resp with AUTHENTICATION_FAILED
+// or INFORMATIONAL with AUTHENTICATION_FAILED
+func checkAuthResponseForSession(sess *Session, msg *Message) (err error) {
+	// check if reply
+	if err = msg.CheckFlags(); err != nil {
+		return
+	}
+	// other flag combos have been checked
+	if !msg.IkeHeader.Flags.IsResponse() {
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: unexpected request")
+	}
+	// is an INFORMATIONAL ERROR
+	if msg.IkeHeader.ExchangeType == protocol.INFORMATIONAL {
+		// expect it to be this
+		return errors.Wrap(errPeerRemovedIkeSa, "IKE_AUTH: INFORMATIONAL AUTHENTICATION_FAILED")
+	}
+	// must be an AUTH message
+	if msg.IkeHeader.ExchangeType != protocol.IKE_AUTH {
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
+	}
+	// ensure other payloads are present
+	if err = msg.EnsurePayloads(authRPayloads); err != nil {
+		// not a proper AUTH response
+		// check for NOTIFICATION : AUTHENTICATION_FAILED
+		for _, n := range msg.Payloads.GetNotifications() {
+			if n.NotificationType == protocol.AUTHENTICATION_FAILED {
+				err = errors.Wrap(errPeerRemovedIkeSa, "IKE_AUTH: NOTIFICATION AUTHENTICATION_FAILED")
+				return
+			}
+		}
+	}
+	return
+}
+
+func checkAuthRequestForSession(sess *Session, msg *Message) (err error) {
+	// must be a request
+	if err = msg.CheckFlags(); err != nil {
+		return err
+	}
+	if msg.IkeHeader.Flags.IsResponse() {
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: responder received response")
+	}
+	// must be an AUTH message
+	if msg.IkeHeader.ExchangeType != protocol.IKE_AUTH {
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_AUTH: incorrect type")
+	}
+	// ensure other payloads are present
+	if err := msg.EnsurePayloads(authIPayloads); err != nil {
+		return err
+	}
+	return nil
+}
+
 func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt time.Duration, err error) {
 	// can we authenticate ?
 	if err = authenticateSession(sess, msg); err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(protocol.ERR_AUTHENTICATION_FAILED)
+		err = errors.Wrap(protocol.ERR_AUTHENTICATION_FAILED, err.Error())
 		return
 	}
 	for _, n := range msg.Payloads.GetNotifications() {
@@ -100,10 +152,6 @@ func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt tim
 		return
 	}
 	spi, lt, err = checkSelectorsForSession(sess, params)
-	if err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
-	}
 	return
 }
 
@@ -115,12 +163,6 @@ func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt tim
 // TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
 // TODO: implement ECDSA from RFC4754
 func authenticateSession(sess *Session, msg *Message) (err error) {
-	if err := msg.CheckFlags(); err != nil {
-		return err
-	}
-	if err = checkAuth(msg, sess.isInitiator); err != nil {
-		return err
-	}
 	// authenticate peer
 	var idP *protocol.IdPayload
 	var initB []byte

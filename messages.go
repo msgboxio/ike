@@ -96,10 +96,10 @@ func (msg *Message) CheckFlags() error {
 	// check flags
 	if flags.IsInitiator() {
 		if flags.IsResponse() {
-			return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID, "initiator sent a response")
+			return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "initiator sent a response")
 		}
 	} else if !flags.IsResponse() {
-		return errors.Wrap(protocol.ERR_INVALID_MESSAGE_ID, "responder sent a request")
+		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "responder sent a request")
 	}
 	return nil
 }

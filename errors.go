@@ -4,5 +4,5 @@ import (
 	"errors"
 )
 
-var errPeerRemovedIkeSa = errors.New("Delete IKE SA Notification")
-var errPeerRemovedEspSa = errors.New("Delete ESP SA Notification")
+var errPeerRemovedIkeSa = errors.New("Delete IKE SA")
+var errPeerRemovedEspSa = errors.New("Delete ESP SA")

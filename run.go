@@ -62,6 +62,10 @@ func runInitiator(sess *Session) (err error) {
 	if msg, err = sess.SendMsgGetReply(sess.AuthMsg); err != nil {
 		return
 	}
+	// is it an AUTH response, and can we proceed
+	if err = checkAuthResponseForSession(sess, msg); err != nil {
+		return
+	}
 	// can we authenticate ?
 	espSpiR, lifetime, err := handleAuthForSession(sess, msg)
 	if err != nil {
@@ -108,6 +112,10 @@ func runResponder(sess *Session) (err error) {
 	// send INIT_reply & wait for AUTH
 	msg, err = sess.SendMsgGetReply(sess.InitMsg)
 	if err != nil {
+		return
+	}
+	// is it an AUTH request
+	if err = checkAuthRequestForSession(sess, msg); err != nil {
 		return
 	}
 	// can we authenticate ?
@@ -345,5 +353,6 @@ func RunSession(sess *Session) error {
 		err = monitorSa(sess)
 	}
 	sess.cancel()
+	// err must not be nil
 	return err
 }

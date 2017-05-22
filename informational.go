@@ -128,14 +128,14 @@ func HandleInformationalForSession(sess *Session, msg *Message) *InformationalEv
 		if dp.ProtocolId == protocol.IKE {
 			return &InformationalEvent{
 				SessionNotificationType: MSG_ERROR,
-				Message:                 errors.Wrapf(errPeerRemovedIkeSa, "SA: %s", msg.IkeHeader.SpiI),
+				Message:                 errors.Wrapf(errPeerRemovedIkeSa, "NOTIFICATION: SA %s", msg.IkeHeader.SpiI),
 			}
 		}
 		for _, spi := range dp.Spis {
 			if dp.ProtocolId == protocol.ESP {
 				return &InformationalEvent{
 					SessionNotificationType: MSG_ERROR,
-					Message:                 errors.Wrapf(errPeerRemovedEspSa, "SA: %s", spi),
+					Message:                 errors.Wrapf(errPeerRemovedEspSa, "NOTIFICATION: SA %s", spi),
 				}
 			}
 		}

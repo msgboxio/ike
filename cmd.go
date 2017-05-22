@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	"github.com/pkg/errors"
 )
 
 // Cmd provides utilities for building ike apps
@@ -30,13 +29,7 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 	i.sessions.Add(spi, sess)
 	// wait for session to finish
 	err = RunSession(sess)
-	switch errors.Cause(err) {
-	case errPeerRemovedIkeSa:
-		sess.Close(errPeerRemovedIkeSa)
-	default:
-		sess.Close(err)
-		sess.Logger.Log("CLOSE", err)
-	}
+	sess.Shutdown(err)
 	i.sessions.Remove(spi)
 	sess.Logger.Log("IKE_SA", "removed", "SESSION", fmt.Sprintf("%s<=>%s", sess.IkeSpiI, sess.IkeSpiR))
 	return
@@ -69,7 +62,7 @@ func (i *Cmd) ShutDown(err error) {
 	// shutdown sessions
 	i.sessions.ForEach(func(sess *Session) {
 		// rely on this to drain replies
-		sess.Close(err)
+		sess.Shutdown(err)
 	})
 }
 
