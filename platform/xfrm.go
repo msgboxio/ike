@@ -16,7 +16,7 @@ import (
 )
 
 // src & dst are tunnel endpoints; ignored for transport mode
-func makeTemplate(src, dst net.IP, reqId int, isTransportMode bool) netlink.XfrmPolicyTmpl {
+func makeTemplate(src, dst net.IP, reqId int32, isTransportMode bool) netlink.XfrmPolicyTmpl {
 	mode := netlink.XFRM_MODE_TUNNEL
 	if isTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
@@ -28,11 +28,11 @@ func makeTemplate(src, dst net.IP, reqId int, isTransportMode bool) netlink.Xfrm
 		Dst:   dst,
 		Proto: netlink.XFRM_PROTO_ESP,
 		Mode:  mode,
-		Reqid: reqId,
+		Reqid: int(reqId),
 	}
 }
 
-func makeSaPolicies(reqId, priority int, pol *protocol.PolicyParams, forInitiator bool) (policies []*netlink.XfrmPolicy) {
+func makeSaPolicies(reqId, priority int32, pol *protocol.PolicyParams, forInitiator bool) (policies []*netlink.XfrmPolicy) {
 	// initiator
 	iniP := &netlink.XfrmPolicy{
 		Src:     pol.IniNet,
@@ -45,7 +45,7 @@ func makeSaPolicies(reqId, priority int, pol *protocol.PolicyParams, forInitiato
 		// Value: 0xabff22,
 		// Mask:  0xffffffff,
 		// },
-		Priority: priority,
+		Priority: int(priority),
 	}
 	iniT := makeTemplate(pol.Ini, pol.Res, reqId, pol.IsTransportMode)
 	iniP.Tmpls = append(iniP.Tmpls, iniT)
@@ -65,7 +65,7 @@ func makeSaPolicies(reqId, priority int, pol *protocol.PolicyParams, forInitiato
 		// Value: 0xabff22,
 		// Mask:  0xffffffff,
 		// },
-		Priority: priority,
+		Priority: int(priority),
 	}
 	if forInitiator {
 		resP.Dir = netlink.XFRM_DIR_IN
@@ -88,7 +88,7 @@ func makeSaPolicies(reqId, priority int, pol *protocol.PolicyParams, forInitiato
 			SrcPort:  fwdP.SrcPort,
 			DstPort:  fwdP.DstPort,
 			Dir:      netlink.XFRM_DIR_FWD,
-			Priority: priority,
+			Priority: int(priority),
 		}
 		fwd.Tmpls = append(fwd.Tmpls, fwdT) // used same template
 		policies = append(policies, fwd)
@@ -176,7 +176,7 @@ func espTransforms(sa *SaParams, forInitiator bool) (auth, crypt, aead *netlink.
 	return
 }
 
-func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
+func makeSaStates(reqid int32, sa *SaParams) (states []*netlink.XfrmState) {
 	mode := netlink.XFRM_MODE_TUNNEL
 	if sa.IsTransportMode {
 		mode = netlink.XFRM_MODE_TRANSPORT
@@ -189,7 +189,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Proto: netlink.XFRM_PROTO_ESP,
 		Mode:  mode,
 		Spi:   sa.SpiR,
-		Reqid: reqid,
+		Reqid: int(reqid),
 		Auth:  authI,
 		Crypt: cryptI,
 		Aead:  aeadI,
@@ -210,7 +210,7 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 		Proto: netlink.XFRM_PROTO_ESP,
 		Mode:  mode,
 		Spi:   sa.SpiI,
-		Reqid: reqid,
+		Reqid: int(reqid),
 		Auth:  authR,
 		Crypt: cryptR,
 		Aead:  aeadR,
@@ -234,8 +234,8 @@ func makeSaStates(reqid int, sa *SaParams) (states []*netlink.XfrmState) {
 
 // public methods
 
-func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
-	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
+func InstallPolicy(reqID int32, pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
+	for _, policy := range makeSaPolicies(reqID, 16, pol, forInitiator) {
 		level.Debug(log).Log("INSTALL_POLICY", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyAdd(policy); err != nil {
@@ -251,8 +251,8 @@ func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool
 	return nil
 }
 
-func RemovePolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
-	for _, policy := range makeSaPolicies(256, 16, pol, forInitiator) {
+func RemovePolicy(reqID int32, pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
+	for _, policy := range makeSaPolicies(reqID, 16, pol, forInitiator) {
 		level.Debug(log).Log("REMOVE_POLICY", policy)
 		// create xfrm policy rules
 		if err := netlink.XfrmPolicyDel(policy); err != nil {
@@ -262,8 +262,8 @@ func RemovePolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool)
 	return nil
 }
 
-func InstallChildSa(sa *SaParams, log log.Logger) error {
-	for _, state := range makeSaStates(256, sa) {
+func InstallChildSa(reqID int32, sa *SaParams, log log.Logger) error {
+	for _, state := range makeSaStates(reqID, sa) {
 		level.Debug(log).Log("ADD_STATE", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateAdd(state); err != nil {
@@ -280,8 +280,8 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 	return nil
 }
 
-func RemoveChildSa(sa *SaParams, log log.Logger) error {
-	for _, state := range makeSaStates(0, sa) {
+func RemoveChildSa(reqID int32, sa *SaParams, log log.Logger) error {
+	for _, state := range makeSaStates(reqID, sa) {
 		level.Debug(log).Log("REMOVE_STATE", state)
 		// crate xfrm state rules
 		if err := netlink.XfrmStateDel(state); err != nil {

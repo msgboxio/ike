@@ -10,18 +10,18 @@ import (
 	"github.com/msgboxio/ike/protocol"
 )
 
-func InstallPolicy(*protocol.PolicyParams, log.Logger, bool) error {
+func InstallPolicy(sid int32, *protocol.PolicyParams, log.Logger, bool) error {
 	return nil
 }
-func RemovePolicy(*protocol.PolicyParams, log.Logger, bool) error {
-	return nil
-}
-
-func InstallChildSa(*SaParams, log.Logger) error {
+func RemovePolicy(sid int32, *protocol.PolicyParams, log.Logger, bool) error {
 	return nil
 }
 
-func RemoveChildSa(*SaParams, log.Logger) error {
+func InstallChildSa(sid int32, *SaParams, log.Logger) error {
+	return nil
+}
+
+func RemoveChildSa(sid int32, *SaParams, log.Logger) error {
 	return nil
 }
 

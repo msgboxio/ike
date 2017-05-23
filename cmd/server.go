@@ -189,16 +189,16 @@ func main() {
 
 	cmd := ike.NewCmd(pconn, &ike.SessionCallback{
 		InstallPolicy: func(session *ike.Session, pol *protocol.PolicyParams) error {
-			return platform.InstallPolicy(pol, logger, session.IsInitiator())
+			return platform.InstallPolicy(session.SessionID, pol, logger, session.IsInitiator())
 		},
 		RemovePolicy: func(session *ike.Session, pol *protocol.PolicyParams) error {
-			return platform.RemovePolicy(pol, logger, session.IsInitiator())
+			return platform.RemovePolicy(session.SessionID, pol, logger, session.IsInitiator())
 		},
 		InstallChildSa: func(session *ike.Session, sa *platform.SaParams) error {
-			return platform.InstallChildSa(sa, logger)
+			return platform.InstallChildSa(session.SessionID, sa, logger)
 		},
 		RemoveChildSa: func(session *ike.Session, sa *platform.SaParams) error {
-			return platform.RemoveChildSa(sa, logger)
+			return platform.RemoveChildSa(session.SessionID, sa, logger)
 		},
 	})
 

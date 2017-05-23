@@ -354,7 +354,7 @@ func call(action string, args []string) error {
 	return err
 }
 
-func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
+func InstallPolicy(sid int32, pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
 	for _, policy := range makeSaPolicies(pol, forInitiator) {
 		level.Debug(log).Log("INSTALL_POLICY", spew.Sprintf("%v", policy))
 		if err := call("spdadd", policy); err != nil {
@@ -364,7 +364,7 @@ func InstallPolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool
 	return nil
 }
 
-func RemovePolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
+func RemovePolicy(sid int32, pol *protocol.PolicyParams, log log.Logger, forInitiator bool) error {
 	for _, policy := range makeSaPolicies(pol, forInitiator) {
 		level.Debug(log).Log("REMOVE_POLICY", spew.Sprintf("%v", policy))
 		if err := call("spddelete", policy); err != nil {
@@ -374,7 +374,7 @@ func RemovePolicy(pol *protocol.PolicyParams, log log.Logger, forInitiator bool)
 	return nil
 }
 
-func InstallChildSa(sa *SaParams, log log.Logger) error {
+func InstallChildSa(sid int32, sa *SaParams, log log.Logger) error {
 	states, err := makeSaStates(sa)
 	for _, sa := range states {
 		level.Debug(log).Log("ADD_STATE", spew.Sprintf("%v", sa))
@@ -385,7 +385,7 @@ func InstallChildSa(sa *SaParams, log log.Logger) error {
 	return err
 }
 
-func RemoveChildSa(sa *SaParams, log log.Logger) error {
+func RemoveChildSa(sid int32, sa *SaParams, log log.Logger) error {
 	states, err := makeSaDeleteStates(sa)
 	for _, sa := range states {
 		level.Debug(log).Log("REMOVE_STATE", spew.Sprintf("%v", sa))

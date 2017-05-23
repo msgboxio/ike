@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"sync/atomic"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -22,6 +23,8 @@ var (
 	errPeerRemovedIkeSa        = stderror.New("Delete IKE SA")
 	errPeerRemovedEspSa        = stderror.New("Delete ESP SA")
 )
+
+var sessionCount int32
 
 // SessionCallback holds the callbacks used by the session to notify the user
 type SessionCallback struct {
@@ -46,11 +49,13 @@ type Session struct {
 	isInitiator      bool
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
+	SessionID        int32
 
 	msgIDReq, msgIDResp msgID
 
 	incoming chan *Message
 
+	// cached data
 	initIb, initRb  []byte
 	responderCookie []byte
 
@@ -74,6 +79,7 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 	sess := &Session{
 		cxt:         cxt,
 		cancel:      cancel,
+		SessionID:   atomic.AddInt32(&sessionCount, 1),
 		isInitiator: true,
 		tkm:         tkm,
 		cfg:         *cfg,
@@ -108,6 +114,7 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 	sess := &Session{
 		cxt:       cxt,
 		cancel:    cancel,
+		SessionID: atomic.AddInt32(&sessionCount, 1),
 		tkm:       tkm,
 		cfg:       *cfg,
 		IkeSpiI:   ikeSpiI,
@@ -306,7 +313,9 @@ func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessage, error)) (*
 	}
 }
 
-// CheckError checks error, then send to peer
+// utilities
+
+// CheckError checks error for error & sends notification within INFORMATIONAL
 func (sess *Session) CheckError(err error) error {
 	if iErr, ok := errors.Cause(err).(protocol.IkeErrorCode); ok {
 		sess.Notify(iErr, true)
@@ -314,7 +323,6 @@ func (sess *Session) CheckError(err error) error {
 	return err
 }
 
-// utilities
 func (sess *Session) AuthReply(ie error) {
 	// send AUTH reply to peer & end IKE SA
 	if iErr, ok := errors.Cause(ie).(protocol.IkeErrorCode); ok {
