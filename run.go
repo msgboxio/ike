@@ -8,9 +8,14 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	initJitter   = 2 * time.Second
+	jitterFactor = -0.5
+)
+
 func runInitiator(sess *Session) (err error) {
 	// send initiator INIT after jittered wait and wait for reply
-	time.Sleep(Jitter(2*time.Second, -0.5))
+	time.Sleep(Jitter(initJitter, jitterFactor))
 	var msg *Message
 	var init *initParams
 	for {
@@ -273,7 +278,7 @@ func monitorSa(sess *Session) (err error) {
 	// setup SA REKEY timeout (jittered) & monitoring
 	rekeyDelay := sess.cfg.Lifetime
 	saRekeyDeadline := time.NewTimer(rekeyDelay)
-	rekeyTimeout := Jitter(rekeyDelay, -0.2)
+	rekeyTimeout := Jitter(rekeyDelay, jitterFactor)
 	saRekeyTimer := time.NewTimer(rekeyTimeout)
 	sess.Logger.Log("RekeyDeadline", rekeyDelay, "RekeyTimeout", rekeyTimeout)
 	for {

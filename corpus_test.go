@@ -8,7 +8,9 @@ import (
 	"net"
 	"testing"
 
-	"github.com/msgboxio/ike/crypto"
+	"math/big"
+	"math/rand"
+
 	"github.com/msgboxio/ike/protocol"
 )
 
@@ -26,41 +28,16 @@ var ids = PskIdentities{
 	Ids:     map[string][]byte{"ak@msgbox.io": []byte("foo")},
 }
 
-func initiatorTkm(t *testing.T) *Tkm {
-	config := newConfig()
-	suite, err := crypto.NewCipherSuite(config.ProposalIke)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tkm, err := newTkmInitiator(suite, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// nonce for responder
-	if nr, err := createNonce(suite.Prf.Length * 8); err != nil {
-		t.Fatal(err)
-	} else {
-		tkm.Nr = nr
-	}
-	return tkm
-}
-
 func TestIkeMsgGen(t *testing.T) {
 	cfg := newConfig()
-	tkm := initiatorTkm(t)
-	ikeSpi := MakeSpi()
-	sess := &Session{
-		isInitiator: true,
-		tkm:         tkm,
-		cfg:         *cfg,
-		IkeSpiI:     ikeSpi,
-		IkeSpiR:     MakeSpi(),
-	}
+	cfg.LocalID = pskTestID
+	cfg.RemoteID = pskTestID
+	sess, _ := NewInitiator(cfg, &net.IPAddr{}, nil, &SessionCallback{}, logger)
 	// init msg
 	init := InitFromSession(sess)
 	init.IkeHeader.MsgID = 42
 	// encode & write init msg
-	initIb, err := init.Encode(tkm, true, logger)
+	initIb, err := init.Encode(sess.tkm, true, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,14 +46,18 @@ func TestIkeMsgGen(t *testing.T) {
 	}
 	// auth
 	sess.initIb = initIb
-	sess.authLocal = &PskAuthenticator{tkm, true, pskTestID}
+	no, _ := createNonce(sess.tkm.Ni.BitLen())
+	err = sess.CreateIkeSa(no, big.NewInt(rand.Int63()), MakeSpi(), MakeSpi())
+	if err != nil {
+		t.Fatal(err)
+	}
 	authI, err := authFromSession(sess)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// authI.IkeHeader.MsgID = 43
+	authI.IkeHeader.MsgID = 43
 	// encode & write authI msg
-	authIb, err := authI.Encode(tkm, true, logger)
+	authIb, err := authI.Encode(sess.tkm, true, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

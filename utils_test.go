@@ -116,6 +116,7 @@ func scb(cbk *testcb) *SessionCallback {
 }
 
 func runTestInitiator(cfg *Config, cbk *testcb, readFrom chan []byte, log log.Logger) {
+	initJitter = 0
 	initiator, err := NewInitiator(cfg, nil, cbk, scb(cbk), log)
 	if err != nil {
 		cbk.errTo <- err
