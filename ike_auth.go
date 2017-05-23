@@ -44,18 +44,18 @@ func authFromSession(sess *Session) (*Message, error) {
 	// add CERT
 	switch id.AuthMethod() {
 	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		certId, ok := id.(*CertIdentity)
+		certID, ok := id.(*CertIdentity)
 		if !ok {
 			// should never happen
 			return nil, errors.New("missing Certificate Identity")
 		}
-		if certId.Certificate == nil {
+		if certID.Certificate == nil {
 			return nil, errors.New("missing Certificate")
 		}
 		authMsg.Payloads.Add(&protocol.CertPayload{
 			PayloadHeader:    &protocol.PayloadHeader{},
 			CertEncodingType: protocol.X_509_CERTIFICATE_SIGNATURE,
-			Data:             certId.Certificate.Raw,
+			Data:             certID.Certificate.Raw,
 		})
 	}
 	// add ID
@@ -177,7 +177,7 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 	switch authP.AuthMethod {
 	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
 		// find authenticator
-		pskAuth, ok := sess.authRemote.(*PskAuthenticator)
+		pskAuth, ok := sess.authPeer.(*PskAuthenticator)
 		if !ok {
 			return errors.New("PreShared Key authentication is required")
 		}
@@ -188,7 +188,7 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 			return err
 		}
 		// find authenticator
-		certAuth, ok := sess.authRemote.(*CertAuthenticator)
+		certAuth, ok := sess.authPeer.(*CertAuthenticator)
 		if !ok {
 			return errors.New("Certificate authentication is required")
 		}

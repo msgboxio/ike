@@ -12,7 +12,7 @@ import (
 type Config struct {
 	ProposalIke, ProposalEsp protocol.TransformMap
 
-	LocalID, RemoteID Identity
+	LocalID, PeerID Identity
 
 	TsI, TsR             protocol.Selectors
 	IsTransportMode      bool

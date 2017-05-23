@@ -43,8 +43,8 @@ type Session struct {
 
 	cfg Config // copy of Config given to us
 
-	tkm                   *Tkm
-	authRemote, authLocal Authenticator
+	tkm                 *Tkm
+	authPeer, authLocal Authenticator
 
 	isInitiator      bool
 	IkeSpiI, IkeSpiR protocol.Spi
@@ -93,7 +93,7 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
 	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, sess.isInitiator)
-	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, sess.isInitiator)
+	sess.authPeer = NewAuthenticator(cfg.PeerID, sess.tkm, sess.isInitiator)
 	return sess, nil
 }
 
@@ -129,7 +129,7 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
 	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, sess.isInitiator)
-	sess.authRemote = NewAuthenticator(cfg.RemoteID, sess.tkm, sess.isInitiator)
+	sess.authPeer = NewAuthenticator(cfg.PeerID, sess.tkm, sess.isInitiator)
 	return sess, nil
 }
 

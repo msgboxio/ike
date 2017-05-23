@@ -54,7 +54,7 @@ func testConn() *mockConn {
 func testCfg() *Config {
 	cfg := testConfig()
 	cfg.LocalID = pskTestID
-	cfg.RemoteID = pskTestID
+	cfg.PeerID = pskTestID
 	return cfg
 }
 

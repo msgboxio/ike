@@ -30,7 +30,7 @@ var ids = PskIdentities{
 func TestIkeMsgGen(t *testing.T) {
 	cfg := newConfig()
 	cfg.LocalID = pskTestID
-	cfg.RemoteID = pskTestID
+	cfg.PeerID = pskTestID
 	sess, _ := NewInitiator(cfg, &net.IPAddr{}, nil, &SessionCallback{}, logger)
 	// init msg
 	init := InitFromSession(sess)

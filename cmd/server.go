@@ -81,18 +81,18 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 		if err != nil {
 			return
 		}
-		config.RemoteID = &ike.CertIdentity{
+		config.PeerID = &ike.CertIdentity{
 			Roots:                roots,
 			Name:                 peerID,
 			AuthenticationMethod: protocol.AUTH_DIGITAL_SIGNATURE,
 		}
 	}
-	if config.RemoteID == nil {
+	if config.PeerID == nil {
 		if peerID == "" && peerPass == "" {
 			err = errors.New("peer credentials are missing")
 			return
 		}
-		config.RemoteID = &ike.PskIdentities{
+		config.PeerID = &ike.PskIdentities{
 			Primary: peerID,
 			Ids:     map[string][]byte{peerID: []byte(peerPass)},
 		}

@@ -21,7 +21,7 @@ func InitFromSession(sess *Session) *Message {
 	if sess.isInitiator {
 		nonce = sess.tkm.Ni
 		// TODO - assumes remoteID has been already set
-		secureSignature = sess.authRemote.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE
+		secureSignature = sess.authPeer.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE
 	}
 	return makeInit(&initParams{
 		isInitiator:       sess.isInitiator,
@@ -172,7 +172,7 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 func checkSignatureSecurity(sess *Session, isEnabled bool) error {
 	secureConfigured :=
 		(sess.authLocal.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE) ||
-			(sess.authRemote.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE)
+			(sess.authPeer.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE)
 	if !isEnabled {
 		level.Warn(sess.Logger).Log("SIGNATURE", "insecure")
 		if secureConfigured {

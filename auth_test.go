@@ -39,7 +39,7 @@ func BenchmarkIntCert(bt *testing.B) {
 func testWithIdentity(t testing.TB, locid, remid Identity, log log.Logger) {
 	var cfg = testConfig()
 	cfg.LocalID = locid
-	cfg.RemoteID = remid
+	cfg.PeerID = remid
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)

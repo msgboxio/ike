@@ -14,7 +14,7 @@ import (
 func TestInit(t *testing.T) {
 	var cfg = testConfig()
 	cfg.LocalID = pskTestID
-	cfg.RemoteID = pskTestID
+	cfg.PeerID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
@@ -35,7 +35,7 @@ func TestInit1(t *testing.T) {
 	var cfg = testConfig()
 	cfg.ThrottleInitRequests = true
 	cfg.LocalID = pskTestID
-	cfg.RemoteID = pskTestID
+	cfg.PeerID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
@@ -56,7 +56,7 @@ func TestInit2(t *testing.T) {
 	var cfg1 = testConfig()
 	cfg1.ProposalIke = crypto.Aes128Sha256Ecp256
 	cfg1.LocalID = pskTestID
-	cfg1.RemoteID = pskTestID
+	cfg1.PeerID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
 	cfg1.AddNetworkSelectors(net, net, true)
 	chi := make(chan []byte, 1)
