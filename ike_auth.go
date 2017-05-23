@@ -105,7 +105,7 @@ func checkAuthResponseForSession(sess *Session, msg *Message) (err error) {
 		// check for NOTIFICATION : AUTHENTICATION_FAILED
 		for _, n := range msg.Payloads.GetNotifications() {
 			if n.NotificationType == protocol.AUTHENTICATION_FAILED {
-				err = errors.Wrap(errPeerRemovedIkeSa, "IKE_AUTH: NOTIFICATION AUTHENTICATION_FAILED")
+				err = errors.Wrap(errPeerRemovedIkeSa, "IKE_AUTH: response AUTHENTICATION_FAILED")
 				return
 			}
 		}

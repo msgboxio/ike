@@ -98,6 +98,7 @@ func initErrorNeedsReply(init *initParams, config *Config, remote net.Addr, err 
 		tid := config.ProposalIke[protocol.TRANSFORM_TYPE_DH].Transform.TransformId
 		return notificationResponse(init.spiI, protocol.INVALID_KE_PAYLOAD, tid, remote)
 	case protocol.ERR_NO_PROPOSAL_CHOSEN:
+		return notificationResponse(init.spiI, protocol.NO_PROPOSAL_CHOSEN, nil, remote)
 		// TODO - handle
 	case errMissingCookie:
 		// ask peer to send cookie

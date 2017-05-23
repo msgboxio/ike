@@ -19,6 +19,8 @@ var (
 	errorReplyTimedout         = stderror.New("Timed Out")
 	errorSessionClosed         = stderror.New("Session Closed")
 	errorRekeyDeadlineExceeded = stderror.New("Rekey Deadline Exceeded")
+	errPeerRemovedIkeSa        = stderror.New("Delete IKE SA")
+	errPeerRemovedEspSa        = stderror.New("Delete ESP SA")
 )
 
 // SessionCallback holds the callbacks used by the session to notify the user
@@ -313,6 +315,16 @@ func (sess *Session) CheckError(err error) error {
 }
 
 // utilities
+func (sess *Session) AuthReply(ie error) {
+	// send AUTH reply to peer & end IKE SA
+	if iErr, ok := errors.Cause(ie).(protocol.IkeErrorCode); ok {
+		reply := NotifyFromSession(sess, iErr, true)
+		reply.IkeHeader.ExchangeType = protocol.IKE_AUTH
+		reply.IkeHeader.MsgID = sess.nextID()
+		// encode & send
+		sess.sendMsg(sess.encode(reply))
+	}
+}
 
 func (sess *Session) Notify(ie protocol.IkeErrorCode, isResponse bool) {
 	info := NotifyFromSession(sess, ie, isResponse)

@@ -37,7 +37,7 @@ func BenchmarkIntCert(bt *testing.B) {
 }
 
 func testWithIdentity(t testing.TB, locid, remid Identity, log log.Logger) {
-	var cfg = DefaultConfig()
+	var cfg = testConfig()
 	cfg.LocalID = locid
 	cfg.RemoteID = remid
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")

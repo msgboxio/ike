@@ -4,14 +4,25 @@ import (
 	"net"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 )
 
+func testConfig() *Config {
+	return &Config{
+		// ThrottleInitRequests: true,
+		Lifetime: time.Hour,
+		// set
+		ProposalIke: crypto.Aes128Sha256Modp3072,
+		ProposalEsp: crypto.Aes128Sha256,
+	}
+}
+
 func TestCopyConfig(t *testing.T) {
-	def := DefaultConfig()
+	def := testConfig()
 	copy := *def
 	_, ipnet, _ := net.ParseCIDR("10.0.0.10/24")
 	copy.AddNetworkSelectors(ipnet, ipnet, true)

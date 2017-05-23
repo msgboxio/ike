@@ -13,7 +13,7 @@ import (
 )
 
 func newConfig() (config *Config) {
-	config = DefaultConfig()
+	config = testConfig()
 	config.AddNetworkSelectors(
 		&net.IPNet{IP: net.IPv4(192, 168, 10, 2).To4(), Mask: net.CIDRMask(32, 32)},
 		&net.IPNet{IP: net.IPv4(10, 10, 10, 2).To4(), Mask: net.CIDRMask(32, 32)},

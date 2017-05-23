@@ -10,6 +10,7 @@ import (
 // cipherFunc Implementations
 
 var (
+	Aes128Sha256Modp2048,
 	Aes128Sha256Modp3072,
 	Aes128Sha256Ecp256,
 	Aes128Sha256 protocol.TransformMap
@@ -17,6 +18,12 @@ var (
 
 func init() {
 	// IKE
+	Aes128Sha256Modp2048 = protocol.IkeTransform(
+		protocol.ENCR_AES_CBC,
+		128,
+		protocol.AUTH_HMAC_SHA2_256_128,
+		protocol.PRF_HMAC_SHA2_256,
+		protocol.MODP_2048)
 	Aes128Sha256Modp3072 = protocol.IkeTransform(
 		protocol.ENCR_AES_CBC,
 		128,
@@ -38,6 +45,7 @@ func init() {
 		protocol.AUTH_HMAC_SHA2_256_128,
 		protocol.ESN_NONE)
 
+	IkeSuites["aes128-sha256-modp2048"] = Aes128Sha256Modp2048
 	IkeSuites["aes128-sha256-modp3072"] = Aes128Sha256Modp3072
 	IkeSuites["aes128-sha256-ecp256"] = Aes128Sha256Ecp256
 	EspSuites["aes128-sha256"] = Aes128Sha256

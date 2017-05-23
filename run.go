@@ -69,7 +69,7 @@ func runInitiator(sess *Session) (err error) {
 	// can we authenticate ?
 	espSpiR, lifetime, err := handleAuthForSession(sess, msg)
 	if err != nil {
-		// send notification to peer & end IKE SA
+		// send notification in INFORMATIONAL to peer & end IKE SA
 		sess.CheckError(err)
 		return
 	}
@@ -121,8 +121,7 @@ func runResponder(sess *Session) (err error) {
 	// can we authenticate ?
 	espSpiI, lifetime, err := handleAuthForSession(sess, msg)
 	if err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
+		sess.AuthReply(err)
 		return
 	}
 	// replace espSpiI & espSpiR : MUTATION
@@ -293,6 +292,7 @@ func monitorSa(sess *Session) (err error) {
 				}
 				switch evt.SessionNotificationType {
 				case MSG_EMPTY_RESPONSE:
+					break
 				case MSG_EMPTY_REQUEST:
 					if iErr := sess.SendEmptyInformational(true); iErr != nil {
 						return iErr

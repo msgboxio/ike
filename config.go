@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/msgboxio/ike/crypto"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -30,9 +29,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		// ThrottleInitRequests: true,
-		Lifetime:    time.Hour,
-		ProposalIke: crypto.Aes128Sha256Modp3072,
-		ProposalEsp: crypto.Aes128Sha256,
+		Lifetime: time.Hour,
 	}
 }
 
@@ -42,7 +39,6 @@ func DefaultConfig() *Config {
 
 // CheckProposals checks if incoming proposals include our configuration
 func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.Proposals) (err error) {
-	err = errors.New("No Matching proposal")
 	for _, prop := range proposals {
 		if prop.ProtocolID != prot {
 			continue
@@ -50,19 +46,16 @@ func (cfg *Config) CheckProposals(prot protocol.ProtocolID, proposals protocol.P
 		// select first acceptable one from the list
 		switch prot {
 		case protocol.IKE:
-			if err = cfg.ProposalIke.Within(prop.Transforms); err == nil {
-				break
+			if cfg.ProposalIke.Within(prop.Transforms) {
+				return nil
 			}
 		case protocol.ESP:
-			if err = cfg.ProposalEsp.Within(prop.Transforms); err == nil {
-				break
+			if cfg.ProposalEsp.Within(prop.Transforms) {
+				return nil
 			}
 		}
 	}
-	if err == nil {
-		return
-	}
-	return errors.Wrap(protocol.ERR_NO_PROPOSAL_CHOSEN, errors.Cause(err).Error())
+	return errors.WithStack(protocol.ERR_NO_PROPOSAL_CHOSEN)
 }
 
 func (cfg *Config) CheckDhTransform(dhID protocol.DhTransformId) error {

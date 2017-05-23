@@ -12,7 +12,7 @@ import (
 
 // simple initiator & responder
 func TestInit(t *testing.T) {
-	var cfg = DefaultConfig()
+	var cfg = testConfig()
 	cfg.LocalID = pskTestID
 	cfg.RemoteID = pskTestID
 	_, net, _ := net.ParseCIDR("192.0.2.0/24")
@@ -32,7 +32,7 @@ func TestInit(t *testing.T) {
 
 // test with COOKIE
 func TestInit1(t *testing.T) {
-	var cfg = DefaultConfig()
+	var cfg = testConfig()
 	cfg.ThrottleInitRequests = true
 	cfg.LocalID = pskTestID
 	cfg.RemoteID = pskTestID
@@ -53,7 +53,7 @@ func TestInit1(t *testing.T) {
 
 // Initiator cannot handle INVALID_KE_PAYLOAD, responder can generate one
 func TestInit2(t *testing.T) {
-	var cfg1 = DefaultConfig()
+	var cfg1 = testConfig()
 	cfg1.ProposalIke = crypto.Aes128Sha256Ecp256
 	cfg1.LocalID = pskTestID
 	cfg1.RemoteID = pskTestID

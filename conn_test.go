@@ -52,7 +52,7 @@ func testConn() *mockConn {
 }
 
 func testCfg() *Config {
-	cfg := DefaultConfig()
+	cfg := testConfig()
 	cfg.LocalID = pskTestID
 	cfg.RemoteID = pskTestID
 	return cfg

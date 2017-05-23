@@ -1,9 +1,5 @@
 package protocol
 
-import (
-	"fmt"
-)
-
 // TransformMap store the configured crypto suite
 // NOTE that this cannot be used to parse incoming list of transforms
 // incoming list can have many Transforms of same type in 1 proposal
@@ -30,21 +26,21 @@ func (t TransformMap) AsList() (trs []*SaTransform) {
 }
 
 // Within checks if the configured set of transforms occurs within list of proposed transforms
-func (t TransformMap) Within(transforms []*SaTransform) error {
-	listHas := func(trsList []*SaTransform, target *SaTransform) error {
-		for _, tr := range trsList {
+func (t TransformMap) Within(proposed []*SaTransform) bool {
+	listHas := func(proposed []*SaTransform, target *SaTransform) bool {
+		for _, tr := range proposed {
 			if target.IsEqual(tr) {
-				return nil
+				return true
 			}
 		}
-		return fmt.Errorf("%v: does not match", target.Transform)
+		return false
 	}
 	for _, transform := range t {
-		if err := listHas(transforms, transform); err != nil {
-			return err
+		if listHas(proposed, transform) {
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 func (t TransformMap) GetType(ty TransformType) *Transform {
