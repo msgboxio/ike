@@ -5,7 +5,6 @@ import (
 	"net"
 
 	"github.com/go-kit/kit/log"
-	"github.com/go-kit/kit/log/level"
 	"github.com/msgboxio/ike/protocol"
 	"github.com/pkg/errors"
 )
@@ -17,11 +16,8 @@ import (
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(sess *Session) *Message {
 	nonce := sess.tkm.Nr
-	secureSignature := sess.authLocal.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE
 	if sess.isInitiator {
 		nonce = sess.tkm.Ni
-		// TODO - assumes remoteID has been already set
-		secureSignature = sess.authPeer.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE
 	}
 	return makeInit(&initParams{
 		isInitiator:       sess.isInitiator,
@@ -32,7 +28,7 @@ func InitFromSession(sess *Session) *Message {
 		dhTransformID:     sess.tkm.suite.DhGroup.TransformId(),
 		dhPublic:          sess.tkm.DhPublic,
 		nonce:             nonce,
-		rfc7427Signatures: secureSignature,
+		rfc7427Signatures: sess.rfc7427Signatures,
 	})
 }
 
@@ -168,31 +164,14 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 	return nil
 }
 
-// return error if secure signatures are configured, but not proposed by peer
-func checkSignatureSecurity(sess *Session, isEnabled bool) error {
-	secureConfigured :=
-		(sess.authLocal.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE) ||
-			(sess.authPeer.Identity().AuthMethod() == protocol.AUTH_DIGITAL_SIGNATURE)
-	if !isEnabled {
-		level.Warn(sess.Logger).Log("SIGNATURE", "insecure")
-		if secureConfigured {
-			// TODO : change local configuration ?
-			return errors.New("Peer does not use secure signatures")
-		}
-	}
-	return nil
-}
-
 // handleInitForSession is called for requests & responses both
-// expects the message given to it to be well formatted
 func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 	// process notifications
 	// check NAT-T payload to determine if there is a NAT between the two peers
-	var rfc7427Signatures = false
 	for _, ns := range init.ns {
 		switch ns.NotificationType {
 		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			rfc7427Signatures = true
+			init.rfc7427Signatures = true
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.LocalAddr) {
 				sess.Logger.Log("HOST_NAT", msg.LocalAddr)
@@ -203,6 +182,5 @@ func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
 			}
 		}
 	}
-	// returns error if secure signatures are configured, but not proposed by peer
-	return checkSignatureSecurity(sess, rfc7427Signatures)
+	return nil
 }

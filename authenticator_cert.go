@@ -13,9 +13,10 @@ import (
 
 // CertAuthenticator is an Authenticator
 type CertAuthenticator struct {
-	tkm          *Tkm
-	forInitiator bool
-	identity     Identity
+	tkm               *Tkm
+	forInitiator      bool
+	identity          Identity
+	rfc7427Signatures bool
 }
 
 // this is an Authenticator
@@ -42,7 +43,12 @@ func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger l
 	cert := FormatCert(certID.Certificate)
 	logger.Log("AUTH", fmt.Sprintf("OUR_CERT[%s]", cert.String()))
 	signed := o.tkm.SignB(initB, idP.Encode(), o.forInitiator)
-	return CreateSignature(certID.Certificate.SignatureAlgorithm, certID.AuthMethod(), signed, certID.PrivateKey, logger)
+	// try and use the configured method
+	authMethod := certID.AuthMethod()
+	if !o.rfc7427Signatures {
+		authMethod = protocol.AUTH_RSA_DIGITAL_SIGNATURE
+	}
+	return CreateSignature(certID.Certificate.SignatureAlgorithm, authMethod, signed, certID.PrivateKey, logger)
 }
 
 func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error {
@@ -77,5 +83,10 @@ func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 		return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
 	}
 	signed := o.tkm.SignB(initB, idP.Encode(), !o.forInitiator)
-	return VerifySignature(certID.AuthMethod(), signed, authData, chain[0], logger)
+	// try and use the configured method
+	authMethod := certID.AuthMethod()
+	if !o.rfc7427Signatures {
+		authMethod = protocol.AUTH_RSA_DIGITAL_SIGNATURE
+	}
+	return VerifySignature(authMethod, signed, authData, chain[0], logger)
 }

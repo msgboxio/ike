@@ -5,7 +5,6 @@ import (
 	"context"
 	stderror "errors"
 	"fmt"
-	"math/big"
 	"net"
 	"sync/atomic"
 
@@ -46,10 +45,12 @@ type Session struct {
 	tkm                 *Tkm
 	authPeer, authLocal Authenticator
 
-	isInitiator      bool
+	isInitiator       bool
+	rfc7427Signatures bool
+	SessionID         int32
+
 	IkeSpiI, IkeSpiR protocol.Spi
 	EspSpiI, EspSpiR protocol.Spi
-	SessionID        int32
 
 	msgIDReq, msgIDResp msgID
 
@@ -77,23 +78,22 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 	}
 	cxt, cancel := context.WithCancel(context.Background())
 	sess := &Session{
-		cxt:         cxt,
-		cancel:      cancel,
-		SessionID:   atomic.AddInt32(&sessionCount, 1),
-		isInitiator: true,
-		tkm:         tkm,
-		cfg:         *cfg,
-		IkeSpiI:     MakeSpi(),
-		incoming:    make(chan *Message, 10),
-		Conn:        conn,
-		Remote:      remoteAddr,
-		Cb:          *cb,
-		msgIDReq:    msgID{id: 0},
-		msgIDResp:   msgID{id: -1},
+		cxt:               cxt,
+		cancel:            cancel,
+		SessionID:         atomic.AddInt32(&sessionCount, 1),
+		isInitiator:       true,
+		rfc7427Signatures: true,
+		tkm:               tkm,
+		cfg:               *cfg,
+		IkeSpiI:           MakeSpi(),
+		incoming:          make(chan *Message, 10),
+		Conn:              conn,
+		Remote:            remoteAddr,
+		Cb:                *cb,
+		msgIDReq:          msgID{id: 0},
+		msgIDResp:         msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
-	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, sess.isInitiator)
-	sess.authPeer = NewAuthenticator(cfg.PeerID, sess.tkm, sess.isInitiator)
 	return sess, nil
 }
 
@@ -128,8 +128,6 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 		msgIDResp: msgID{id: -1},
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
-	sess.authLocal = NewAuthenticator(cfg.LocalID, sess.tkm, sess.isInitiator)
-	sess.authPeer = NewAuthenticator(cfg.PeerID, sess.tkm, sess.isInitiator)
 	return sess, nil
 }
 
@@ -182,29 +180,34 @@ func (sess *Session) String() string {
 	return fmt.Sprintf("%s<=>%s %s", sess.IkeSpiI, sess.IkeSpiR, sess.tkm)
 }
 
-func (sess *Session) CreateIkeSa(nonce, dhPublic *big.Int, spiI, spiR []byte) error {
+func (sess *Session) CreateIkeSa(init *initParams) error {
 	if sess.isInitiator {
 		// peer responders nonce
-		sess.tkm.Nr = nonce
+		sess.tkm.Nr = init.nonce
 		// peer responders spi
-		sess.IkeSpiR = append([]byte{}, spiR...)
+		sess.IkeSpiR = append([]byte{}, init.spiR...)
 	} else {
 		// peer initiators nonce
-		sess.tkm.Ni = nonce
+		sess.tkm.Ni = init.nonce
 		// peer initiators spi
-		sess.IkeSpiI = append([]byte{}, spiI...)
+		sess.IkeSpiI = append([]byte{}, init.spiI...)
 	}
 	//
 	// we know what IKE ciphersuite peer selected
 	// generate keys necessary for IKE SA protection and encryption.
 	// initialize dh shared with their public key
-	err := sess.tkm.DhGenerateKey(dhPublic)
+	err := sess.tkm.DhGenerateKey(init.dhPublic)
 	if err != nil {
 		return err
 	}
+	// peer will/not use secure signatures
+	sess.rfc7427Signatures = init.rfc7427Signatures
 	// create rest of ike sa
 	sess.tkm.IkeSaKeys(sess.IkeSpiI, sess.IkeSpiR, nil)
-	sess.Logger.Log("IKE_SA", "initialised", "session", sess)
+	// create authenticators
+	sess.authLocal = NewAuthenticator(sess.cfg.LocalID, sess.tkm, sess.isInitiator, sess.rfc7427Signatures)
+	sess.authPeer = NewAuthenticator(sess.cfg.PeerID, sess.tkm, sess.isInitiator, sess.rfc7427Signatures)
+	sess.Logger.Log("IKE_SA", "initialised", "session", sess, "securesig", init.rfc7427Signatures)
 	return nil
 }
 
@@ -316,9 +319,9 @@ func (sess *Session) SendMsgGetReply(genMsg func() (*OutgoingMessage, error)) (*
 // utilities
 
 // CheckError checks error for error & sends notification within INFORMATIONAL
-func (sess *Session) CheckError(err error) error {
+func (sess *Session) CheckError(err error, isResponse bool) error {
 	if iErr, ok := errors.Cause(err).(protocol.IkeErrorCode); ok {
-		sess.Notify(iErr, true)
+		sess.Notify(iErr, isResponse)
 	}
 	return err
 }

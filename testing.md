@@ -61,3 +61,4 @@ route is only needed for host originated packets
 > INIT - NO_PROPOSAL_CHOOSEN
 > responder: peer pass is wrong, send AUTH response
 > responder: our pass is wrong, peer sends INFO
+> disable secure signature

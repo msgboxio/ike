@@ -12,7 +12,7 @@ type Authenticator interface {
 	Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error
 }
 
-func NewAuthenticator(id Identity, tkm *Tkm, forInitiator bool) Authenticator {
+func NewAuthenticator(id Identity, tkm *Tkm, forInitiator, rfc7427Signatures bool) Authenticator {
 	switch id.(type) {
 	case *PskIdentities:
 		return &PskAuthenticator{
@@ -21,12 +21,12 @@ func NewAuthenticator(id Identity, tkm *Tkm, forInitiator bool) Authenticator {
 			identity:     id,
 		}
 	case *CertIdentity:
-		cid := &CertAuthenticator{
-			tkm:          tkm,
-			forInitiator: forInitiator,
-			identity:     id,
+		return &CertAuthenticator{
+			tkm:               tkm,
+			forInitiator:      forInitiator,
+			identity:          id,
+			rfc7427Signatures: rfc7427Signatures,
 		}
-		return cid
 	default:
 		panic("no authenticator found for id: " + id.IdType().String())
 	}

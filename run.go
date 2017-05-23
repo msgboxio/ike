@@ -53,7 +53,7 @@ func runInitiator(sess *Session) (err error) {
 		level.Error(sess.Logger).Log("INIT", err)
 		return
 	}
-	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
+	if err := sess.CreateIkeSa(init); err != nil {
 		return err
 	}
 	// TODO
@@ -74,8 +74,8 @@ func runInitiator(sess *Session) (err error) {
 	// can we authenticate ?
 	espSpiR, lifetime, err := handleAuthForSession(sess, msg)
 	if err != nil {
-		// send notification in INFORMATIONAL to peer & end IKE SA
-		sess.CheckError(err)
+		// send notification in INFORMATIONAL request to peer & end IKE SA
+		sess.CheckError(err, false)
 		return
 	}
 	// replace espSpiI & espSpiR : MUTATION
@@ -104,7 +104,7 @@ func runResponder(sess *Session) (err error) {
 	if err = handleInitForSession(sess, init, msg); err != nil {
 		return
 	}
-	if err := sess.CreateIkeSa(init.nonce, init.dhPublic, init.spiI, init.spiR); err != nil {
+	if err := sess.CreateIkeSa(init); err != nil {
 		return err
 	}
 	// TODO - NAT
@@ -173,8 +173,8 @@ func runIpsecRekey(sess *Session) (err error) {
 	}
 	espSpiR, err := checkIpsecRekeyResponse(sess, params)
 	if err != nil {
-		// send notification to peer & end IKE SA
-		sess.CheckError(err)
+		// send notification in INFORMATIONAL request to peer & end IKE SA
+		sess.CheckError(err, false)
 		return
 	}
 	if params.dhPublic != nil {
@@ -211,7 +211,7 @@ func onRekeyRequest(sess *Session, msg *Message) (err error) {
 	espSpiI, err := checkIpsecRekeyRequest(sess, params)
 	if err != nil {
 		// send notification to peer & end IKE SA
-		sess.CheckError(err)
+		sess.CheckError(err, true)
 		return
 	}
 	// create tkm with new Nonce

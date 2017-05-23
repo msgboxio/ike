@@ -7,9 +7,6 @@ import (
 	"net"
 	"testing"
 
-	"math/big"
-	"math/rand"
-
 	"github.com/msgboxio/ike/protocol"
 )
 
@@ -46,7 +43,16 @@ func TestIkeMsgGen(t *testing.T) {
 	// auth
 	sess.initIb = initIb
 	no, _ := createNonce(sess.tkm.Ni.BitLen())
-	err = sess.CreateIkeSa(no, big.NewInt(rand.Int63()), MakeSpi(), MakeSpi())
+	err = sess.CreateIkeSa(&initParams{
+		isInitiator:       sess.isInitiator,
+		spiI:              sess.IkeSpiI,
+		spiR:              sess.IkeSpiR,
+		cookie:            sess.responderCookie,
+		dhTransformID:     sess.tkm.suite.DhGroup.TransformId(),
+		dhPublic:          sess.tkm.DhPublic,
+		nonce:             no,
+		rfc7427Signatures: sess.rfc7427Signatures,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
