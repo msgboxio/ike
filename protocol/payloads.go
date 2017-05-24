@@ -30,6 +30,8 @@ func (p *Payloads) Get(t PayloadType) Payload {
 func (p *Payloads) Add(t Payload) {
 	p.Array = append(p.Array, t)
 }
+
+// GetCertchain  there may be multiple CERT payloads
 func (p *Payloads) GetCertchain() (chain []*x509.Certificate, err error) {
 	for _, pl := range p.Array {
 		if pl.Type() == PayloadTypeCERT {
@@ -50,9 +52,6 @@ func (p *Payloads) GetCertchain() (chain []*x509.Certificate, err error) {
 			}
 			chain = append(chain, x509Cert)
 		}
-	}
-	if len(chain) == 0 {
-		err = errors.New("Missing certificates")
 	}
 	return
 }

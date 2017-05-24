@@ -40,7 +40,7 @@ func (psk *PskAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger 
 	return prf.Apply(prf.Apply(secret, _Keypad), signB)[:prf.Length], nil
 }
 
-func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error {
+func (psk *PskAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authMethod protocol.AuthMethod, authData []byte, inbandData interface{}, logger log.Logger) error {
 	logger.Log("AUTH", fmt.Sprintf("PEER_KEY[%s]", string(idP.Data)))
 	secret := psk.identity.AuthData(idP.Data)
 	if secret == nil {

@@ -51,11 +51,20 @@ func (o *CertAuthenticator) Sign(initB []byte, idP *protocol.IdPayload, logger l
 	return CreateSignature(certID.Certificate.SignatureAlgorithm, authMethod, signed, certID.PrivateKey, logger)
 }
 
-func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authData []byte, inbandData interface{}, logger log.Logger) error {
+// Verify using one of:
+// AUTH_RSA_DIGITAL_SIGNATURE with certificates
+// RFC 7427 - Signature Authentication in IKEv2
+// tkm.Auth always uses the hash negotiated with prf
+// TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
+// TODO: implement ECDSA from RFC4754
+func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authMethod protocol.AuthMethod, authData []byte, inbandData interface{}, logger log.Logger) error {
 	chain, ok := inbandData.([]*x509.Certificate)
 	if !ok {
 		// should never happen
 		panic("logic error")
+	}
+	if len(chain) == 0 {
+		return errors.New("missing certificates")
 	}
 	// chain will not be empty
 	cert := FormatCert(chain[0])
@@ -83,10 +92,6 @@ func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authDa
 		return errors.Errorf("Certificate is not Authorized for Name: %s", certID.Name)
 	}
 	signed := o.tkm.SignB(initB, idP.Encode(), !o.forInitiator)
-	// try and use the configured method
-	authMethod := certID.AuthMethod()
-	if !o.rfc7427Signatures {
-		authMethod = protocol.AUTH_RSA_DIGITAL_SIGNATURE
-	}
+	// try and use the configured method // TODO - check for inconsistency ?
 	return VerifySignature(authMethod, signed, authData, chain[0], logger)
 }

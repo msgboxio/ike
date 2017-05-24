@@ -155,13 +155,6 @@ func handleAuthForSession(sess *Session, msg *Message) (spi protocol.Spi, lt tim
 	return
 }
 
-// authenticateSession supports signature authentication using
-// AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE (psk)
-// AUTH_RSA_DIGITAL_SIGNATURE with certificates
-// RFC 7427 - Signature Authentication in IKEv2
-// tkm.Auth always uses the hash negotiated with prf
-// TODO: implement raw AUTH_RSA_DIGITAL_SIGNATURE & AUTH_DSS_DIGITAL_SIGNATURE
-// TODO: implement ECDSA from RFC4754
 func authenticateSession(sess *Session, msg *Message) (err error) {
 	// authenticate peer
 	var idP *protocol.IdPayload
@@ -174,28 +167,11 @@ func authenticateSession(sess *Session, msg *Message) (err error) {
 		idP = msg.Payloads.Get(protocol.PayloadTypeIDi).(*protocol.IdPayload)
 	}
 	authP := msg.Payloads.Get(protocol.PayloadTypeAUTH).(*protocol.AuthPayload)
-	switch authP.AuthMethod {
-	case protocol.AUTH_SHARED_KEY_MESSAGE_INTEGRITY_CODE:
-		// find authenticator
-		pskAuth, ok := sess.authPeer.(*PskAuthenticator)
-		if !ok {
-			return errors.New("PreShared Key authentication is required")
-		}
-		return pskAuth.Verify(initB, idP, authP.Data, nil, sess.Logger)
-	case protocol.AUTH_RSA_DIGITAL_SIGNATURE, protocol.AUTH_DIGITAL_SIGNATURE:
-		chain, err := msg.Payloads.GetCertchain()
-		if err != nil {
-			return err
-		}
-		// find authenticator
-		certAuth, ok := sess.authPeer.(*CertAuthenticator)
-		if !ok {
-			return errors.New("Certificate authentication is required")
-		}
-		return certAuth.Verify(initB, idP, authP.Data, chain, sess.Logger)
-	default:
-		return errors.Errorf("Authentication method is not supported: %s", authP.AuthMethod)
+	chain, err := msg.Payloads.GetCertchain()
+	if err != nil {
+		return err
 	}
+	return sess.authPeer.Verify(initB, idP, authP.AuthMethod, authP.Data, chain, sess.Logger)
 }
 
 // checkSelectorsForSession returns Peer Spi

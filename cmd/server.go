@@ -85,16 +85,15 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			Roots: roots,
 			Name:  peerID,
 		}
-	}
-	if config.PeerID == nil {
-		if peerID == "" && peerPass == "" {
-			err = errors.New("peer credentials are missing")
-			return
-		}
+	} else if peerID != "" && peerPass != "" {
 		config.PeerID = &ike.PskIdentities{
 			Primary: peerID,
 			Ids:     map[string][]byte{peerID: []byte(peerPass)},
 		}
+	}
+	if config.PeerID == nil {
+		err = errors.New("peer credentials are missing")
+		return
 	}
 	// our key & certificate
 	if certFile != "" && keyFile != "" {
@@ -114,15 +113,15 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 			PrivateKey:  key,
 		}
 	}
-	if config.LocalID == nil {
-		if id == "" && pass == "" {
-			err = errors.New("our credentials are missing")
-			return
-		}
+	if id != "" && pass != "" {
 		config.LocalID = &ike.PskIdentities{
 			Primary: id,
 			Ids:     map[string][]byte{id: []byte(pass)},
 		}
+	}
+	if config.LocalID == nil {
+		err = errors.New("our credentials are missing")
+		return
 	}
 
 	if localTunnel == "" && remoteTunnel == "" {
@@ -153,8 +152,7 @@ func loadConfig() (config *ike.Config, localString string, remoteString string, 
 func main() {
 	config, localString, remoteString, err := loadConfig()
 	if err != nil {
-		fmt.Printf("Argument Error: %+v\n", err)
-		panic(err)
+		panic(fmt.Errorf("Argument Error: %+v", err))
 	}
 
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stderr))
