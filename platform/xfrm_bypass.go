@@ -16,7 +16,7 @@ import (
 const XFRM_POLICY_ALLOW = 0
 
 // set ike in & out bypass on defautl port 500
-func SetSocketBypas(conn net.Conn) error {
+func SetSocketBypass(conn net.Conn) error {
 	fd, family, err := sysfd(conn)
 	if err != nil {
 		return errors.WithStack(err)

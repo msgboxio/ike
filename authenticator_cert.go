@@ -66,7 +66,7 @@ func (o *CertAuthenticator) Verify(initB []byte, idP *protocol.IdPayload, authMe
 	if len(chain) == 0 {
 		return errors.New("missing certificates")
 	}
-	// chain will not be empty
+	// TODO -
 	cert := FormatCert(chain[0])
 	logger.Log("AUTH", fmt.Sprintf("PEER_CERT[%s]", cert.String()))
 	// ensure key used to compute a digital signature belongs to the name in the ID payload

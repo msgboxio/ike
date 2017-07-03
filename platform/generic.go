@@ -25,7 +25,7 @@ func RemoveChildSa(sid int32, *SaParams, log.Logger) error {
 	return nil
 }
 
-func SetSocketBypas(conn net.Conn) (err error) {
+func SetSocketBypass(conn net.Conn) (err error) {
 	return
 }
 

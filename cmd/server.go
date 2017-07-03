@@ -179,7 +179,7 @@ func main() {
 		panic(fmt.Sprintf("Listen: %+v", err))
 	}
 	// requires root
-	if err := platform.SetSocketBypas(pconn.Inner()); err != nil {
+	if err := platform.SetSocketBypass(pconn.Inner()); err != nil {
 		panic(fmt.Sprintf("Bypass: %+v", err))
 	}
 

@@ -78,7 +78,7 @@ func runInitiator(sess *Session) (err error) {
 		sess.CheckError(err, false)
 		return
 	}
-	// replace espSpiI & espSpiR : MUTATION
+	// replace espSpiI & lifetime : MUTATION
 	sess.EspSpiR = espSpiR
 	if lifetime != 0 {
 		sess.cfg.Lifetime = lifetime

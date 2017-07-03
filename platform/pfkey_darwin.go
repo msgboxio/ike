@@ -396,7 +396,7 @@ func RemoveChildSa(sid int32, sa *SaParams, log log.Logger) error {
 	return err
 }
 
-func SetSocketBypas(conn net.Conn) error {
+func SetSocketBypass(conn net.Conn) error {
 	fd, family, err := sysfd(conn)
 	if err != nil {
 		return errors.WithStack(err)
