@@ -6,3 +6,4 @@ state/state.go_
 protocol/fuzz/corpus/
 protocol/fuzz/fuzz-fuzz.zip
 *.test
+vendor/golang.org

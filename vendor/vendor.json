@@ -1,0 +1,45 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "uX2McdP4VcQ6zkAF0Q4oyd0rFtU=",
+			"path": "golang.org/x/net/bpf",
+			"revision": "570fa1c91359c1869590e9cedf3b53162a51a167",
+			"revisionTime": "2017-07-01T00:59:03Z"
+		},
+		{
+			"checksumSHA1": "KUnn8eAHMrtOhQ5eEsObpOO6jHg=",
+			"path": "golang.org/x/net/internal/iana",
+			"revision": "186fd3fc8194a5e9980a82230d69c1ff7134229f",
+			"revisionTime": "2017-05-12T21:27:43Z",
+			"version": "release-branch.go1.8",
+			"versionExact": "release-branch.go1.8"
+		},
+		{
+			"checksumSHA1": "LVY0kRV5iwxDS3XQaBWxdzPemyc=",
+			"path": "golang.org/x/net/internal/netreflect",
+			"revision": "186fd3fc8194a5e9980a82230d69c1ff7134229f",
+			"revisionTime": "2017-05-12T21:27:43Z",
+			"version": "release-branch.go1.8",
+			"versionExact": "release-branch.go1.8"
+		},
+		{
+			"checksumSHA1": "g/aONTIPw/IgcA2krPmZ16IRJho=",
+			"path": "golang.org/x/net/ipv4",
+			"revision": "186fd3fc8194a5e9980a82230d69c1ff7134229f",
+			"revisionTime": "2017-05-12T21:27:43Z",
+			"version": "release-branch.go1.8",
+			"versionExact": "release-branch.go1.8"
+		},
+		{
+			"checksumSHA1": "jVuODrI+UgBz0PZvhbV8J3vowqI=",
+			"path": "golang.org/x/net/ipv6",
+			"revision": "186fd3fc8194a5e9980a82230d69c1ff7134229f",
+			"revisionTime": "2017-05-12T21:27:43Z",
+			"version": "release-branch.go1.8",
+			"versionExact": "release-branch.go1.8"
+		}
+	],
+	"rootPath": "github.com/msgboxio/ike"
+}
