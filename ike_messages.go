@@ -120,14 +120,14 @@ func makeInit(params *initParams) *Message {
 		})
 	}
 	// init.Payloads.Add(&protocol.NotifyPayload{
-	// PayloadHeader:       &protocol.PayloadHeader{},
-	// NotificationType:    protocol.NAT_DETECTION_DESTINATION_IP,
-	// NotificationMessage: getNatHash(o.IkeSpiI, o.IkeSpiR, o.remote),
+	// 	PayloadHeader:       &protocol.PayloadHeader{},
+	// 	NotificationType:    protocol.NAT_DETECTION_DESTINATION_IP,
+	// 	NotificationMessage: getNatHash(params.spiI, params.spiR, params.remote),
 	// })
 	// init.Payloads.Add(&protocol.NotifyPayload{
-	// PayloadHeader:       &protocol.PayloadHeader{},
-	// NotificationType:    protocol.NAT_DETECTION_SOURCE_IP,
-	// NotificationMessage: getNatHash(o.IkeSpiI, o.IkeSpiR, o.local),
+	// 	PayloadHeader:       &protocol.PayloadHeader{},
+	// 	NotificationType:    protocol.NAT_DETECTION_SOURCE_IP,
+	// 	NotificationMessage: getNatHash(params.spiI, params.spiR, params.local),
 	// })
 	return init
 }

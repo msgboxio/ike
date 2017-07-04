@@ -36,10 +36,10 @@ func (i *Cmd) runSession(spi uint64, sess *Session) (err error) {
 }
 
 // RunInitiator starts & watches over on initiator session in a separate goroutine
-func (i *Cmd) RunInitiator(remoteAddr net.Addr, config *Config, log log.Logger) {
+func (i *Cmd) RunInitiator(localAddr, remoteAddr net.Addr, config *Config, log log.Logger) {
 	go func() {
 		for {
-			initiator, err := NewInitiator(config, remoteAddr, i.conn, i.cb, log)
+			initiator, err := NewInitiator(config, localAddr, remoteAddr, i.conn, i.cb, log)
 			if err != nil {
 				log.Log("ERROR", err, "MSG", "could not start Initiator")
 				return

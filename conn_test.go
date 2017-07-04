@@ -39,9 +39,7 @@ func (m *mockConn) WritePacket(reply []byte, remoteAddr net.Addr) error {
 	m.ch <- copy
 	return nil
 }
-func (m *mockConn) Inner() net.Conn {
-	return nil
-}
+func (m *mockConn) Inner() net.Conn { return nil }
 func (m *mockConn) Close() error {
 	close(m.ch)
 	return nil
@@ -58,9 +56,11 @@ func testCfg() *Config {
 	return cfg
 }
 
+var zeroAddr = &net.UDPAddr{IP: net.IPv4zero, Port: 0}
+
 func TestReadFragment(t *testing.T) {
 	conn := testConn()
-	sess, _ := NewInitiator(testCfg(), nil, conn, &SessionCallback{}, logger)
+	sess, _ := NewInitiator(testCfg(), zeroAddr, zeroAddr, conn, &SessionCallback{}, logger)
 	msg, _ := InitFromSession(sess).Encode(nil, false, sess.Logger)
 	conn.WritePacket(msg[:40], nil)
 	conn.WritePacket(msg[40:], nil)

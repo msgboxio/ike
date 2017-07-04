@@ -44,10 +44,6 @@ func runInitiator(sess *Session) (err error) {
 		}
 		break
 	}
-	// rewrite LocalAddr
-	if err = sess.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
-		return
-	}
 	// COOKIE is handled within cmd.newSession
 	if err = handleInitForSession(sess, init, msg); err != nil {
 		level.Error(sess.Logger).Log("INIT", err)
@@ -110,10 +106,6 @@ func runResponder(sess *Session) (err error) {
 	// TODO - NAT
 	// save message
 	sess.initIb = msg.Data
-	// not really necessary
-	if err = sess.SetAddresses(msg.LocalAddr, msg.RemoteAddr); err != nil {
-		return
-	}
 	// send INIT_reply & wait for AUTH
 	msg, err = sess.SendMsgGetReply(sess.InitMsg)
 	if err != nil {

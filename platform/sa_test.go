@@ -34,7 +34,7 @@ func TestAddPolicy(t *testing.T) {
 			IsTransportMode: true,
 		},
 	}
-	err := InstallPolicy(sa.PolicyParams, log.NewNopLogger(), true)
+	err := InstallPolicy(0, sa.PolicyParams, log.NewNopLogger(), true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -66,7 +66,7 @@ func TestAddSa(t *testing.T) {
 		SpiI:          makeSpi(),
 		SpiR:          makeSpi(),
 	}
-	if err := InstallChildSa(sa, log.NewNopLogger()); err != nil {
+	if err := InstallChildSa(0, sa, log.NewNopLogger()); err != nil {
 		t.Error(err)
 	}
 	// state, err := netlink.XfrmStateList(0)

@@ -203,7 +203,12 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		cmd.RunInitiator(remoteAddr, config, logger)
+		local, err := platform.GetLocalAddress(remoteAddr.IP)
+		if err != nil {
+			panic(err)
+		}
+		localAddr := &net.UDPAddr{IP: local, Port: remoteAddr.Port}
+		cmd.RunInitiator(localAddr, remoteAddr, config, logger)
 	}
 
 	wg := &sync.WaitGroup{}

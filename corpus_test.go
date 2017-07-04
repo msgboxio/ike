@@ -28,7 +28,7 @@ func TestIkeMsgGen(t *testing.T) {
 	cfg := newConfig()
 	cfg.LocalID = pskTestID
 	cfg.PeerID = pskTestID
-	sess, _ := NewInitiator(cfg, &net.IPAddr{}, nil, &SessionCallback{}, logger)
+	sess, _ := NewInitiator(cfg, zeroAddr, zeroAddr, nil, &SessionCallback{}, logger)
 	// init msg
 	init := InitFromSession(sess)
 	init.IkeHeader.MsgID = 42

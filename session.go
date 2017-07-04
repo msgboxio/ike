@@ -71,7 +71,7 @@ type Session struct {
 // Constructors
 
 // NewInitiator creates an initiator session
-func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallback, logger log.Logger) (*Session, error) {
+func NewInitiator(cfg *Config, localAddr, remoteAddr net.Addr, conn Conn, cb *SessionCallback, logger log.Logger) (*Session, error) {
 	tkm, err := NewTkm(cfg, nil)
 	if err != nil {
 		return nil, err
@@ -88,10 +88,13 @@ func NewInitiator(cfg *Config, remoteAddr net.Addr, conn Conn, cb *SessionCallba
 		IkeSpiI:           MakeSpi(),
 		incoming:          make(chan *Message, 10),
 		Conn:              conn,
-		Remote:            remoteAddr,
 		Cb:                *cb,
 		msgIDReq:          msgID{id: 0},
 		msgIDResp:         msgID{id: -1},
+	}
+	err = sess.setAddresses(localAddr, remoteAddr)
+	if err != nil {
+		return nil, err
 	}
 	sess.Logger = log.With(logger, "session", sess.tag())
 	return sess, nil
@@ -121,12 +124,15 @@ func NewResponder(cfg *Config, conn Conn, cb *SessionCallback, initI *Message, l
 		IkeSpiR:   MakeSpi(),
 		incoming:  make(chan *Message, 10),
 		Conn:      conn,
-		Local:     initI.LocalAddr,
-		Remote:    initI.RemoteAddr,
 		Cb:        *cb,
 		msgIDReq:  msgID{id: 0},
 		msgIDResp: msgID{id: -1},
 	}
+	err = sess.setAddresses(initI.LocalAddr, initI.RemoteAddr)
+	if err != nil {
+		return nil, err
+	}
+
 	sess.Logger = log.With(logger, "session", sess.tag())
 	return sess, nil
 }
@@ -392,8 +398,8 @@ func (sess *Session) isMessageValid(msg *Message) error {
 	return nil
 }
 
-// SetAddresses sets tunnel endpoint addresses
-func (sess *Session) SetAddresses(local, remote net.Addr) error {
+// setAddresses sets tunnel endpoint addresses
+func (sess *Session) setAddresses(local, remote net.Addr) error {
 	sess.Local = local
 	sess.Remote = remote
 	if sess.cfg.TsI != nil && sess.cfg.TsR != nil {
