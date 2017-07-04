@@ -3,10 +3,14 @@ docker run -it --rm --privileged -v /ike/server:/server -v /ike/test/cert:/cert 
 
 go run cmd/server.go -ca test/cert/cacert.pem -key test/cert/peerkey.der -cert test/cert/peercert.der -peerid "172.17.0.1" -local ":5000" -remote ":4500"
 
+sudo ./server.elf -remote=172.28.128.1:500 -id ak@msgbox.io -pass foo -ca test/cert/cacert.pem -peerid "172.17.0.1"
+
 # responder
 docker run -it --rm --privileged -v /ike/server:/server -v /ike/test/cert:/cert min /server -local ":500" -v 2 -ca /cert/cacert.pem -key /cert/hostkey.der -cert /cert/hostcert.der -tunnel
 
 go run cmd/server.go -ca test/cert/cacert.pem -key test/cert/hostkey.der -cert test/cert/hostcert.der -peerid "172.17.0.2" -local ":4500"
+
+sudo ./server -local=172.28.128.1:500 -key test/cert/hostkey.der -cert test/cert/hostcert.der -peerid ak@msgbox.io -peerpass foo
 
 # tests
 ./ike.test -test.v -v 4 -logtostderr -test.run="^TestCommonVersions$"

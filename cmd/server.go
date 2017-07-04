@@ -205,7 +205,15 @@ func main() {
 		}
 		local, err := platform.GetLocalAddress(remoteAddr.IP)
 		if err != nil {
-			panic(err)
+			// see if local address can be derived from localString
+			localAddr, err := net.ResolveUDPAddr("udp", localString)
+			if err != nil {
+				panic(err)
+			}
+			if !localAddr.IP.IsGlobalUnicast() {
+				panic(fmt.Errorf("%s: not a routable address", localAddr.IP))
+			}
+			local = localAddr.IP
 		}
 		localAddr := &net.UDPAddr{IP: local, Port: remoteAddr.Port}
 		cmd.RunInitiator(localAddr, remoteAddr, config, logger)
