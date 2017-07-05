@@ -18,7 +18,8 @@ type Message struct {
 	Payloads              *protocol.Payloads
 	LocalAddr, RemoteAddr net.Addr
 
-	Data []byte // used to carry raw bytes
+	Data   []byte      // used to carry raw bytes
+	Params interface{} // used to carry the parsed/source structure
 }
 
 // DecodeHeader decodes the ike header and replaces the IkeHeader member

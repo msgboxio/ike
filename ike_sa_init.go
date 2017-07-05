@@ -41,8 +41,6 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	if err := msg.CheckFlags(); err != nil {
 		return err
 	}
-	// NOTE - incoming request is parsed again when processing session
-	// Avoiding it adds code complexity
 	init, err := parseInit(msg)
 	if err != nil {
 		return err
@@ -55,6 +53,7 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 		}
 		return err
 	}
+	msg.Params = init
 	return nil
 }
 
@@ -160,27 +159,6 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 	// check ike proposal
 	if err := sess.cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {
 		return err
-	}
-	return nil
-}
-
-// handleInitForSession is called for requests & responses both
-func handleInitForSession(sess *Session, init *initParams, msg *Message) error {
-	// process notifications
-	// check NAT-T payload to determine if there is a NAT between the two peers
-	for _, ns := range init.ns {
-		switch ns.NotificationType {
-		case protocol.SIGNATURE_HASH_ALGORITHMS:
-			init.rfc7427Signatures = true
-		case protocol.NAT_DETECTION_DESTINATION_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.LocalAddr) {
-				sess.Logger.Log("HOST_NAT", msg.LocalAddr)
-			}
-		case protocol.NAT_DETECTION_SOURCE_IP:
-			if !checkNatHash(ns.NotificationMessage.([]byte), init.spiI, init.spiR, msg.RemoteAddr) {
-				sess.Logger.Log("PEER_NAT", msg.RemoteAddr)
-			}
-		}
 	}
 	return nil
 }

@@ -44,11 +44,6 @@ func runInitiator(sess *Session) (err error) {
 		}
 		break
 	}
-	// COOKIE is handled within cmd.newSession
-	if err = handleInitForSession(sess, init, msg); err != nil {
-		level.Error(sess.Logger).Log("INIT", err)
-		return
-	}
 	if err := sess.CreateIkeSa(init); err != nil {
 		return err
 	}
@@ -91,17 +86,13 @@ func runResponder(sess *Session) (err error) {
 	if !ok {
 		return errorSessionClosed
 	}
-	// NOTE - the message is parsed again
-	// this is not ideal, but simplifies other processing
-	init, err := parseInit(msg)
-	if err != nil {
-		return
+	// fetch params already attached from prior parsing
+	init, ok := msg.Params.(*initParams)
+	if !ok {
+		return errors.New("missing init parameters")
 	}
-	if err = handleInitForSession(sess, init, msg); err != nil {
+	if err = sess.CreateIkeSa(init); err != nil {
 		return
-	}
-	if err := sess.CreateIkeSa(init); err != nil {
-		return err
 	}
 	// TODO - NAT
 	// save message
@@ -128,10 +119,10 @@ func runResponder(sess *Session) (err error) {
 		sess.cfg.Lifetime = lifetime
 	}
 	// send AUTH_reply
-	if err := sess.sendMsg(sess.AuthMsg()); err != nil {
-		return err
+	if err = sess.sendMsg(sess.AuthMsg()); err != nil {
+		return
 	}
-	return nil
+	return
 }
 
 func runIpsecRekey(sess *Session) (err error) {

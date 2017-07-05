@@ -150,9 +150,24 @@ func parseInit(msg *Message) (*initParams, error) {
 	params.spiI = msg.IkeHeader.SpiI
 	params.spiR = msg.IkeHeader.SpiR
 	params.ns = msg.Payloads.GetNotifications()
-	// did we get a COOKIE ?
-	if cookie := msg.Payloads.GetNotification(protocol.COOKIE); cookie != nil {
-		params.cookie = cookie.NotificationMessage.([]byte)
+	// process notifications
+	for _, ns := range params.ns {
+		switch ns.NotificationType {
+		case protocol.SIGNATURE_HASH_ALGORITHMS:
+			params.rfc7427Signatures = true
+		case protocol.NAT_DETECTION_DESTINATION_IP:
+			// check NAT-T payload to determine if there is a NAT between the two peers
+			if !checkNatHash(ns.NotificationMessage.([]byte), params.spiI, params.spiR, msg.LocalAddr) {
+				// sess.Logger.Log("HOST_NAT", msg.LocalAddr)
+			}
+		case protocol.NAT_DETECTION_SOURCE_IP:
+			if !checkNatHash(ns.NotificationMessage.([]byte), params.spiI, params.spiR, msg.RemoteAddr) {
+				// sess.Logger.Log("PEER_NAT", msg.RemoteAddr)
+			}
+		case protocol.COOKIE:
+			// did we get a COOKIE ?
+			params.cookie = ns.NotificationMessage.([]byte)
+		}
 	}
 	// if we got a COOKIE request, then there are no more payloads
 	if err := msg.EnsurePayloads(initPayloads); err != nil {
