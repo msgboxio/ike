@@ -50,14 +50,11 @@ func (c *pconnV6) Close() error {
 // ErrorUDPOnly is returned if the given address is other than UDP
 var ErrorUDPOnly = errors.New("only udp is supported for now")
 
-// checkV4onX will check if
+// checkV4 will check if
 // addresses like "localhost:500" can listen as v4 addresses
 // normally, if we bind on dual stack address
 // on mac, receiving from v4 addresses does not give remote address
-func checkV4onX(address string) bool {
-	if runtime.GOOS != "darwin" {
-		return false
-	}
+func checkV4(address string) bool {
 	addr, err := net.ResolveUDPAddr("udp4", address)
 	if err != nil {
 		return false
@@ -69,8 +66,8 @@ func checkV4onX(address string) bool {
 }
 
 func Listen(network, address string, logger log.Logger) (Conn, error) {
-	// use v4 if at all possilbe on mac
-	if checkV4onX(address) {
+	// use v4 if at all possible
+	if checkV4(address) {
 		return listenUDP4(address, logger)
 	}
 	switch network {
