@@ -17,7 +17,6 @@ func runInitiator(sess *Session) (err error) {
 	// send initiator INIT after jittered wait and wait for reply
 	time.Sleep(Jitter(initJitter, jitterFactor))
 	var msg *Message
-	var init *initParams
 	for {
 		msg, err = sess.SendMsgGetReply(sess.InitMsg)
 		if err != nil {
@@ -25,13 +24,7 @@ func runInitiator(sess *Session) (err error) {
 		}
 		// TODO - check if we already have a connection to this host
 		// check if incoming message is an acceptable Init Response
-		init, err = parseInit(msg)
-		if err != nil {
-			if init == nil {
-				return
-			}
-		}
-		if err = checkInitResponseForSession(sess, init); err != nil {
+		if err = checkInitResponseForSession(sess, msg); err != nil {
 			if ce, ok := err.(peerRequestsCookieError); ok {
 				sess.SetCookie(ce.Cookie)
 				sess.msgIDReq.reset(0)
@@ -44,8 +37,15 @@ func runInitiator(sess *Session) (err error) {
 		}
 		break
 	}
-	if err := sess.CreateIkeSa(init); err != nil {
-		return err
+	init, ok := msg.Params.(*initParams)
+	if !ok {
+		return errors.New("missing init parameters")
+	}
+	if err = sess.CreateIkeSa(init); err != nil {
+		return
+	}
+	if init.hasNat {
+		sess.Logger.Log("NAT detected")
 	}
 	// TODO
 	// If there is NAT , then all the further communication is performed over port 4500 instead of the default port 500
@@ -93,6 +93,9 @@ func runResponder(sess *Session) (err error) {
 	}
 	if err = sess.CreateIkeSa(init); err != nil {
 		return
+	}
+	if init.hasNat {
+		sess.Logger.Log("NAT detected")
 	}
 	// TODO - NAT
 	// save message

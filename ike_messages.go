@@ -2,6 +2,7 @@ package ike
 
 import (
 	"math/big"
+	"net"
 	"time"
 
 	"github.com/msgboxio/ike/protocol"
@@ -66,9 +67,10 @@ type initParams struct {
 	ns                []*protocol.NotifyPayload
 	cookie            []byte
 	rfc7427Signatures bool
+	hasNat            bool
 }
 
-func makeInit(params *initParams) *Message {
+func makeInit(params *initParams, local, remote net.Addr) *Message {
 	// response & initiator are mutually exclusive
 	flags := protocol.RESPONSE
 	if params.isInitiator {
@@ -119,16 +121,18 @@ func makeInit(params *initParams) *Message {
 			},
 		})
 	}
-	// init.Payloads.Add(&protocol.NotifyPayload{
-	// 	PayloadHeader:       &protocol.PayloadHeader{},
-	// 	NotificationType:    protocol.NAT_DETECTION_DESTINATION_IP,
-	// 	NotificationMessage: getNatHash(params.spiI, params.spiR, params.remote),
-	// })
-	// init.Payloads.Add(&protocol.NotifyPayload{
-	// 	PayloadHeader:       &protocol.PayloadHeader{},
-	// 	NotificationType:    protocol.NAT_DETECTION_SOURCE_IP,
-	// 	NotificationMessage: getNatHash(params.spiI, params.spiR, params.local),
-	// })
+	if params.hasNat {
+		init.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader:       &protocol.PayloadHeader{},
+			NotificationType:    protocol.NAT_DETECTION_DESTINATION_IP,
+			NotificationMessage: getNatHash(params.spiI, params.spiR, remote),
+		})
+		init.Payloads.Add(&protocol.NotifyPayload{
+			PayloadHeader:       &protocol.PayloadHeader{},
+			NotificationType:    protocol.NAT_DETECTION_SOURCE_IP,
+			NotificationMessage: getNatHash(params.spiI, params.spiR, local),
+		})
+	}
 	return init
 }
 
@@ -158,11 +162,11 @@ func parseInit(msg *Message) (*initParams, error) {
 		case protocol.NAT_DETECTION_DESTINATION_IP:
 			// check NAT-T payload to determine if there is a NAT between the two peers
 			if !checkNatHash(ns.NotificationMessage.([]byte), params.spiI, params.spiR, msg.LocalAddr) {
-				// sess.Logger.Log("HOST_NAT", msg.LocalAddr)
+				params.hasNat = true
 			}
 		case protocol.NAT_DETECTION_SOURCE_IP:
 			if !checkNatHash(ns.NotificationMessage.([]byte), params.spiI, params.spiR, msg.RemoteAddr) {
-				// sess.Logger.Log("PEER_NAT", msg.RemoteAddr)
+				params.hasNat = true
 			}
 		case protocol.COOKIE:
 			// did we get a COOKIE ?

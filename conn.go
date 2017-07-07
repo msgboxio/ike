@@ -186,6 +186,10 @@ func ReadMessage(conn Conn, log log.Logger) (*Message, error) {
 			b = append(buf, b...)
 			buf = nil
 		}
+		if len(b) == 1 && (b[0] == 0xff) {
+			// log.Log("keepalive")
+			continue
+		}
 		msg, err := DecodeMessage(b, log)
 		if err == io.ErrShortBuffer {
 			buf = b

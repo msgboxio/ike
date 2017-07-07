@@ -52,8 +52,10 @@ route is only needed for host originated packets
 # bugs
 
 # TODO:
+> nat traversal
 > allow external authentication
-> allow external control
+> allow external control - adding / stopping initiators & responders
+> make sure it works with tcp
 > dont allow selector & crypto change on rekey
 > send & accept all available suites
 > errors need to be looked at more closely

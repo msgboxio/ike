@@ -86,6 +86,7 @@ func NewInitiator(cfg *Config, localAddr, remoteAddr net.Addr, conn Conn, cb *Se
 		tkm:               tkm,
 		cfg:               *cfg,
 		IkeSpiI:           MakeSpi(),
+		IkeSpiR:           make([]byte, 8),
 		incoming:          make(chan *Message, 10),
 		Conn:              conn,
 		Cb:                *cb,

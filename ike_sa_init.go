@@ -15,21 +15,26 @@ import (
 
 // InitFromSession creates IKE_SA_INIT messages
 func InitFromSession(sess *Session) *Message {
+	var prop protocol.Proposals
 	nonce := sess.tkm.Nr
 	if sess.isInitiator {
+		prop = protocol.ProposalFromTransform(protocol.IKE, sess.cfg.ProposalIke, sess.IkeSpiI)
 		nonce = sess.tkm.Ni
+	} else {
+		prop = protocol.ProposalFromTransform(protocol.IKE, sess.cfg.ProposalIke, sess.IkeSpiR)
 	}
 	return makeInit(&initParams{
 		isInitiator:       sess.isInitiator,
 		spiI:              sess.IkeSpiI,
 		spiR:              sess.IkeSpiR,
-		proposals:         protocol.ProposalFromTransform(protocol.IKE, sess.cfg.ProposalIke, sess.IkeSpiI),
+		proposals:         prop,
 		cookie:            sess.responderCookie,
 		dhTransformID:     sess.tkm.suite.DhGroup.TransformId(),
 		dhPublic:          sess.tkm.DhPublic,
 		nonce:             nonce,
 		rfc7427Signatures: sess.rfc7427Signatures,
-	})
+		hasNat:            true,
+	}, sess.Local, sess.Remote)
 }
 
 //
@@ -45,7 +50,7 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	if err != nil {
 		return err
 	}
-	if err := doCheckInitRequest(config, init, msg.RemoteAddr); err != nil {
+	if err := _checkInitRequest(config, init, msg.RemoteAddr); err != nil {
 		// handle errors that need reply: COOKIE or DH
 		if reply := initErrorNeedsReply(init, config, msg.RemoteAddr, err); reply != nil {
 			log.Log("INIT_REPLY", err.Error())
@@ -57,8 +62,7 @@ func checkInitRequest(msg *Message, conn Conn, config *Config, log log.Logger) e
 	return nil
 }
 
-// doCheckInitRequest checks IKE_SA_INIT requests
-func doCheckInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
+func _checkInitRequest(cfg *Config, init *initParams, remote net.Addr) error {
 	if !init.isInitiator {
 		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: request from responder")
 	}
@@ -127,7 +131,11 @@ func notificationResponse(spi protocol.Spi, nt protocol.NotificationType, data i
 // incoming response
 //
 
-func checkInitResponseForSession(sess *Session, init *initParams) error {
+func checkInitResponseForSession(sess *Session, msg *Message) error {
+	init, err := parseInit(msg)
+	if err != nil {
+		return err
+	}
 	if init.isInitiator { // id must be zero
 		return errors.Wrap(protocol.ERR_INVALID_SYNTAX, "IKE_SA_INIT: response from initiator")
 	}
@@ -160,5 +168,6 @@ func checkInitResponseForSession(sess *Session, init *initParams) error {
 	if err := sess.cfg.CheckProposals(protocol.IKE, init.proposals); err != nil {
 		return err
 	}
+	msg.Params = init
 	return nil
 }
